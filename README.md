@@ -55,22 +55,22 @@ DSH 已经把**组内**会话按 `updatedAt` 倒序排好了（排序方式 = �
 
 ## 安装
 
-从 GitHub：
+npm（推荐，升级最简单）：
+
+```powershell
+dsh plugin --profile <profile> add dsh-ws-recency
+```
+
+或从 GitHub 直装：
 
 ```powershell
 dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 ```
 
-或从 Release 的预构建包（版本固定，不会跟着分支漂）：
+或固定版本的预构建包：
 
 ```powershell
 dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.7.1/dsh-ws-recency-0.7.1.tgz
-```
-
-发布到 npm 后也可以：
-
-```powershell
-dsh plugin --profile <profile> add dsh-ws-recency
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
