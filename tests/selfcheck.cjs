@@ -279,21 +279,22 @@ assert.strictEqual(hiddenCount(B), 2, "a fully stale workspace folds every row")
 assert.strictEqual(hiddenCount(C), 0, "fresh sessions stay visible");
 assert.strictEqual(blankRow.getAttribute("data-wsr-hidden"), null, "the New session row is never folded");
 
-assert.strictEqual(toggleOf(A), null, "no second control beside the host's show-more button");
-assert.strictEqual(A.button.textContent, "\u5c55\u5f00\u5176\u4f59 8 \u6761\u4f1a\u8bdd", "host count includes the folded rows");
+assert.ok(toggleOf(A) !== null, "a group with folded rows gets its own history control");
+assert.strictEqual(toggleOf(A).textContent, "Show history (3)");
+assert.strictEqual(A.button.textContent, "\u5c55\u5f00\u5176\u4f59 5 \u6761\u4f1a\u8bdd", "the host's own button is left untouched");
 assert.ok(toggleOf(B) !== null, "a fully rendered group offers the history control");
 assert.strictEqual(toggleOf(B).textContent, "Show history (2)");
 assert.strictEqual(toggleOf(C), null, "a group with nothing folded gets no control");
 
-A.button.click();
+toggleOf(A).click();
 flush();
-assert.strictEqual(hiddenCount(A), 0, "the host button reveals the folded rows");
-assert.strictEqual(A.button.textContent, "\u5c55\u5f00\u5176\u4f59 5 \u6761\u4f1a\u8bdd");
+assert.strictEqual(hiddenCount(A), 0, "the history control reveals the folded rows");
+assert.strictEqual(toggleOf(A).textContent, "Hide history");
 
-A.button.attrs["aria-expanded"] = "true";
-A.button.click();
+toggleOf(A).click();
 flush();
-assert.strictEqual(hiddenCount(A), 3, "clicking again folds the history back");
+assert.strictEqual(hiddenCount(A), 3, "the same control folds them back");
+assert.strictEqual(toggleOf(A).textContent, "Show history (3)");
 
 toggleOf(B).click();
 flush();

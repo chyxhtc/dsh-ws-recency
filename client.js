@@ -78,13 +78,11 @@
         var written = new Set();
         var roots = new Set();
         var hidden = new Set();
-        var labelled = new Set();
         var toggles = new Set();
         var dots = new Set();
         var pinHidden = new Set();
         var pinHost = null;
         var expandedSections = new Set();
-        var clickMarked = new WeakSet();
         var headerMarked = new WeakSet();
         var disposed = false;
 
@@ -325,11 +323,6 @@
           return out;
         }
 
-        function overflowButtonOf(section) {
-          if (typeof section.querySelector !== "function") return null;
-          return section.querySelector('button[class*="' + OVERFLOW_TOKEN + '"]');
-        }
-
         function isActiveRow(row) {
           if (typeof row.querySelector !== "function") return false;
           return row.querySelector('[data-state="ongoing"], [data-state="warning"]') !== null;
@@ -371,55 +364,7 @@
           return session !== undefined && session !== null && session.blank === true;
         }
 
-        /**
-         * Rewrite the host button's count so it reports what is really hidden: the
-         * host counts only the rows it did not render, and the fold hides a few more.
-         */
-        function rewriteLabel(button, extraHidden) {
-          if (button === null || button === undefined) return;
-          if (typeof button.textContent !== "string" || button.dataset === undefined) return;
-          var base = button.dataset.wsrBase;
-          if (typeof base !== "string") {
-            base = button.textContent;
-            button.dataset.wsrBase = base;
-            labelled.add(button);
-          }
-          var match = /\d+/.exec(base);
-          if (match === null) return;
-          var hostCount = Number(match[0]);
-          if (!Number.isFinite(hostCount)) return;
-          var total = hostCount + extraHidden;
-          var text = total <= 0 ? base : base.slice(0, match.index) + String(total) + base.slice(match.index + match[0].length);
-          if (button.textContent !== text) button.textContent = text;
-        }
-
-        function releaseLabel(button) {
-          if (button === null || button === undefined || button.dataset === undefined) return;
-          var base = button.dataset.wsrBase;
-          if (typeof base === "string") {
-            if (button.textContent !== base) button.textContent = base;
-            delete button.dataset.wsrBase;
-          }
-          labelled.delete(button);
-        }
-
-        function markButton(button, key) {
-          if (typeof button.addEventListener !== "function" || clickMarked.has(button)) return;
-          clickMarked.add(button);
-          button.addEventListener("click", function () {
-            if (disposed) return;
-            /* The host's own control is the only one while it exists, so it has to
-               carry the fold too: `aria-expanded` still reads the pre-click state
-               (React delegates at the root, this listener runs first), which is
-               exactly what decides whether the click reveals or hides. */
-            var expanded = typeof button.getAttribute === "function"
-              && button.getAttribute("aria-expanded") === "true";
-            if (expanded) expandedSections.delete(key);
-            else expandedSections.add(key);
-            schedule();
-          });
-        }
-
+        /** Collapsing a group resets its fold state, so the click is observed. */
         function markHeader(header, key) {
           if (typeof header.addEventListener !== "function" || headerMarked.has(header)) return;
           headerMarked.add(header);
@@ -441,11 +386,15 @@
             button.addEventListener("click", function (event) {
               if (disposed) return;
               if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
-              onClick();
+              var current = button.wsrOnClick;
+              if (typeof current === "function") current();
             });
             section.appendChild(button);
             toggles.add(button);
           }
+          /* The handler is refreshed every pass: the button toggles between "show"
+             and "hide", and a captured first callback would only ever show. */
+          button.wsrOnClick = onClick;
           if (button.textContent !== label) button.textContent = label;
           return button;
         }
@@ -469,10 +418,7 @@
             var entry = entries[i];
             var section = entry.section;
             var rows = rowElements(section);
-            var hostButton = overflowButtonOf(section);
             markHeader(entry.header, entry.key);
-            if (hostButton !== null) markButton(hostButton, entry.key);
-            releaseLabel(hostButton);
 
             var expanded = expandedSections.has(entry.key);
             var folded = 0;
@@ -493,14 +439,13 @@
               }
             }
 
-            /* ONE control per group: while the host offers its own "show more"
-               button, that button is the control (its count already carries the
-               folded rows below). Only a group the host finished rendering gets
-               this plugin's own toggle. */
-            if (hostButton !== null) {
-              dropToggle(section);
-              rewriteLabel(hostButton, expanded ? 0 : folded);
-            } else if (expanded) {
+            /* The host's own "show more" button and this fold are two different
+               things: the host decides which rows it RENDERS, this plugin decides
+               which rendered rows stay VISIBLE. Touching the host's label or its
+               click made the two fight (a count nobody could trust, and a collapse
+               that never came back), so they stay separate: the group gets its own
+               "show history" control whenever something is folded. */
+            if (expanded) {
               (function (entryKey) {
                 ensureToggle(section, entryKey, t("fold.hide"), function () {
                   expandedSections.delete(entryKey);
@@ -958,8 +903,6 @@
             if (element.removeAttribute !== undefined) element.removeAttribute(HIDDEN_ATTR);
           });
           hidden.clear();
-          labelled.forEach(function (button) { releaseLabel(button); });
-          labelled.clear();
           toggles.forEach(function (button) { button.remove(); });
           toggles.clear();
           dots.forEach(function (dot) { dot.remove(); });
