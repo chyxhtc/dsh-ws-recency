@@ -1,6 +1,6 @@
 # dsh-ws-recency
 
-DSH 侧栏的三件事：**工作区分组按最近活跃排序**、**过期历史自动折叠**、**运行中/未读/需跟进三色标记**。单独装上就有效，不依赖其它插件。
+DSH 侧栏的四件事：**工作区分组按最近活跃排序**、**过期历史自动折叠**、**运行中/未读/需跟进三色标记**、**所有置顶会话汇总到顶部一个区**。单独装上就有效，不依赖其它插件。
 
 ## 一、分组排序
 
@@ -35,12 +35,25 @@ DSH 已经把**组内**会话按 `updatedAt` 倒序排好了（排序方式 = �
 - **标记只有你手动取消才会消失**：运行中/完成未读期间它只是被更强的状态盖住显示，跑完、读完（没有新未读）之后琥珀自己回来；
 - 不受打开时长、会话是否继续对话影响——继续对话恰恰常常是还欠一次跟进的原因。
 
+## 四、全局置顶区
+
+DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，分组本身仍在原位；一旦分组排在列表下面，置顶了也看不见。
+
+本插件在**所有工作区分组之上**加一个「置顶」区，把宿主自己的置顶会话（`workspaces.pinnedSessionIds`）集中列出来：
+
+- 用的是**宿主原生置顶集合**，不是第二套置顶：会话「…」菜单里的置顶/取消置顶照旧；
+- 置顶区每行显示标题 + 所属工作区名，点行直接打开；hover 出现「取消置顶」；
+- 置顶期间它在原工作区分组里的那一行**隐藏**（不重复出现），取消置顶后原行回到原位；
+- 工作区分组、组内顺序、折叠、颜色全部照旧；
+- 只在按工作区分组时出现；搜索、扁平视图、侧栏收起时自动隐藏。
+
 ## 设置
 
 **设置 → 通用**：
 
 - **历史折叠天数**：`−` / 数字输入 / `+`（1–90，默认 3），以及“选中 / 运行中 / 等待处理的会话不折叠”；
-- **颜色与跟进标记**：颜色标记总开关。
+- **颜色与跟进标记**：颜色标记总开关；
+- **全局置顶区**：显示开关。
 
 偏好持久化在 Client store 的 `dsh.ws-recency.prefs.v1`。
 
@@ -69,7 +82,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.7.3/dsh-ws-recency-0.7.3.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.8.0/dsh-ws-recency-0.8.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

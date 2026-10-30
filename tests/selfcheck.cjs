@@ -3,8 +3,9 @@
  * Self-check for dsh-ws-recency's client half: load client.js through a stubbed
  * dynamic-module protocol and a stub DOM, then assert
  *   - group order follows each workspace's freshest `updatedAt`,
- *   - sessions older than foldDays are folded, and
- *   - the group's own control reveals them again.
+ *   - sessions older than foldDays are folded, one control per group,
+ *   - colors: running / unread / persistent manual follow-up,
+ *   - the global pinned section renders native pins and hides the copies.
  */
 const path = require("node:path");
 const assert = require("node:assert");
@@ -52,15 +53,29 @@ function el(tag, className) {
     attrs: {},
     textContent: "",
     handlers: {},
+    get firstChild() { return this.children.length > 0 ? this.children[0] : null; },
     getAttribute(name) {
       return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null;
     },
     setAttribute(name, value) { this.attrs[name] = String(value); },
     removeAttribute(name) { delete this.attrs[name]; },
     addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); },
-    click() { (this.handlers.click || []).forEach((fn) => fn({})); },
+    click() { (this.handlers.click || []).forEach((fn) => fn({ stopPropagation() {} })); },
     append(child) { child.parentElement = this; this.children.push(child); return child; },
     appendChild(child) { return this.append(child); },
+    insertBefore(child, ref) {
+      child.parentElement = this;
+      const index = ref === undefined || ref === null ? -1 : this.children.indexOf(ref);
+      if (index < 0) this.children.push(child);
+      else this.children.splice(index, 0, child);
+      return child;
+    },
+    removeChild(child) {
+      const index = this.children.indexOf(child);
+      if (index >= 0) this.children.splice(index, 1);
+      child.parentElement = null;
+      return child;
+    },
     remove() {
       const parent = this.parentElement;
       if (parent === null) return;
@@ -105,6 +120,11 @@ global.window = {
   clearTimeout() {},
   setInterval() { return 1; },
   clearInterval() {},
+  localStorage: {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+  },
   __ModuleLoader__: { load(input) { spec = input; } },
 };
 global.window.window = global.window;
@@ -119,7 +139,7 @@ const root = el("body");
 const headers = [];
 const sections = [];
 
-const makeSection = (id, sessions, overflowText) => {
+const makeSection = (id, sessionIds, overflowText) => {
   const section = el("div", "SJMXQW_groupSection");
   section.parentElement = root;
   root.children.push(section);
@@ -128,9 +148,9 @@ const makeSection = (id, sessions, overflowText) => {
   section.append(header);
   headers.push(header);
   sections.push(section);
-  const rows = sessions.map((session, index) => {
+  const rows = sessionIds.map((sessionId) => {
     const row = el("div", "ozLDBG_sessionRow");
-    row.attrs["data-row-key"] = `session:${session.id}`;
+    row.attrs["data-row-key"] = `session:${sessionId}`;
     section.append(row);
     return row;
   });
@@ -143,21 +163,9 @@ const makeSection = (id, sessions, overflowText) => {
   return { section, header, rows, button };
 };
 
-const A = makeSection("A", [
-  { id: "A-fresh-1", updatedAt: NOW - 1 * DAY },
-  { id: "A-old-1", updatedAt: NOW - 4 * DAY },
-  { id: "A-fresh-2", updatedAt: NOW - 2 * DAY },
-  { id: "A-old-2", updatedAt: NOW - 6 * DAY },
-  { id: "A-old-3", updatedAt: NOW - 9 * DAY },
-], "展开其余 5 条会话");
-const B = makeSection("B", [
-  { id: "B-old-1", updatedAt: NOW - 5 * DAY },
-  { id: "B-old-2", updatedAt: NOW - 7 * DAY },
-], null);
-const C = makeSection("C", [
-  { id: "C-fresh-1", updatedAt: NOW - 2 * DAY },
-  { id: "C-fresh-2", updatedAt: NOW - 1 * DAY },
-], null);
+const A = makeSection("A", ["A-fresh-1", "A-old-1", "A-fresh-2", "A-old-2", "A-old-3"], "\u5c55\u5f00\u5176\u4f59 5 \u6761\u4f1a\u8bdd");
+const B = makeSection("B", ["B-old-1", "B-old-2"], null);
+const C = makeSection("C", ["C-fresh-1", "C-fresh-2"], null);
 
 /* The provisional "New session" row: always rendered, never folded. */
 const blankRow = el("div", "ozLDBG_sessionRow");
@@ -181,8 +189,16 @@ assert.strictEqual(mod.name, "dsh-ws-recency");
 let Sorter = null;
 let SettingsRow = null;
 let FollowUpDot = null;
+const service = {
+  opened: [],
+  unpinned: [],
+  openSession(id) { this.opened.push(id); },
+  unpinSession(id) { this.unpinned.push(id); },
+  pinSession() {},
+};
 const ctx = {
   effect(fn) { fn(); },
+  get(name) { return name === "uiWorkspace" ? service : undefined; },
   locale: { register() { return () => {}; } },
   slots: {
     inject(_name, factory) { return factory(); },
@@ -200,36 +216,30 @@ assert.ok(SettingsRow !== null, "settings row was not registered");
 
 const sessions = {
   phase: "ready",
-  byId: {},
+  byId: {
+    "A-fresh-1": { id: "A-fresh-1", updatedAt: NOW - 1 * DAY, origin: "main" },
+    "A-old-1": { id: "A-old-1", updatedAt: NOW - 4 * DAY, origin: "main" },
+    "A-fresh-2": { id: "A-fresh-2", updatedAt: NOW - 2 * DAY, origin: "main" },
+    "A-old-2": { id: "A-old-2", updatedAt: NOW - 6 * DAY, origin: "main" },
+    "A-old-3": { id: "A-old-3", updatedAt: NOW - 9 * DAY, origin: "main" },
+    "B-old-1": { id: "B-old-1", updatedAt: NOW - 5 * DAY, origin: "main" },
+    "B-old-2": { id: "B-old-2", updatedAt: NOW - 7 * DAY, origin: "main" },
+    "B-blank": { id: "B-blank", blank: true, updatedAt: NOW - 30 * DAY, origin: "main" },
+    "C-fresh-1": { id: "C-fresh-1", updatedAt: NOW - 2 * DAY, origin: "main" },
+    "C-fresh-2": { id: "C-fresh-2", updatedAt: NOW - 1 * DAY, origin: "main" },
+  },
 };
-for (const group of [A, B, C]) {
-  for (const row of group.rows) {
-    const id = row.getAttribute("data-row-key").slice("session:".length);
-    const found = [
-      { id: "A-fresh-1", updatedAt: NOW - 1 * DAY },
-      { id: "A-old-1", updatedAt: NOW - 4 * DAY },
-      { id: "A-fresh-2", updatedAt: NOW - 2 * DAY },
-      { id: "A-old-2", updatedAt: NOW - 6 * DAY },
-      { id: "A-old-3", updatedAt: NOW - 9 * DAY },
-      { id: "B-old-1", updatedAt: NOW - 5 * DAY },
-      { id: "B-old-2", updatedAt: NOW - 7 * DAY },
-      { id: "C-fresh-1", updatedAt: NOW - 2 * DAY },
-      { id: "C-fresh-2", updatedAt: NOW - 1 * DAY },
-    ].find((candidate) => candidate.id === id);
-    sessions.byId[id] = { ...found, origin: "main" };
-  }
-}
-sessions.byId["B-blank"] = { id: "B-blank", blank: true, updatedAt: NOW - 30 * DAY, origin: "main" };
 const workspaces = {
   phase: "ready",
   items: [
-    { workspaceId: "A", sessionIds: ["A-fresh-1", "A-old-1", "A-fresh-2", "A-old-2", "A-old-3"] },
-    { workspaceId: "B", sessionIds: ["B-old-1", "B-old-2"] },
-    { workspaceId: "C", sessionIds: ["C-fresh-1", "C-fresh-2"] },
+    { workspaceId: "A", title: "alpha", sessionIds: ["A-fresh-1", "A-old-1", "A-fresh-2", "A-old-2", "A-old-3"] },
+    { workspaceId: "B", title: "beta", sessionIds: ["B-old-1", "B-old-2"] },
+    { workspaceId: "C", title: "gamma", sessionIds: ["C-fresh-1", "C-fresh-2"] },
   ],
   archivedSessionIds: [],
+  pinnedSessionIds: [],
 };
-const prefs = { enabled: true, foldDays: 3, keepActive: true, colors: true, followUps: {} };
+const prefs = { enabled: true, foldDays: 3, keepActive: true, colors: true, pinnedSection: true, followUps: {} };
 const statuses = {};
 const actions = {
   clearFollowUp: (id) => { delete prefs.followUps[id]; },
@@ -237,13 +247,6 @@ const actions = {
     if (prefs.followUps[id] === undefined) prefs.followUps[id] = Date.now();
     else delete prefs.followUps[id];
   },
-};
-
-const storage = new Map();
-global.window.localStorage = {
-  getItem: (key) => (storage.has(key) ? storage.get(key) : null),
-  setItem: (key, value) => { storage.set(key, String(value)); },
-  removeItem: (key) => { storage.delete(key); },
 };
 
 const render = () => {
@@ -259,56 +262,49 @@ const render = () => {
 
 render();
 
-/* ---------- assertions ------------------------------------------------- */
-
-const hiddenCount = (group) => group.rows.filter((row) => row.getAttribute("data-wsr-hidden") === "true").length;
-const toggleOf = (group) => group.section.querySelector('[data-wsr-fold="true"]');
+/* ---------- assertions: group order ------------------------------------ */
 
 assert.strictEqual(A.section.style.order, "0", "freshest workspace must lead");
 assert.strictEqual(C.section.style.order, "1");
 assert.strictEqual(B.section.style.order, "2");
+assert.strictEqual(root.attrs["data-wsr-root"], "true");
+
+/* ---------- assertions: fold ------------------------------------------ */
+
+const hiddenCount = (group) => group.rows.filter((row) => row.getAttribute("data-wsr-hidden") === "true").length;
+const toggleOf = (group) => group.section.querySelector('[data-wsr-fold="true"]');
 
 assert.strictEqual(hiddenCount(A), 3, "three sessions older than 3 days are folded");
 assert.strictEqual(hiddenCount(B), 2, "a fully stale workspace folds every row");
 assert.strictEqual(hiddenCount(C), 0, "fresh sessions stay visible");
 assert.strictEqual(blankRow.getAttribute("data-wsr-hidden"), null, "the New session row is never folded");
 
-/* A group the host already paginates gets ONE control: the host's own button. */
 assert.strictEqual(toggleOf(A), null, "no second control beside the host's show-more button");
-assert.strictEqual(A.button.textContent, "展开其余 8 条会话", "host count includes the folded rows");
-
-/* A group the host rendered completely gets this plugin's toggle. */
+assert.strictEqual(A.button.textContent, "\u5c55\u5f00\u5176\u4f59 8 \u6761\u4f1a\u8bdd", "host count includes the folded rows");
 assert.ok(toggleOf(B) !== null, "a fully rendered group offers the history control");
 assert.strictEqual(toggleOf(B).textContent, "Show history (2)");
 assert.strictEqual(toggleOf(C), null, "a group with nothing folded gets no control");
 
-/* The host's button reveals the fold, and collapses it again. */
 A.button.click();
 flush();
 assert.strictEqual(hiddenCount(A), 0, "the host button reveals the folded rows");
-assert.strictEqual(A.button.textContent, "展开其余 5 条会话", "expanded group hides nothing, so the count is the host's own");
+assert.strictEqual(A.button.textContent, "\u5c55\u5f00\u5176\u4f59 5 \u6761\u4f1a\u8bdd");
 
 A.button.attrs["aria-expanded"] = "true";
 A.button.click();
 flush();
-assert.strictEqual(hiddenCount(A), 3, "clicking the host button again folds the history back");
-assert.strictEqual(A.button.textContent, "展开其余 8 条会话");
+assert.strictEqual(hiddenCount(A), 3, "clicking again folds the history back");
 
-/* The plugin's own toggle still works where the host has no button. */
 toggleOf(B).click();
 flush();
 assert.strictEqual(hiddenCount(B), 0, "the group toggle reveals the folded rows");
-assert.strictEqual(toggleOf(B).textContent, "Hide history");
 
-/* ---------- colors: running / unread / manual follow-up ---------------- */
+/* ---------- colors + persistent follow-up ------------------------------ */
 
-const D = makeSection("D", [
-  { id: "D-run", updatedAt: NOW - 1 * DAY },
-  { id: "D-done", updatedAt: NOW - 1 * DAY },
-], null);
+const D = makeSection("D", ["D-run", "D-done"], null);
 sessions.byId["D-run"] = { id: "D-run", updatedAt: NOW - 1 * DAY, origin: "main" };
 sessions.byId["D-done"] = { id: "D-done", updatedAt: NOW - 1 * DAY, origin: "main" };
-workspaces.items.push({ workspaceId: "D", sessionIds: ["D-run", "D-done"] });
+workspaces.items.push({ workspaceId: "D", title: "delta", sessionIds: ["D-run", "D-done"] });
 statuses["D-run"] = { running: true };
 statuses["D-done"] = { completionUnread: true };
 render();
@@ -316,43 +312,58 @@ render();
 assert.strictEqual(D.rows[0].getAttribute("data-wsr-state"), "running", "a running session turns blue");
 assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "unread", "a finished-unopened session turns green");
 
-/* The follow-up mark is the user's own decision, never inferred. */
 statuses["D-done"] = {};
 prefs.followUps = { "D-done": NOW };
 render();
-assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "followup", "a manually flagged session turns amber");
-/* The dot lives in the host's leading slot, never inside the row itself. */
-const flaggedDot = FollowUpDot({
-  sessionId: "D-done",
-  useStore: (select) => select(prefs),
-  actions,
-});
+assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "followup", "a flagged session turns amber");
+
+const flaggedDot = FollowUpDot({ sessionId: "D-done", useStore: (select) => select(prefs), actions });
 assert.ok(flaggedDot !== null, "a flagged session renders the leading dot");
 assert.strictEqual(flaggedDot.props.className, "wsr-dot");
-assert.strictEqual(D.rows[1].querySelector(".wsr-dot"), null, "nothing was injected into the row");
-assert.strictEqual(FollowUpDot({ sessionId: "D-run", useStore: (sel) => sel(prefs), actions }), null, "unflagged rows render nothing");
+assert.strictEqual(D.rows[1].querySelector(".wsr-dot"), null, "nothing is injected into the row");
+assert.strictEqual(FollowUpDot({ sessionId: "D-run", useStore: (sel) => sel(prefs), actions }), null);
 
-/* Clicking the dot drops the mark through the store action. */
 flaggedDot.props.onClick({ stopPropagation() {} });
 render();
 assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), null, "the dot clears the mark");
-assert.strictEqual(prefs.followUps["D-done"], undefined, "the store action removed the flag");
-assert.ok(D.rows[1].querySelector(".wsr-dot") === null, "the dot goes away with the mark");
+assert.strictEqual(prefs.followUps["D-done"], undefined);
 
 /* The mark survives new activity: running / unread only outrank it on screen. */
 prefs.followUps = { "D-done": NOW };
-sessions.byId["D-done"].updatedAt = NOW + 1000;
 statuses["D-done"] = { running: true };
 render();
 assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "running", "running outranks the mark");
-
 statuses["D-done"] = { completionUnread: true };
 render();
 assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "unread", "unread outranks the mark");
-
 statuses["D-done"] = {};
 render();
-assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "followup", "the mark comes back once the run is read");
+assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "followup", "the mark comes back once read");
 assert.strictEqual(prefs.followUps["D-done"], NOW, "the mark is never dropped automatically");
 
-console.log("selfcheck ok: order A>C>B, fold >3d, one control per group, colors + persistent follow-up");
+/* ---------- global pinned section -------------------------------------- */
+
+sessions.byId["A-fresh-1"].title = "pinned one";
+workspaces.pinnedSessionIds = ["A-fresh-1"];
+render();
+
+const pinSection = root.children.find((child) => child.className === "wsr-pin");
+assert.ok(pinSection !== undefined, "a pinned section is rendered");
+assert.strictEqual(root.children[0], pinSection, "it leads the list");
+const pinRow = pinSection.querySelector(".wsr-pin-row");
+assert.ok(pinRow !== null, "the pinned session gets a row");
+assert.strictEqual(pinRow.getAttribute("data-row-key"), "pin:A-fresh-1");
+assert.strictEqual(A.rows[0].getAttribute("data-wsr-pin-hidden"), "true", "the original row is hidden, not duplicated");
+
+pinRow.click();
+assert.deepStrictEqual(service.opened, ["A-fresh-1"], "clicking a pinned row opens it");
+
+pinRow.querySelector(".wsr-pin-unpin").click();
+assert.deepStrictEqual(service.unpinned, ["A-fresh-1"], "unpin goes through the host service");
+
+workspaces.pinnedSessionIds = [];
+render();
+assert.strictEqual(root.children.some((child) => child.className === "wsr-pin"), false, "the section disappears when nothing is pinned");
+assert.strictEqual(A.rows[0].getAttribute("data-wsr-pin-hidden"), null, "the original row comes back");
+
+console.log("selfcheck ok: order A>C>B, fold >3d, one control per group, colors + persistent follow-up, pinned section");

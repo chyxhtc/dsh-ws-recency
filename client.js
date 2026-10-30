@@ -59,6 +59,8 @@
         var FOLD_ATTR = "data-wsr-fold";
         var STATE_ATTR = "data-wsr-state";
         var DOT_TOKEN = "wsr-dot";
+        var PIN_ATTR = "data-wsr-pin";
+        var PIN_HIDDEN_ATTR = "data-wsr-pin-hidden";
         var BUSY_RANK_ATTR = "data-busy-rank";
         var CSS_ID = "dsh-ws-recency/css";
         var MENU_ORDER = 460;
@@ -69,7 +71,7 @@
         var DEFAULT_DAYS = 3;
         var TICK_MS = 5 * 60 * 1000;
 
-        var data = { sessions: null, workspaces: null, settings: null, statuses: null, actions: null, t: null };
+        var data = { sessions: null, workspaces: null, settings: null, statuses: null, actions: null, service: null, t: null };
         var timer = null;
         var ticker = null;
         var observer = null;
@@ -79,6 +81,8 @@
         var labelled = new Set();
         var toggles = new Set();
         var dots = new Set();
+        var pinHidden = new Set();
+        var pinHost = null;
         var expandedSections = new Set();
         var clickMarked = new WeakSet();
         var headerMarked = new WeakSet();
@@ -88,6 +92,16 @@
           "[" + ROOT_ATTR + '="true"]{display:flex;flex-direction:column}',
           "[" + ROOT_ATTR + '="true"]>*{flex:0 0 auto}',
           "[" + HIDDEN_ATTR + '="true"]{display:none !important}',
+          "[" + PIN_HIDDEN_ATTR + '="true"]{display:none !important}',
+          ".wsr-pin{display:flex;flex-direction:column;flex:0 0 auto;padding:2px 0 6px;margin-bottom:4px;border-bottom:.5px solid var(--dsw-alias-border-l2)}",
+          ".wsr-pin-head{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);padding:4px 12px 2px}",
+          ".wsr-pin-row{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:6px;cursor:pointer}",
+          ".wsr-pin-row:hover{background:var(--dsw-alias-bg-layer-2)}",
+          ".wsr-pin-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--dsw-alias-label-primary)}",
+          ".wsr-pin-ws{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-pin-unpin{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px;visibility:hidden}",
+          ".wsr-pin-row:hover .wsr-pin-unpin{visibility:visible}",
+          ".wsr-pin-unpin:hover{color:var(--dsw-alias-label-primary)}",
           ".wsr-toggle{width:100%;height:28px;padding:0 12px 0 calc(28px + var(--dsh-workspace-indent,0px));cursor:pointer;text-align:left;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;font-size:12px}",
           ".wsr-toggle:hover{color:var(--dsw-alias-label-secondary)}",
           '[' + STATE_ATTR + '="running"] [class*="_title"]{color:#4f8ef7}',
@@ -114,6 +128,11 @@
           "color.title": "\u989c\u8272\u4e0e\u8ddf\u8fdb\u6807\u8bb0",
           "color.description": "\u8fd0\u884c\u4e2d=\u84dd\uff0c\u5b8c\u6210\u672a\u8bfb=\u7eff\uff0c\u624b\u52a8\u6807\u8bb0\u9700\u8981\u8ddf\u8fdb=\u7425\u73c0\u3002\u5728\u4f1a\u8bdd\u300c\u2026\u300d\u83dc\u5355\u91cc\u6807\u8bb0 / \u53d6\u6d88\u3002",
           "color.enabled": "\u542f\u7528\u989c\u8272\u6807\u8bb0",
+          "pin.title": "\u5168\u5c40\u7f6e\u9876\u533a",
+          "pin.description": "\u5728\u6240\u6709\u5de5\u4f5c\u533a\u4e4b\u4e0a\u5355\u72ec\u5217\u51fa\u7f6e\u9876\u4f1a\u8bdd\uff1b\u53d6\u6d88\u7f6e\u9876\u540e\u56de\u5230\u5b83\u539f\u6765\u7684\u5de5\u4f5c\u533a\u4f4d\u7f6e\u3002",
+          "pin.enabled": "\u663e\u793a\u7f6e\u9876\u533a",
+          "pin.head": "\u7f6e\u9876",
+          "pin.unpin": "\u53d6\u6d88\u7f6e\u9876",
           "menu.flag": "\u6807\u8bb0\u9700\u8981\u8ddf\u8fdb",
           "menu.unflag": "\u53d6\u6d88\u8ddf\u8fdb\u6807\u8bb0",
         };
@@ -126,6 +145,11 @@
           "color.title": "Colors and follow-up marks",
           "color.description": "Running = blue, finished-unopened = green, a session you marked as needing follow-up = amber. Mark it from the session's \"...\" menu.",
           "color.enabled": "Enable color marks",
+          "pin.title": "Global pinned section",
+          "pin.description": "Lists pinned sessions in one section above every workspace; unpinning sends a session back to its own group.",
+          "pin.enabled": "Show the pinned section",
+          "pin.head": "Pinned",
+          "pin.unpin": "Unpin",
           "menu.flag": "Mark as needs follow-up",
           "menu.unflag": "Clear follow-up mark",
         };
@@ -168,6 +192,7 @@
             foldDays: Math.min(MAX_DAYS, Math.max(MIN_DAYS, Math.round(days))),
             keepActive: settings.keepActive !== false,
             colors: settings.colors !== false,
+            pinnedSection: settings.pinnedSection !== false,
             followUps: settings.followUps !== null && typeof settings.followUps === "object" ? settings.followUps : {},
           };
         }
@@ -489,6 +514,157 @@
           }
         }
 
+        function baseName(path) {
+          if (typeof path !== "string" || path === "") return "";
+          var parts = path.replace(/[\\/]+$/, "").split(/[\\/]/);
+          return parts.length === 0 ? path : parts[parts.length - 1];
+        }
+
+        /** sessionId -> owning workspace label, for the trailing tag in the pinned rows. */
+        function workspaceLabels(workspaces) {
+          var map = {};
+          var items = (workspaces !== null && workspaces !== undefined && workspaces.items) || [];
+          for (var i = 0; i < items.length; i += 1) {
+            var item = items[i];
+            var label = (item.title && String(item.title)) || baseName(item.path);
+            var ids = item.sessionIds || [];
+            for (var j = 0; j < ids.length; j += 1) if (map[ids[j]] === undefined) map[ids[j]] = label;
+          }
+          return map;
+        }
+
+        /**
+         * The sessions the host itself has pinned, newest first.
+         *
+         * The pins are the host's own set (`workspaces.pinnedSessionIds`), so this is
+         * not a second pinning system: pin / unpin from the normal "..." menu and the
+         * section follows.
+         */
+        function pinnedItemsOf(sessions, workspaces, settings) {
+          if (!settings.pinnedSection) return [];
+          var ids = (workspaces !== null && workspaces !== undefined && workspaces.pinnedSessionIds) || [];
+          if (ids.length === 0) return [];
+          var byId = sessions.byId || {};
+          var archived = new Set((workspaces && workspaces.archivedSessionIds) || []);
+          var labels = workspaceLabels(workspaces);
+          var out = [];
+          for (var i = 0; i < ids.length; i += 1) {
+            var session = byId[ids[i]];
+            if (session === undefined || session === null) continue;
+            if (session.origin === "subagent" || session.blank === true) continue;
+            if (archived.has(ids[i])) continue;
+            var title = (session.title || "").trim();
+            out.push({
+              id: ids[i],
+              title: title === "" ? ids[i].slice(0, 8) : title,
+              where: labels[ids[i]] || "",
+              updatedAt: typeof session.updatedAt === "number" ? session.updatedAt : 0,
+            });
+          }
+          out.sort(function (a, b) { return b.updatedAt - a.updatedAt; });
+          return out;
+        }
+
+        function pinnedRowElement(item) {
+          var row = document.createElement("div");
+          row.className = "wsr-pin-row";
+          row.setAttribute("data-row-key", "pin:" + item.id);
+          var title = document.createElement("span");
+          title.className = "wsr-pin-title";
+          title.textContent = item.title;
+          title.setAttribute("title", item.title);
+          row.appendChild(title);
+          if (item.where !== "") {
+            var where = document.createElement("span");
+            where.className = "wsr-pin-ws";
+            where.textContent = item.where;
+            row.appendChild(where);
+          }
+          var unpin = document.createElement("button");
+          unpin.type = "button";
+          unpin.className = "wsr-pin-unpin";
+          unpin.textContent = t("pin.unpin");
+          unpin.addEventListener("click", function (event) {
+            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+            if (data.service !== null && typeof data.service.unpinSession === "function") data.service.unpinSession(item.id);
+            schedule();
+          });
+          row.appendChild(unpin);
+          row.addEventListener("click", function () {
+            if (data.service !== null && typeof data.service.openSession === "function") data.service.openSession(item.id);
+          });
+          return row;
+        }
+
+        /** Hide the copies inside their own groups so nothing is listed twice. */
+        function hideOriginalRows(entries, pinnedIds) {
+          for (var i = 0; i < entries.length; i += 1) {
+            var rows = rowElements(entries[i].section);
+            for (var j = 0; j < rows.length; j += 1) {
+              var id = sessionIdOf(rows[j]);
+              if (id !== null && pinnedIds.has(id)) {
+                if (rows[j].getAttribute(PIN_HIDDEN_ATTR) !== "true") rows[j].setAttribute(PIN_HIDDEN_ATTR, "true");
+                pinHidden.add(rows[j]);
+              } else if (rows[j].getAttribute(PIN_HIDDEN_ATTR) !== null) {
+                rows[j].removeAttribute(PIN_HIDDEN_ATTR);
+                pinHidden.delete(rows[j]);
+              }
+            }
+          }
+        }
+
+        /**
+         * Render the "pinned" section above every workspace group.
+         *
+         * It is a plain element inserted as the first child of the list container
+         * (flex order -1), rebuilt only when the pinned set or its labels change. The
+         * host keeps owning the list; the workspace grouping below is untouched.
+         */
+        function renderPinned(entries, sessions, workspaces, settings) {
+          if (typeof document === "undefined") return;
+          var items = pinnedItemsOf(sessions, workspaces, settings);
+
+          if (items.length === 0) {
+            if (pinHost !== null) {
+              pinHost.remove();
+              pinHost = null;
+            }
+            hideOriginalRows(entries, new Set());
+            return;
+          }
+          if (entries.length === 0) return;
+          var container = entries[0].section.parentElement;
+          if (container === null) return;
+
+          if (pinHost === null || pinHost.parentElement !== container) {
+            var existing = container.querySelector("[" + PIN_ATTR + '="true"]');
+            if (existing !== null) existing.remove();
+            pinHost = document.createElement("div");
+            pinHost.className = "wsr-pin";
+            pinHost.setAttribute(PIN_ATTR, "true");
+            pinHost.style.order = "-1";
+            if (typeof container.insertBefore === "function" && container.firstChild !== undefined && container.firstChild !== null) {
+              container.insertBefore(pinHost, container.firstChild);
+            } else {
+              container.appendChild(pinHost);
+            }
+          }
+          pinHost.style.order = "-1";
+
+          var signature = items.map(function (item) { return item.id + "\u0000" + item.title + "\u0000" + item.where; }).join("\u0001");
+          if (pinHost.dataset.wsrSignature !== signature) {
+            pinHost.dataset.wsrSignature = signature;
+            while (pinHost.firstChild !== undefined && pinHost.firstChild !== null) pinHost.removeChild(pinHost.firstChild);
+            var head = document.createElement("div");
+            head.className = "wsr-pin-head";
+            head.textContent = t("pin.head");
+            pinHost.appendChild(head);
+            for (var i = 0; i < items.length; i += 1) pinHost.appendChild(pinnedRowElement(items[i]));
+          }
+          var pinnedIds = new Set(items.map(function (item) { return item.id; }));
+          hideOriginalRows(entries, pinnedIds);
+        }
+
         function statusOf(statuses, id) {
           if (statuses === null || statuses === undefined) return null;
           if (typeof statuses.get === "function") return statuses.get(id) || null;
@@ -560,6 +736,7 @@
 
           orderGroups(entries, latestByWorkspace(sessions, workspaces));
           foldRows(entries, settings, sessions, Date.now());
+          renderPinned(entries, sessions, workspaces, settings);
           if (settings.colors) decorateRows(entries, sessions, data.statuses, settings);
         }
 
@@ -700,6 +877,28 @@
           );
         }
 
+        /** Settings -> General row: the global pinned section on/off. */
+        function PinSectionRow(props) {
+          var settings = props.useStore(function (state) { return state; });
+          var enabled = settings.pinnedSection !== false;
+          var text = props.t("pin.title");
+          return h("div", { className: "wsr-setRow" },
+            h("div", { className: "wsr-setText" },
+              h("div", { className: "wsr-setTitle" }, text),
+              h("div", { className: "wsr-setDesc" }, props.t("pin.description")),
+            ),
+            h("div", { className: "wsr-controls" },
+              h("label", { className: "wsr-exempt" },
+                h("input", {
+                  type: "checkbox",
+                  checked: enabled,
+                  onChange: function (event) { props.actions.setPinnedSection(event.target.checked); },
+                }),
+                props.t("pin.enabled")),
+            ),
+          );
+        }
+
         function shutdown() {
           disposed = true;
           if (timer !== null) window.clearTimeout(timer);
@@ -723,6 +922,12 @@
           toggles.clear();
           dots.forEach(function (dot) { dot.remove(); });
           dots.clear();
+          pinHidden.forEach(function (element) {
+            if (element.removeAttribute !== undefined) element.removeAttribute(PIN_HIDDEN_ATTR);
+          });
+          pinHidden.clear();
+          if (pinHost !== null && pinHost.parentElement !== null) pinHost.remove();
+          pinHost = null;
           roots.forEach(function (root) { root.removeAttribute(ROOT_ATTR); });
           roots.clear();
           var marked = document.querySelectorAll("[" + STATE_ATTR + "]");
@@ -736,15 +941,17 @@
 
         function apply_(ctx) {
           installCss();
+          try { data.service = ctx.get("uiWorkspace") || null; } catch (error) { data.service = null; }
           var prefs = clientStore.defineStore({
             init: function () {
-              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, followUps: {} };
+              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, followUps: {} };
             },
             persist: "dsh.ws-recency.prefs.v1",
             actions: {
               setEnabled: function (draft, value) { draft.enabled = value === true; },
               setKeepActive: function (draft, value) { draft.keepActive = value === true; },
               setColors: function (draft, value) { draft.colors = value === true; },
+              setPinnedSection: function (draft, value) { draft.pinnedSection = value === true; },
               setFoldDays: function (draft, value) {
                 var next = Number(value);
                 if (!Number.isFinite(next)) return;
@@ -805,6 +1012,16 @@
               store: prefs,
               locale: NS,
             }, ColorsRow);
+          });
+
+          ctx.slots.inject("settings.general.item", function () {
+            return ctx.slots.register({
+              name: "settings.general.item",
+              id: "ws-recency-pins",
+              order: 47,
+              store: prefs,
+              locale: NS,
+            }, PinSectionRow);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
