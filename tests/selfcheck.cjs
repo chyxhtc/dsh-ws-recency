@@ -172,6 +172,10 @@ const blankRow = el("div", "ozLDBG_sessionRow");
 blankRow.attrs["data-row-key"] = "session:B-blank";
 B.section.append(blankRow);
 
+/* Counts how often the plugin drives the host's own show-more button. */
+let hostClicks = 0;
+A.button.addEventListener("click", () => { hostClicks += 1; });
+
 /* ---------- boot ------------------------------------------------------- */
 
 const react = {
@@ -280,7 +284,7 @@ assert.strictEqual(hiddenCount(C), 0, "fresh sessions stay visible");
 assert.strictEqual(blankRow.getAttribute("data-wsr-hidden"), null, "the New session row is never folded");
 
 assert.ok(toggleOf(A) !== null, "a group with folded rows gets its own history control");
-assert.strictEqual(toggleOf(A).textContent, "Show history (3)");
+assert.strictEqual(toggleOf(A).textContent, "Show history (8)", "count covers folded rows plus rows the host has not rendered");
 assert.strictEqual(A.button.textContent, "\u5c55\u5f00\u5176\u4f59 5 \u6761\u4f1a\u8bdd", "the host's own button is left untouched");
 assert.ok(toggleOf(B) !== null, "a fully rendered group offers the history control");
 assert.strictEqual(toggleOf(B).textContent, "Show history (2)");
@@ -290,11 +294,19 @@ toggleOf(A).click();
 flush();
 assert.strictEqual(hiddenCount(A), 0, "the history control reveals the folded rows");
 assert.strictEqual(toggleOf(A).textContent, "Hide history");
+assert.strictEqual(hostClicks, 1, "expanding drives the hidden host button, which renders more rows");
+
+render();
+assert.strictEqual(hostClicks, 2, "it keeps driving it while the host still hides rows");
+A.button.attrs["aria-expanded"] = "true";
+render();
+assert.strictEqual(hostClicks, 2, "it stops once the host reports everything visible");
+delete A.button.attrs["aria-expanded"];
 
 toggleOf(A).click();
 flush();
 assert.strictEqual(hiddenCount(A), 3, "the same control folds them back");
-assert.strictEqual(toggleOf(A).textContent, "Show history (3)");
+assert.strictEqual(toggleOf(A).textContent, "Show history (8)");
 
 toggleOf(B).click();
 flush();

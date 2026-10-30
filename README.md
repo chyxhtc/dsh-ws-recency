@@ -12,7 +12,9 @@ DSH 已经把**组内**会话按 `updatedAt` 倒序排好了（排序方式 = �
 
 会话超过 `foldDays`（默认 **3 天**）没有更新就折叠起来；整个工作区都过期时，它只剩一行工作区标题——需要翻历史时点开就行。
 
-- **两个控件各管一件事**：宿主的「展开其余 N 条会话」负责让**宿主渲染**更多行（数字由宿主自己报，插件不再改写它）；插件的 `展开历史 N` / `收起历史` 只负责把**已渲染但过期**的行折叠起来，点两次就是展开、收起一对；
+- **每组一个控件**：宿主的「展开其余 N 条会话」被隐藏，由插件的 `展开历史 N` / `收起历史` 接管。N = 宿主还没渲染的行 + 已折叠的过期行；
+  - 点「展开历史」→ 插件逐轮驱动宿主那个隐藏按钮（每轮它会多渲染 5 条，剩下 ≤5 条时一次全出），直到整组都渲染出来，同时展开过期行——**一次点到全展开**；
+  - 点「收起历史」→ 重新折叠过期行（宿主已渲染的部分仍由插件按时间折叠，不会丢失）；
 - 选中 / 运行中 / 等待处理的会话**永不折叠**（可在设置里关掉这个豁免）；
 - 空白草稿行（新会话）不参与折叠判断；
 - 每 5 分钟自动重算一次，所以跨过 3 天边界的会话会自己折叠，不用刷新。
@@ -96,7 +98,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.9.1/dsh-ws-recency-0.9.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.9.2/dsh-ws-recency-0.9.2.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

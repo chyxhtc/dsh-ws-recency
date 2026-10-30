@@ -69,6 +69,8 @@
         var MIN_DAYS = 1;
         var MAX_DAYS = 90;
         var DEFAULT_DAYS = 3;
+        /** Safety stop for driving the host's own "show more" (5 rows per click). */
+        var MAX_EXPAND_CLICKS = 40;
         var TICK_MS = 5 * 60 * 1000;
 
         var data = { sessions: null, workspaces: null, settings: null, statuses: null, actions: null, service: null, t: null };
@@ -82,6 +84,7 @@
         var dots = new Set();
         var pinHidden = new Set();
         var pinHost = null;
+        var expandClicks = new Map();
         var expandedSections = new Set();
         var headerMarked = new WeakSet();
         var disposed = false;
@@ -91,6 +94,7 @@
           "[" + ROOT_ATTR + '="true"]>*{flex:0 0 auto}',
           "[" + HIDDEN_ATTR + '="true"]{display:none !important}',
           "[" + PIN_HIDDEN_ATTR + '="true"]{display:none !important}',
+          '[class*="' + OVERFLOW_TOKEN + '"]{display:none !important}',
           ".wsr-pin{display:flex;flex-direction:column;flex:0 0 auto;padding:2px 0 6px;margin-bottom:4px;border-bottom:.5px solid var(--dsw-alias-border-l2)}",
           ".wsr-pin-head{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);padding:4px 12px 2px}",
           ".wsr-pin-row{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:6px;cursor:pointer}",
@@ -364,6 +368,22 @@
           return session !== undefined && session !== null && session.blank === true;
         }
 
+        /** The host's own "show more" button, hidden by CSS but still clickable. */
+        function overflowButtonOf(section) {
+          if (typeof section.querySelector !== "function") return null;
+          return section.querySelector('button[class*="' + OVERFLOW_TOKEN + '"]');
+        }
+
+        /** The count the host reports on its own button, 0 when there is none. */
+        function labelNumber(button) {
+          if (button === null || button === undefined) return 0;
+          var text = typeof button.textContent === "string" ? button.textContent : "";
+          var match = /\d+/.exec(text);
+          if (match === null) return 0;
+          var value = Number(match[0]);
+          return Number.isFinite(value) && value > 0 ? value : 0;
+        }
+
         /** Collapsing a group resets its fold state, so the click is observed. */
         function markHeader(header, key) {
           if (typeof header.addEventListener !== "function" || headerMarked.has(header)) return;
@@ -411,6 +431,13 @@
          * Fold the rows the host rendered that have not changed for `foldDays`, and
          * offer the group's own control to bring them back. A workspace whose every
          * session is that old therefore renders as a bare header.
+         *
+         * The host's own "show more" button is hidden (CSS) and driven from here: it
+         * only renders five rows at a time and cannot collapse once everything is
+         * rendered, which made "show more" look broken next to a fold. Expanding the
+         * group now clicks that hidden button once per pass until the host has
+         * rendered every session, so one click reveals everything; collapsing just
+         * folds the stale rows again.
          */
         function foldRows(entries, settings, sessions, now) {
           var cutoff = now - settings.foldDays * DAY;
@@ -418,9 +445,29 @@
             var entry = entries[i];
             var section = entry.section;
             var rows = rowElements(section);
+            var hostButton = overflowButtonOf(section);
             markHeader(entry.header, entry.key);
 
             var expanded = expandedSections.has(entry.key);
+            var hostHidden = hostButton === null ? 0 : labelNumber(hostButton);
+            var hostExpanded = hostButton !== null
+              && typeof hostButton.getAttribute === "function"
+              && hostButton.getAttribute("aria-expanded") === "true";
+            if (expanded && hostButton !== null && !hostExpanded) {
+              /* The host renders five more per click (or everything when five or
+                 fewer remain) and reports `aria-expanded` once nothing is hidden.
+                 Stopping on that flag is what keeps the loop from collapsing the
+                 very thing it just expanded - a click on an expanded host button
+                 resets the watermark. */
+              var used = expandClicks.get(entry.key) || 0;
+              if (used < MAX_EXPAND_CLICKS) {
+                expandClicks.set(entry.key, used + 1);
+                hostButton.click();
+              }
+            } else if (!expanded) {
+              expandClicks.delete(entry.key);
+            }
+
             var folded = 0;
             for (var j = 0; j < rows.length; j += 1) {
               var row = rows[j];
@@ -439,22 +486,22 @@
               }
             }
 
-            /* The host's own "show more" button and this fold are two different
-               things: the host decides which rows it RENDERS, this plugin decides
-               which rendered rows stay VISIBLE. Touching the host's label or its
-               click made the two fight (a count nobody could trust, and a collapse
-               that never came back), so they stay separate: the group gets its own
-               "show history" control whenever something is folded. */
+            /* ONE control per group: its count is everything the group still hides,
+               both the rows the host did not render and the stale rows this plugin
+               folded. Expanding drives the hidden host button until nothing is left
+               unrendered, so one click reveals the whole group. */
+            var remaining = folded + hostHidden;
             if (expanded) {
               (function (entryKey) {
                 ensureToggle(section, entryKey, t("fold.hide"), function () {
                   expandedSections.delete(entryKey);
+                  expandClicks.delete(entryKey);
                   schedule();
                 });
               })(entry.key);
-            } else if (folded > 0) {
+            } else if (remaining > 0) {
               (function (entryKey) {
-                ensureToggle(section, entryKey, t("fold.show", { n: folded }), function () {
+                ensureToggle(section, entryKey, t("fold.show", { n: remaining }), function () {
                   expandedSections.add(entryKey);
                   schedule();
                 });
@@ -913,6 +960,7 @@
           pinHidden.clear();
           if (pinHost !== null && pinHost.parentElement !== null) pinHost.remove();
           pinHost = null;
+          expandClicks.clear();
           roots.forEach(function (root) { root.removeAttribute(ROOT_ATTR); });
           roots.clear();
           var marked = document.querySelectorAll("[" + STATE_ATTR + "]");
