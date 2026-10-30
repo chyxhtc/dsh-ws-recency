@@ -1,9 +1,8 @@
 # Submission entry for awesome-dsh-plugin (the source of the dshmarket catalog).
-# PR this ONE file as data/plugins/<owner>__<repo>.yml in a fork of
+# PR this ONE file as data/plugins/chyxhtc__dsh-ws-recency.yml in a fork of
 # https://github.com/awesome-dsh-plugin/awesome-dsh-plugin
-# Replace <owner>/<repo> below with your GitHub repo before submitting.
-url: https://github.com/<owner>/dsh-ws-recency
-name: <owner>/dsh-ws-recency
+url: https://github.com/chyxhtc/dsh-ws-recency
+name: chyxhtc/dsh-ws-recency
 category: session
 description:
   en: 'Sidebar session management: workspace groups sorted by latest activity, history older than N days folded behind one control, and manual "needs follow-up" marks that running/unread states outrank.'

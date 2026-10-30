@@ -53,12 +53,32 @@ DSH 已经把**组内**会话按 `updatedAt` 倒序排好了（排序方式 = �
 - “未分组”桶永远排在真实工作区之后。
 - 只在按工作区分组（含工作区树顶层）时生效。
 
-## 安装（本地）
+## 安装
+
+从 GitHub：
+
+```powershell
+dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
+```
+
+或从 Release 的预构建包（版本固定，不会跟着分支漂）：
+
+```powershell
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.7.1/dsh-ws-recency-0.7.1.tgz
+```
+
+发布到 npm 后也可以：
+
+```powershell
+dsh plugin --profile <profile> add dsh-ws-recency
+```
+
+装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
+
+本地开发可以直接 `link:`：
 
 ```powershell
 dsh plugin --profile desktop add "link:C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency"
 ```
 
-并把 `dsh-ws-recency` 加入 `~/.hypers-work/profiles/desktop/package.json` 的 `dsh.profile.bundles`，重启应用。
-
-自检：`node tests/selfcheck.cjs`（桩 DOM，验证排序、按天数折叠、分组控件展开、宿主按钮计数）。
+自检：`node tests/selfcheck.cjs`（桩 DOM，验证排序、按天数折叠、分组控件展开、宿主按钮计数、三色与跟进标记）。
