@@ -8,9 +8,10 @@
  *      workspace registry order (creation order). This plugin ranks every group
  *      by the freshest `updatedAt` among its own sessions and writes a flex
  *      `order` onto it. Native pins, archive state and the store are untouched.
- *      When dsh-plugin-busy-workspace is installed it writes `data-busy-rank`
- *      (its urgency band) on the same elements; that band is kept as the primary
- *      key and recency only decides the order inside one band.
+ *      OPTIONAL interop: when dsh-plugin-busy-workspace happens to be installed
+ *      it writes `data-busy-rank` (its urgency band) on the same elements; that
+ *      band is then kept as the primary key and recency only decides the order
+ *      inside one band. This plugin never depends on it.
  *
  *   2. HISTORY FOLD - a session that has not been updated for `foldDays` (default
  *      3) is folded away, and a workspace whose own freshest session is older than

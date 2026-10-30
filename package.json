@@ -1,6 +1,6 @@
 {
   "name": "dsh-ws-recency",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Sidebar session management for DeepSeek Harness: workspace groups sorted by latest activity, stale history folded, manual follow-up marks.",
   "license": "MIT",
   "author": "chyxhtc",

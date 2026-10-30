@@ -1,14 +1,12 @@
 # dsh-ws-recency
 
-DSH 侧栏的两件事：**工作区分组按最近活跃排序**、**折叠时只显示 N 条会话**。
+DSH 侧栏的三件事：**工作区分组按最近活跃排序**、**过期历史自动折叠**、**运行中/未读/需跟进三色标记**。单独装上就有效，不依赖其它插件。
 
 ## 一、分组排序
 
 DSH 已经把**组内**会话按 `updatedAt` 倒序排好了（排序方式 = 最近更新），但**分组自身**用的是工作区注册表的顺序（创建工作区的先后），所以一个刚跑完一堆活的工程可能仍排在侧栏很下面。
 
 做法：从 Client store 读每个工作区自己的会话，取组内最大的 `updatedAt`；空工作区回落到该工作区的 `createdAt`；把结果写成各分组元素的 flex `order`。不碰会话行、不碰原生置顶、不碰归档、不改 store。
-
-与 `dsh-plugin-busy-workspace` 共存：busy 会在同一批分组元素上写 `data-busy-rank`（紧急度档位），本插件把它作为**主键**，只负责档位**内部**按活跃度排序。没装 busy 时就是纯最近活跃排序。
 
 ## 二、历史折叠
 
@@ -52,6 +50,7 @@ DSH 已经把**组内**会话按 `updatedAt` 倒序排好了（排序方式 = �
 - 折叠只能作用于宿主**已经渲染**的行；更早的行仍在宿主自己的「展开其余」之后。
 - “未分组”桶永远排在真实工作区之后。
 - 只在按工作区分组（含工作区树顶层）时生效。
+- **可选互操作**：如果你另外装着 `dsh-plugin-busy-workspace`，本插件会尊重它写在分组上的 `data-busy-rank`，把它的紧急度当主键、档位内部再按活跃度排。没装就是纯最近活跃排序——本插件不依赖它。
 
 ## 安装
 
@@ -70,7 +69,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.7.1/dsh-ws-recency-0.7.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.7.2/dsh-ws-recency-0.7.2.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
