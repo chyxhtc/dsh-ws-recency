@@ -339,11 +339,20 @@ assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), null, "the dot clea
 assert.strictEqual(prefs.followUps["D-done"], undefined, "the store action removed the flag");
 assert.ok(D.rows[1].querySelector(".wsr-dot") === null, "the dot goes away with the mark");
 
-/* Newer activity after the mark means the follow-up happened: cleared automatically. */
+/* The mark survives new activity: running / unread only outrank it on screen. */
 prefs.followUps = { "D-done": NOW };
 sessions.byId["D-done"].updatedAt = NOW + 1000;
+statuses["D-done"] = { running: true };
 render();
-assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), null, "newer activity clears the follow-up");
-assert.strictEqual(prefs.followUps["D-done"], undefined, "the stale flag is dropped from the store");
+assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "running", "running outranks the mark");
 
-console.log("selfcheck ok: order A>C>B, fold >3d, one control per group, colors + manual follow-up");
+statuses["D-done"] = { completionUnread: true };
+render();
+assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "unread", "unread outranks the mark");
+
+statuses["D-done"] = {};
+render();
+assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "followup", "the mark comes back once the run is read");
+assert.strictEqual(prefs.followUps["D-done"], NOW, "the mark is never dropped automatically");
+
+console.log("selfcheck ok: order A>C>B, fold >3d, one control per group, colors + persistent follow-up");

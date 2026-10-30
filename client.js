@@ -513,8 +513,8 @@
         /**
          * Color the rows: running (blue), finished-unopened (green), and the manual
          * "needs follow-up" flag (amber). The flag is the user's own judgement - it
-         * is never inferred, and it is dropped automatically once the session has
-         * produced newer activity than the moment it was flagged.
+         * is never inferred, and only an explicit clear removes it. Running and
+         * unread outrank it on screen; once they pass, amber comes back.
          */
         function decorateRows(entries, sessions, statuses, settings) {
           var flags = settings.followUps;
@@ -529,13 +529,13 @@
             var status = statusOf(statuses, id);
             var running = status !== null ? status.running === true : session.running === true;
             var unread = status !== null ? status.completionUnread === true : session.completed === true;
-            var flaggedAt = flags[id];
-            if (typeof flaggedAt === "number" && typeof session.updatedAt === "number" && session.updatedAt > flaggedAt) {
-              /* The session moved on after the mark: the follow-up happened. */
-              if (data.actions !== null && typeof data.actions.clearFollowUp === "function") data.actions.clearFollowUp(id);
-              flaggedAt = undefined;
-            }
-            states[id] = running ? "running" : unread ? "unread" : flaggedAt !== undefined ? "followup" : null;
+            /* The mark is the user's own judgement and survives everything except
+               an explicit clear: running / unread only outrank it on screen, and
+               once those pass it comes back. It is never dropped just because the
+               conversation moved on - continuing a conversation is often the very
+               reason a follow-up is still owed. */
+            var flagged = flags[id] !== undefined;
+            states[id] = running ? "running" : unread ? "unread" : flagged ? "followup" : null;
           }
 
           for (var i = 0; i < entries.length; i += 1) {

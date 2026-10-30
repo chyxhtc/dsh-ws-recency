@@ -32,8 +32,8 @@ DSH 已经把**组内**会话按 `updatedAt` 倒序排好了（排序方式 = �
 
 - 标记存在 Client store 的 `followUps`（随 `dsh.ws-recency.prefs.v1` 持久化），重启后还在；
 - 琥珀圆点渲染在宿主自己的 `sidebar.session.row.leading` 槽里，**不往行里塞子元素**——塞进去会让后面的行整体下移一格；点圆点即取消标记；
-- 标记后该会话**又有新活动**（`updatedAt` 前进）→ 自动视为已跟进，标记消失；
-- 不受 20 秒、不受打开时长影响——你标记就一直是琥珀，直到你取消或它又有新活动。
+- **标记只有你手动取消才会消失**：运行中/完成未读期间它只是被更强的状态盖住显示，跑完、读完（没有新未读）之后琥珀自己回来；
+- 不受打开时长、会话是否继续对话影响——继续对话恰恰常常是还欠一次跟进的原因。
 
 ## 设置
 
@@ -69,7 +69,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.7.2/dsh-ws-recency-0.7.2.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.7.3/dsh-ws-recency-0.7.3.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
