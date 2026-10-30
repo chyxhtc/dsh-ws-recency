@@ -1,6 +1,6 @@
 # dsh-ws-recency
 
-DSH 侧栏的四件事：**工作区分组按最近活跃排序**、**过期历史自动折叠**、**运行中/未读/需跟进三色标记**、**所有置顶会话汇总到顶部一个区**。单独装上就有效，不依赖其它插件。
+DSH 侧栏的五件事：**工作区分组按最近活跃排序**、**过期历史自动折叠**、**运行中/未读/需跟进三色标记**、**所有置顶会话汇总到顶部一个区**、**删除会话到可恢复的回收站**。单独装上就有效，不依赖其它插件。
 
 ## 一、分组排序
 
@@ -47,6 +47,21 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 - 工作区分组、组内顺序、折叠、颜色全部照旧；
 - 只在按工作区分组时出现；搜索、扁平视图、侧栏收起时自动隐藏。
 
+## 五、归档与删除
+
+**归档**用宿主原生的：「…」菜单 →「归档会话」；看归档的内容用侧栏「视图选项」→ 显示已归档 / 仅显示已归档。本插件不改这套。
+
+**删除**是宿主没有的，本插件补上（「…」菜单 →「删除会话（移入回收站）」）：
+
+1. 先停掉它正在跑的工作；
+2. 摘掉归档标记与置顶；
+3. 从每个工作区的 `sessionIds` 记账里 detach；
+4. 删掉投影缓存记录；
+5. 把日志目录移动到 `~/.hypers-work/.trash/ws-recency/<sessionId>-<时间戳>/`；
+6. 广播 `api-session/removed`，浏览器立即移除该行。
+
+**不是物理删除**：目录只是被改名搬走，恢复就是把 `.trash/ws-recency/<id>-<时间>/` 移回 `sessions/<project>/<id>/`。这条删除走的是宿主侧路由（`POST /ws-recency/session-trash`，仅接受回环来源），因为浏览器侧碰不到文件系统。
+
 ## 设置
 
 **设置 → 通用**：
@@ -82,7 +97,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.8.0/dsh-ws-recency-0.8.0.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.9.0/dsh-ws-recency-0.9.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

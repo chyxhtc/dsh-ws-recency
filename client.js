@@ -135,6 +135,9 @@
           "pin.unpin": "\u53d6\u6d88\u7f6e\u9876",
           "menu.flag": "\u6807\u8bb0\u9700\u8981\u8ddf\u8fdb",
           "menu.unflag": "\u53d6\u6d88\u8ddf\u8fdb\u6807\u8bb0",
+          "menu.trash": "\u5220\u9664\u4f1a\u8bdd\uff08\u79fb\u5165\u56de\u6536\u7ad9\uff09",
+          "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
+          "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
         };
         var EN = {
           "settings.title": "Fold history after (days)",
@@ -152,6 +155,9 @@
           "pin.unpin": "Unpin",
           "menu.flag": "Mark as needs follow-up",
           "menu.unflag": "Clear follow-up mark",
+          "menu.trash": "Delete session (move to trash)",
+          "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
+          "trash.failed": "Delete failed: ",
         };
 
         var FALLBACK = { "fold.show": "Show history ({n})", "fold.hide": "Hide history" };
@@ -810,6 +816,42 @@
           });
         }
 
+        /**
+         * Session "..." menu row: move the session into the trash folder.
+         *
+         * DSH itself only archives; the host half of this plugin stops the work,
+         * detaches the bookkeeping and renames the log directory into
+         * `<home>/.trash/ws-recency/`. The browser half only asks for confirmation
+         * and posts the id.
+         */
+        function TrashMenuItem(props) {
+          var Item = ui.MenuItemButton;
+          if (typeof Item !== "function") return null;
+          var Icon = ui.IconTrashOutlineRegular;
+          return h(Item, {
+            icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
+            onSelect: function () {
+              var question = t("trash.confirm");
+              var confirmed = typeof window.confirm === "function" ? window.confirm(question) : false;
+              if (!confirmed) return;
+              fetch("/ws-recency/session-trash", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ sessionId: props.sessionId }),
+              })
+                .then(function (response) { return response.json(); })
+                .then(function (result) {
+                  if (result !== null && result.ok !== true && typeof window.alert === "function") {
+                    window.alert(t("trash.failed") + (result.error || "unknown"));
+                  }
+                })
+                .catch(function (error) {
+                  if (typeof window.alert === "function") window.alert(t("trash.failed") + (error && error.message ? error.message : error));
+                });
+            },
+          }, props.t("menu.trash"));
+        }
+
         /** Settings -> General row: how old a session must be before it is folded. */
         function SettingsRow(props) {
           var settings = props.useStore(function (state) { return state; });
@@ -1042,6 +1084,16 @@
               store: prefs,
               locale: NS,
             }, FollowUpDot);
+          });
+
+          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
+            return ctx.slots.register({
+              name: "sidebar.workspaces.session.menu.item",
+              id: "ws-recency-trash",
+              order: 700,
+              store: prefs,
+              locale: NS,
+            }, TrashMenuItem);
           });
 
           ctx.effect(function () {
