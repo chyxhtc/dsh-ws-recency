@@ -1,0 +1,12 @@
+# Submission entry for awesome-dsh-plugin (the source of the dshmarket catalog).
+# PR this ONE file as data/plugins/<owner>__<repo>.yml in a fork of
+# https://github.com/awesome-dsh-plugin/awesome-dsh-plugin
+# Replace <owner>/<repo> below with your GitHub repo before submitting.
+url: https://github.com/<owner>/dsh-ws-recency
+name: <owner>/dsh-ws-recency
+category: session
+description:
+  en: 'Sidebar session management: workspace groups sorted by latest activity, history older than N days folded behind one control, and manual "needs follow-up" marks that running/unread states outrank.'
+  zh: 'DSH 侧栏会话管理：工作区分组按最近活跃排序，超过 N 天的历史自动折叠成一个「展开历史」控件，并可手动标记「需要跟进」（运行中/未读会盖过这个标记）。'
+# optional: the market card falls back to the owner avatar when this is absent
+# icon: https://raw.githubusercontent.com/<owner>/dsh-ws-recency/main/assets/icon-180.png

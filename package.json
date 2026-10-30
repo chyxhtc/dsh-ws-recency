@@ -1,0 +1,54 @@
+{
+  "name": "dsh-ws-recency",
+  "version": "0.7.1",
+  "description": "Sidebar session management for DeepSeek Harness: workspace groups sorted by latest activity, stale history folded, manual follow-up marks.",
+  "license": "MIT",
+  "author": "chyxhtc",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chyxhtc/dsh-ws-recency.git"
+  },
+  "homepage": "https://github.com/chyxhtc/dsh-ws-recency#readme",
+  "bugs": {
+    "url": "https://github.com/chyxhtc/dsh-ws-recency/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "sidebar",
+    "session",
+    "workspace"
+  ],
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./client.js": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0"
+  },
+  "dsh": {
+    "id": "dsh-ws-recency",
+    "name": "Workspace recency order",
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
+}
