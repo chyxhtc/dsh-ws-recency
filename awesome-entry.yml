@@ -5,7 +5,5 @@ url: https://github.com/chyxhtc/dsh-ws-recency
 name: chyxhtc/dsh-ws-recency
 category: session
 description:
-  en: 'Sidebar session management: workspace groups sorted by latest activity, history older than N days folded behind one control, and manual "needs follow-up" marks that running/unread states outrank.'
-  zh: 'DSH 侧栏会话管理：工作区分组按最近活跃排序，超过 N 天的历史自动折叠成一个「展开历史」控件，并可手动标记「需要跟进」（运行中/未读会盖过这个标记）。'
-# optional: the market card falls back to the owner avatar when this is absent
-# icon: https://raw.githubusercontent.com/<owner>/dsh-ws-recency/main/assets/icon-180.png
+  en: 'Sidebar session management: workspace groups sorted by latest activity, history older than N days folded behind one control, a global pinned section for native pins, manual "needs follow-up" marks, and session delete into a recoverable trash.'
+  zh: 'DSH 侧栏会话管理：工作区分组按最近活跃排序，超过 N 天的历史折叠成一个「展开历史」控件，原生置顶会话汇总到顶部置顶区，可手动标记「需要跟进」，删除会话移入可恢复的回收站。'
