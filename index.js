@@ -551,7 +551,13 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
      cached header and the live one have to follow - otherwise an open session is
      refused with its old directory. */
   const movedHeader = { ...header, cwd: targetPath };
-  const wasLive = typeof ctx.sessions?.get === "function" && ctx.sessions.get(sessionId) !== undefined;
+  /* Cordis throws on an undeclared service, so the probe is guarded. */
+  let wasLive = false;
+  try {
+    wasLive = typeof ctx.sessions?.get === "function" && ctx.sessions.get(sessionId) !== undefined;
+  } catch {
+    wasLive = false;
+  }
   try {
     if (typeof ctx.workspaceRegistry.indexHeader === "function") await ctx.workspaceRegistry.indexHeader(movedHeader);
   } catch {
@@ -692,7 +698,7 @@ export function apply(ctx) {
         }), "ws-recency: stats route");
       });
 
-      webCtx.inject(["sessionPersistence", "workspaceRegistry"], (moveCtx) => {
+      webCtx.inject(["sessionPersistence", "workspaceRegistry", "sessions"], (moveCtx) => {
         moveMounted = true;
         webCtx.effect(() => server.register({
           kind: "exact",
