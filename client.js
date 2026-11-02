@@ -132,11 +132,14 @@
           ".wsr-move-title{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-move-path{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-move-badge{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
-          ".wsr-trash-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
-          ".wsr-footer-action{display:inline-flex;align-items:center;gap:6px;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;padding:4px 8px;border-radius:6px}",
+          ".wsr-trash-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+          ".wsr-footer-action{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;border:none;background:0 0;color:var(--dsw-alias-label-primary,#e6e6e6);font:inherit;cursor:pointer;padding:6px 8px;border-radius:8px;text-align:left}",
           ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
-          ".wsr-footer-label{font-size:12px}",
-          ".wsr-trash-actions{display:flex;gap:6px;flex:none}",
+          ".wsr-footer-label{font-size:inherit;line-height:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-trash-actions{display:flex;gap:6px;flex:none;align-items:center;white-space:nowrap}",
+          ".wsr-btn{border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:0 0;color:var(--dsw-alias-label-primary,#e6e6e6);font:inherit;font-size:12px;line-height:1.6;padding:3px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;flex:none}",
+          ".wsr-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08))}",
+          ".wsr-btn-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
           ".wsr-chart-title{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
@@ -239,7 +242,7 @@
           "trash.purge": "彻底删除",
           "trash.confirmRestore": "恢复到原来的工作区？",
           "trash.confirmPurge": "彻底删除这份日志？不可恢复。",
-          "trash.restored": "已恢复，并重新挂回原工作区。若侧栏还没出现，去「补登记游离会话」点一下扫描（或重启应用）刷新列表。",
+          "trash.restored": "已恢复，并重新挂回原工作区。若侧栏还没出现，点下面的「刷新界面」（或去「补登记游离会话」点「扫描并刷新」）。",
           "trash.purged": "已彻底删除。",
           "trash.working": "处理中…",
           "trash.failed": "操作失败：",
@@ -318,7 +321,7 @@
           "trash.purge": "Delete for good",
           "trash.confirmRestore": "Restore it to its original workspace?",
           "trash.confirmPurge": "Delete this log for good? This cannot be undone.",
-          "trash.restored": "Restored and re-attached to its workspace. If the sidebar has not picked it up, run the \"Adopt unlisted sessions\" scan (or restart the app).",
+          "trash.restored": "Restored and re-attached to its workspace. If the sidebar has not picked it up, press \"Reload UI\" below (or run \"Scan and reload\").",
           "trash.purged": "Deleted for good.",
           "trash.working": "Working\u2026",
           "trash.failed": "Action failed: ",
@@ -915,6 +918,39 @@
           return typeof id === "string" && id !== "" ? id : null;
         }
 
+        /**
+         * Match the footer action to its neighbours.
+         *
+         * The footer slot stacks actions, but each shell entry carries its own
+         * sizing; copying the metrics of the first real sibling keeps our row on
+         * the same baseline, font size and width instead of centring a smaller one.
+         */
+        function decorateFooterAction() {
+          if (typeof document === "undefined") return;
+          var mine = document.querySelector('[data-wsr-footer="true"]');
+          if (mine === null || typeof mine.getAttribute !== "function") return;
+          var container = mine.parentElement;
+          if (container === null || typeof container.querySelectorAll !== "function") return;
+          if (typeof window === "undefined" || typeof window.getComputedStyle !== "function") return;
+          var candidates = container.querySelectorAll("button");
+          var template = null;
+          for (var i = 0; i < candidates.length; i += 1) {
+            var candidate = candidates[i];
+            if (candidate === mine) continue;
+            if (typeof candidate.getAttribute === "function" && candidate.getAttribute("data-wsr-footer") !== null) continue;
+            template = candidate;
+            break;
+          }
+          if (template === null) return;
+          var metrics = ["font-size", "font-family", "font-weight", "line-height", "padding", "gap", "width", "height", "justify-content", "color", "border-radius", "margin"];
+          for (var k = 0; k < metrics.length; k += 1) {
+            var value = "";
+            try { value = window.getComputedStyle(template).getPropertyValue(metrics[k]) || ""; } catch (error) { value = ""; }
+            if (value === "" || value === "auto") continue;
+            mine.style[metrics[k]] = value;
+          }
+        }
+
         /** The nearest horizontal flex row above the stats: the whole footer dock. */
         function composerDockOf(row) {
           var node = row;
@@ -1043,12 +1079,14 @@
           var settings = settingsOf();
           if (!ready(sessions) || !ready(workspaces)) {
             decorateComposerStats();
+            decorateFooterAction();
             return;
           }
 
           var entries = collect();
           if (entries.length === 0) {
             decorateComposerStats();
+            decorateFooterAction();
             return;
           }
 
@@ -1057,6 +1095,7 @@
           renderPinned(entries, sessions, workspaces, settings);
           if (settings.colors) decorateRows(entries, sessions, data.statuses, settings);
           decorateComposerStats();
+          decorateFooterAction();
         }
 
         function schedule() {
@@ -1737,7 +1776,7 @@
                   if (entry.restorable === true) {
                     var restore = document.createElement("button");
                     restore.type = "button";
-                    restore.className = "wsr-step";
+                    restore.className = "wsr-btn";
                     restore.textContent = t("trash.restore");
                     restore.addEventListener("click", function () {
                       if (typeof window.confirm === "function" && !window.confirm(t("trash.confirmRestore"))) return;
@@ -1753,7 +1792,7 @@
                   }
                   var purge = document.createElement("button");
                   purge.type = "button";
-                  purge.className = "wsr-step wsr-danger";
+                  purge.className = "wsr-btn wsr-btn-danger";
                   purge.textContent = t("trash.purge");
                   purge.addEventListener("click", function () {
                     if (typeof window.confirm === "function" && !window.confirm(t("trash.confirmPurge"))) return;
@@ -1787,6 +1826,7 @@
           return h("button", {
             type: "button",
             className: "wsr-footer-action",
+            "data-wsr-footer": "true",
             title: label,
             "aria-label": label,
             onClick: function () { openTrashPanel(); },
@@ -1841,7 +1881,7 @@
               h("div", { className: "wsr-setDesc" }, message === "" ? t("adopt.description") : message),
             ),
             h("div", { className: "wsr-controls" },
-              h("button", { type: "button", className: "wsr-step", onClick: run }, t("adopt.action")),
+              h("button", { type: "button", className: "wsr-btn", onClick: run }, t("adopt.action")),
             ),
           );
         }
