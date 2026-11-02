@@ -59,6 +59,7 @@ function fixture(root) {
       sessionIds: ["sid"],
       title: "old",
       detachSession: async (id) => { state.detached.push(id); },
+      attachSession: async (id) => { state.attached.push(id); },
     },
     {
       id: "w-target",
@@ -172,7 +173,10 @@ function fixture(root) {
   {
     const f = fixture(path.join(root, "guards"));
     assert.strictEqual((await mod.moveSessionToWorkspace(f.ctx, "sid", "nope")).ok, false);
-    assert.strictEqual((await mod.moveSessionToWorkspace(f.ctx, "sid", f.oldCwd)).ok, false, "same workspace is refused");
+    const same = await mod.moveSessionToWorkspace(f.ctx, "sid", f.oldCwd);
+    assert.strictEqual(same.ok, true, "a session already in the target is repaired, not refused");
+    assert.strictEqual(same.repaired, true);
+    assert.deepStrictEqual(f.state.attached, ["sid"], "the repair attaches it to its own workspace");
   }
 
   fs.rmSync(root, { recursive: true, force: true });

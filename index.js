@@ -469,7 +469,28 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
     ?? workspaces.find((workspace) => workspace.path === workspaceId);
   if (target === undefined) return { ok: false, error: "workspace not found" };
   const targetPath = target.path;
-  if (header.cwd === targetPath) return { ok: false, error: "already in that workspace" };
+  if (header.cwd === targetPath) {
+    /* Already pointed at the target: a previous attempt moved the log but died
+       before the bookkeeping (the app's in-memory header refused it). Repair the
+       membership instead of failing, so such a session is not left unlisted. */
+    try {
+      await target.attachSession(sessionId);
+    } catch (error) {
+      return { ok: false, error: `session is already in that directory but the workspace refused it: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    const stale = [];
+    for (const workspace of workspaces) {
+      if (!Array.isArray(workspace.sessionIds) || !workspace.sessionIds.includes(sessionId)) continue;
+      if (workspace.id === target.id) continue;
+      try {
+        await workspace.detachSession(sessionId);
+        stale.push(workspace.id);
+      } catch {
+        /* a stale membership that filters itself out anyway */
+      }
+    }
+    return { ok: true, repaired: true, workspace: target.id, path: targetPath, detached: stale };
+  }
 
   let targetDirectory;
   try {
@@ -550,9 +571,10 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
      has the session open. The registry validates against its own view, so both the
      cached header and the live one have to follow - otherwise an open session is
      refused with its old directory. */
+  let wasLive = false;
+  try {
   const movedHeader = { ...header, cwd: targetPath };
   /* Cordis throws on an undeclared service, so the probe is guarded. */
-  let wasLive = false;
   try {
     wasLive = typeof ctx.sessions?.get === "function" && ctx.sessions.get(sessionId) !== undefined;
   } catch {
@@ -582,6 +604,10 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
   if (seenCwd !== targetPath) {
     await rollback();
     return { ok: false, error: `the app still holds this session's old directory (${seenCwd}); restart the app and move it again` };
+  }
+  } catch (error) {
+    await rollback();
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 
   /* Attach first, detach second: a refused attach must not orphan the session. */
