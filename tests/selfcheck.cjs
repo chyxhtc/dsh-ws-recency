@@ -490,11 +490,12 @@ function textOf(node) {
   /* ---------- composer pill ---------------------------------------- */
   const pill = composerSeat.querySelector("[data-wsr-composer-analysis]");
   assert.ok(pill !== null, "the composer statistics row gains an analysis pill");
-  const pillLabel = pill.children[pill.children.length - 1];
+  const pillButton = pill.children[0];
+  const pillLabel = pillButton.children[pillButton.children.length - 1];
   assert.strictEqual(pillLabel.textContent, "Usage analysis");
   assert.strictEqual(composerSeat.children[composerSeat.children.length - 1], pill, "it sits at the end of the footer");
   const before = global.fetch.calls.length;
-  pill.click();
+  pillButton.click();
   assert.strictEqual(global.fetch.calls.length, before + 1, "clicking the pill asks for statistics");
   assert.ok(String(global.fetch.calls[before].url).indexOf("sessionId=A-fresh-1") !== -1, "it analyses the conversation it sits in");
 

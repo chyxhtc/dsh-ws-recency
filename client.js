@@ -847,6 +847,31 @@
           try { return icon.cloneNode(true); } catch (error) { return null; }
         }
 
+        /** Copy the host pill's own computed metrics onto the clone. */
+        function copyPillMetrics(template, wrapper, button) {
+          if (template === null || template === undefined || typeof window === "undefined" || typeof window.getComputedStyle !== "function") return;
+          var read = function (name) {
+            try {
+              return window.getComputedStyle(template).getPropertyValue(name) || "";
+            } catch (error) {
+              return "";
+            }
+          };
+          var inherited = ["font-size", "font-family", "font-weight", "line-height", "letter-spacing"];
+          for (var i = 0; i < inherited.length; i += 1) {
+            var value = read(inherited[i]);
+            if (value !== "") {
+              wrapper.style[inherited[i]] = value;
+              button.style[inherited[i]] = value;
+            }
+          }
+          var own = ["padding", "gap", "border-radius", "color"];
+          for (var j = 0; j < own.length; j += 1) {
+            var metric = read(own[j]);
+            if (metric !== "") button.style[own[j]] = metric;
+          }
+        }
+
         /**
          * Add one pill at the END of the composer footer that opens the analysis
          * panel for the conversation on screen.
@@ -871,9 +896,17 @@
 
           if (existing === null) {
             var template = pillTemplateOf(row);
+            /* Wrapped exactly like a host pill (its anchor span) and carrying the
+               host's own computed metrics: appended to the footer dock rather than
+               into the stats row, this pill would otherwise inherit the dock's font
+               size and read larger than its neighbours. */
+            var wrapper = document.createElement("span");
+            wrapper.setAttribute("data-wsr-composer-analysis", "true");
+            var anchorTemplate = template === null ? null : template.parentElement;
+            var anchorClass = anchorTemplate !== null && typeof anchorTemplate.className === "string" ? anchorTemplate.className : "";
+            if (anchorClass !== "") wrapper.className = anchorClass;
             var button = document.createElement("button");
             button.type = "button";
-            button.setAttribute("data-wsr-composer-analysis", "true");
             var base = template !== null && typeof template.className === "string" ? template.className : "";
             button.className = base === "" ? "wsr-pill" : base + " wsr-pill";
             var icon = cloneIconOf(template);
@@ -889,7 +922,9 @@
               var id = currentConversationId();
               if (id !== null) openStatsPanel(id);
             });
-            composerPill = button;
+            copyPillMetrics(template, wrapper, button);
+            wrapper.appendChild(button);
+            composerPill = wrapper;
           } else {
             composerPill = existing;
           }
