@@ -955,8 +955,16 @@
             var labelTemplate = clone.querySelector("span");
             if (labelTemplate !== null && typeof labelTemplate.className === "string") labelClass = labelTemplate.className;
           }
-          while (clone.firstChild !== null) clone.removeChild(clone.firstChild);
-          if (icon !== null) clone.appendChild(icon);
+          /* Keep the wrapper that holds the icon (it owns the size and baseline) and
+             drop only the template's text. */
+          var iconChild = icon;
+          while (iconChild !== null && iconChild.parentElement !== null && iconChild.parentElement !== undefined && iconChild.parentElement !== clone) {
+            iconChild = iconChild.parentElement;
+          }
+          var kids = Array.prototype.slice.call(clone.children || []);
+          for (var k = 0; k < kids.length; k += 1) {
+            if (kids[k] !== iconChild) clone.removeChild(kids[k]);
+          }
           var label = document.createElement("span");
           if (labelClass !== "") label.className = labelClass;
           label.textContent = t("trash.title");
@@ -967,6 +975,16 @@
             if (event !== undefined && typeof event.preventDefault === "function") event.preventDefault();
             openTrashPanel();
           });
+          /* Keep the template's icon box (it owns the size and the baseline) but put
+             our own trash glyph inside it. */
+          var ourSvg = typeof mine.querySelector === "function" ? mine.querySelector("svg") : null;
+          if (icon !== null && ourSvg !== null && icon.parentElement !== null && icon.parentElement !== undefined) {
+            try {
+              icon.parentElement.replaceChild(ourSvg, icon);
+            } catch (error) {
+              /* keep the template icon */
+            }
+          }
           container.insertBefore(clone, mine);
           mine.style.display = "none";
         }
