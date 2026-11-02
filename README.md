@@ -68,8 +68,8 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 会话下方统计条上的「用量分析」，或会话「…」菜单 →「Token 消耗统计」：
 
 - **真实账单**（每步记录的 usage）：步数、输入（未缓存）、缓存命中、输出、合计；
-- **结构占比**（按内容估算）：主 agent 自己（思考 / 回复 / 用户消息 / 系统提示）vs 每个工具，一条占比条 + 图例；
-- **工具表**：调用次数、参数估算、结果估算、合计、占比，按合计降序。
+- **消耗分布图**（按内容估算）：主 agent 自己（思考 / 回复 / 用户消息 / 系统提示）vs 每个工具，每个来源一条带颜色的横条，按占用长度直观对比；
+- **明细表**：调用次数、参数估算、结果估算、合计、占比，按合计降序，默认折叠，点「显示明细」展开。
 
 口径说明：prompt 的 token 是「整段上下文每一步都计费」，没法精确归属到某一条消息，所以「主 agent / 工具」的拆分是按内容长度估算（中文≈1 token/字，英文≈4 字符/token），用来比较占比；**总量是真的**。数据从会话日志算，跨重启也能看。大会话第一次打开约 1–2 秒（29MB 日志实测 1.2 秒），10 秒内重复打开走缓存。
 
@@ -110,7 +110,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.10.4/dsh-ws-recency-0.10.4.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.10.5/dsh-ws-recency-0.10.5.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

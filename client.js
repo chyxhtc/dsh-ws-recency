@@ -123,6 +123,17 @@
           ".wsr-stats-legend{display:flex;flex-wrap:wrap;gap:10px}",
           ".wsr-stats-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-stats-swatch{width:8px;height:8px;border-radius:2px}",
+          ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
+          ".wsr-chart-title{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-chart-row{display:grid;grid-template-columns:120px 1fr 64px 56px;align-items:center;gap:8px}",
+          ".wsr-chart-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}",
+          ".wsr-chart-track{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}",
+          ".wsr-chart-fill{height:100%;border-radius:4px;min-width:2px}",
+          ".wsr-chart-value{text-align:right;font-variant-numeric:tabular-nums}",
+          ".wsr-chart-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
+          ".wsr-details-toggle{align-self:flex-start;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer;padding:2px 0}",
+          ".wsr-details-toggle:hover{color:var(--dsw-alias-label-primary)}",
+          ".wsr-stats-details{display:flex;flex-direction:column;gap:8px}",
           ".wsr-stats-table{display:flex;flex-direction:column}",
           ".wsr-stats-row{display:grid;grid-template-columns:1.4fr .6fr .8fr .8fr .8fr .6fr;gap:6px;padding:6px 4px;border-bottom:.5px solid rgba(255,255,255,.06)}",
           ".wsr-stats-head{color:var(--dsw-alias-label-tertiary);font-size:11px}",
@@ -184,6 +195,9 @@
           "stats.agentDetail": "主 agent 构成：思考 {reasoning} · 回复 {text} · 用户消息 {user} · 系统提示 {system}",
           "stats.diagnose.unmounted": "\n\n（宿主半已加载，但统计路由没挂上——重启应用再试）",
           "stats.diagnose.noHost": "\n\n（宿主半未加载：需要重启应用加载新版本）",
+          "stats.chart": "消耗分布",
+          "stats.details.show": "显示明细 ▾",
+          "stats.details.hide": "收起明细 ▴",
           "composer.analysis": "用量分析",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
@@ -225,6 +239,9 @@
           "stats.agentDetail": "Agent composition: reasoning {reasoning} \u00b7 reply {text} \u00b7 user messages {user} \u00b7 system prompt {system}",
           "stats.diagnose.unmounted": "\n\n(the host half is loaded but the statistics route did not mount - restart the app and retry)",
           "stats.diagnose.noHost": "\n\n(the host half is not loaded: restart the app to pick up the new version)",
+          "stats.chart": "Where the tokens went",
+          "stats.details.show": "Show details",
+          "stats.details.hide": "Hide details",
           "composer.analysis": "Usage analysis",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
@@ -1147,31 +1164,39 @@
 
           var tools = estimate.tools || [];
           var palette = ["#d97706", "#059669", "#7c3aed", "#db2777", "#0891b2", "#65a30d", "#9333ea", "#dc2626"];
-          var segments = [{ name: t("stats.agent"), share: agent.share || 0, color: "#4b8bf5" }];
-          for (var j = 0; j < tools.length; j += 1) segments.push({ name: tools[j].name, share: tools[j].share || 0, color: palette[j % palette.length] });
-
-          var bar = statsDiv("wsr-stats-bar");
-          for (var k = 0; k < segments.length; k += 1) {
-            if (segments[k].share <= 0) continue;
-            var piece = statsDiv("wsr-stats-seg");
-            piece.style.width = (segments[k].share * 100).toFixed(2) + "%";
-            piece.style.background = segments[k].color;
-            piece.setAttribute("title", segments[k].name + " " + formatShare(segments[k].share));
-            bar.appendChild(piece);
+          var entries = [{ name: t("stats.agent"), value: agent.total || 0, share: agent.share || 0, color: "#4b8bf5" }];
+          for (var j = 0; j < tools.length; j += 1) {
+            entries.push({ name: tools[j].name, value: tools[j].total || 0, share: tools[j].share || 0, color: palette[j % palette.length] });
           }
-          body.appendChild(bar);
 
-          var legend = statsDiv("wsr-stats-legend");
-          for (var m = 0; m < segments.length; m += 1) {
-            if (segments[m].share <= 0) continue;
-            var item = statsDiv("wsr-stats-legend-item");
-            var swatch = statsDiv("wsr-stats-swatch");
-            swatch.style.background = segments[m].color;
-            item.appendChild(swatch);
-            item.appendChild(statsDiv("wsr-stats-legend-text", segments[m].name + " " + formatShare(segments[m].share)));
-            legend.appendChild(item);
+          /* The picture first: one bar per source, sized against the largest. */
+          var chart = statsDiv("wsr-chart");
+          chart.appendChild(statsDiv("wsr-chart-title", t("stats.chart")));
+          var largest = 1;
+          for (var m = 0; m < entries.length; m += 1) if (entries[m].value > largest) largest = entries[m].value;
+          for (var k = 0; k < entries.length; k += 1) {
+            var line = statsDiv("wsr-chart-row");
+            line.appendChild(statsDiv("wsr-chart-label", entries[k].name));
+            var track = statsDiv("wsr-chart-track");
+            var fill = statsDiv("wsr-chart-fill");
+            fill.style.width = ((entries[k].value / largest) * 100).toFixed(2) + "%";
+            fill.style.background = entries[k].color;
+            track.appendChild(fill);
+            line.appendChild(track);
+            line.appendChild(statsDiv("wsr-chart-value", formatTokens(entries[k].value)));
+            line.appendChild(statsDiv("wsr-chart-share", formatShare(entries[k].share)));
+            chart.appendChild(line);
           }
-          body.appendChild(legend);
+          body.appendChild(chart);
+
+          /* The table is the detail view: folded away until asked for. */
+          var toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "wsr-details-toggle";
+          toggle.textContent = t("stats.details.show");
+
+          var details = statsDiv("wsr-stats-details");
+          details.style.display = "none";
 
           var table = statsDiv("wsr-stats-table");
           var head = document.createElement("div");
@@ -1180,18 +1205,26 @@
           for (var n = 0; n < columns.length; n += 1) head.appendChild(statsDiv("wsr-td", t(columns[n])));
           table.appendChild(head);
           table.appendChild(statsRow(t("stats.agent"), stats.steps, null, null, agent.total, agent.share));
-          for (var p = 0; p < tools.length; p += 1) {
-            var tool = tools[p];
+          for (var q = 0; q < tools.length; q += 1) {
+            var tool = tools[q];
             table.appendChild(statsRow(tool.name, tool.calls, tool.args, tool.results, tool.total, tool.share));
           }
-          body.appendChild(table);
-
-          body.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
+          details.appendChild(table);
+          details.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
             reasoning: formatTokens(agent.reasoning),
             text: formatTokens(agent.text),
             user: formatTokens(agent.user),
             system: formatTokens(agent.system),
           })));
+
+          toggle.addEventListener("click", function () {
+            var open = details.style.display !== "none";
+            details.style.display = open ? "none" : "";
+            toggle.textContent = open ? t("stats.details.show") : t("stats.details.hide");
+          });
+
+          body.appendChild(toggle);
+          body.appendChild(details);
           body.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
         }
 

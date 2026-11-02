@@ -484,6 +484,24 @@ function textOf(node) {
   assert.ok(text.indexOf("10.5K") !== -1, "token totals are compact");
   assert.strictEqual(body.querySelectorAll(".wsr-stats-card").length, 5, "five exact totals are shown");
 
+  const chartRows = body.querySelectorAll(".wsr-chart-row");
+  assert.strictEqual(chartRows.length, 3, "one bar per source: the agent plus both tools");
+  assert.strictEqual(chartRows[0].querySelector(".wsr-chart-value").textContent, "360");
+  assert.strictEqual(chartRows[1].querySelector(".wsr-chart-label").textContent, "pwsh");
+  const widest = chartRows[1].querySelector(".wsr-chart-fill").style.width;
+  assert.strictEqual(widest, "100.00%", "the largest bar fills the track");
+  assert.ok(chartRows[0].querySelector(".wsr-chart-fill").style.width !== widest, "smaller bars are shorter");
+
+  const details = body.querySelector(".wsr-stats-details");
+  assert.strictEqual(details.style.display, "none", "the table starts folded");
+  const toggle = body.querySelector(".wsr-details-toggle");
+  assert.strictEqual(toggle.textContent, "Show details");
+  toggle.click();
+  assert.strictEqual(details.style.display, "", "the toggle unfolds the detail table");
+  assert.strictEqual(toggle.textContent, "Hide details");
+  toggle.click();
+  assert.strictEqual(details.style.display, "none", "and folds it again");
+
   panel.querySelector(".wsr-modal-close").click();
   assert.strictEqual(overlayRoot.children.indexOf(backdrop), -1, "closing removes the modal");
 
