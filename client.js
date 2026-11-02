@@ -104,6 +104,29 @@
           ".wsr-pin-unpin{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px;visibility:hidden}",
           ".wsr-pin-row:hover .wsr-pin-unpin{visibility:visible}",
           ".wsr-pin-unpin:hover{color:var(--dsw-alias-label-primary)}",
+          ".wsr-modal-backdrop{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)}",
+          ".wsr-modal{width:min(720px,92vw);max-height:84vh;display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1,#1f2226);color:var(--dsw-alias-label-primary,#e8e8e8);border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);overflow:hidden}",
+          ".wsr-modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.1))}",
+          ".wsr-modal-title{font-size:14px;font-weight:600}",
+          ".wsr-modal-close{border:none;background:transparent;color:var(--dsw-alias-label-tertiary,#9aa0a6);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:4px}",
+          ".wsr-modal-close:hover{color:var(--dsw-alias-label-primary,#e8e8e8)}",
+          ".wsr-modal-body{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px;font-size:12px}",
+          ".wsr-stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}",
+          ".wsr-stats-card{background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));border-radius:8px;padding:8px 10px}",
+          ".wsr-stats-value{font-size:15px;font-weight:600}",
+          ".wsr-stats-label{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-stats-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.06)}",
+          ".wsr-stats-seg{height:100%}",
+          ".wsr-stats-legend{display:flex;flex-wrap:wrap;gap:10px}",
+          ".wsr-stats-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-stats-swatch{width:8px;height:8px;border-radius:2px}",
+          ".wsr-stats-table{display:flex;flex-direction:column}",
+          ".wsr-stats-row{display:grid;grid-template-columns:1.4fr .6fr .8fr .8fr .8fr .6fr;gap:6px;padding:6px 4px;border-bottom:.5px solid rgba(255,255,255,.06)}",
+          ".wsr-stats-head{color:var(--dsw-alias-label-tertiary);font-size:11px}",
+          ".wsr-td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-td-name{font-weight:500}",
+          ".wsr-td-strong{font-weight:600}",
+          ".wsr-stats-note{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}",
           ".wsr-toggle{width:100%;height:28px;padding:0 12px 0 calc(28px + var(--dsh-workspace-indent,0px));cursor:pointer;text-align:left;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;font-size:12px}",
           ".wsr-toggle:hover{color:var(--dsw-alias-label-secondary)}",
           '[' + STATE_ATTR + '="running"] [class*="_title"]{color:#4f8ef7}',
@@ -138,6 +161,24 @@
           "menu.flag": "\u6807\u8bb0\u9700\u8981\u8ddf\u8fdb",
           "menu.unflag": "\u53d6\u6d88\u8ddf\u8fdb\u6807\u8bb0",
           "menu.trash": "\u5220\u9664\u4f1a\u8bdd\uff08\u79fb\u5165\u56de\u6536\u7ad9\uff09",
+          "menu.stats": "Token \u6d88\u8017\u7edf\u8ba1",
+          "stats.title": "Token \u6d88\u8017\u7edf\u8ba1",
+          "stats.loading": "\u7edf\u8ba1\u4e2d\u2026\uff08\u5927\u4f1a\u8bdd\u9700\u8981\u4e00\u4e24\u79d2\uff09",
+          "stats.failed": "\u7edf\u8ba1\u5931\u8d25\uff1a",
+          "stats.steps": "\u6b65\u6570",
+          "stats.input": "\u8f93\u5165\uff08\u672a\u7f13\u5b58\uff09",
+          "stats.cache": "\u7f13\u5b58\u547d\u4e2d",
+          "stats.output": "\u8f93\u51fa",
+          "stats.total": "\u5408\u8ba1",
+          "stats.agent": "\u4e3b agent",
+          "stats.col.source": "\u6765\u6e90",
+          "stats.col.calls": "\u8c03\u7528",
+          "stats.col.args": "\u53c2\u6570",
+          "stats.col.results": "\u7ed3\u679c",
+          "stats.col.total": "\u4f30\u7b97",
+          "stats.col.share": "\u5360\u6bd4",
+          "stats.note": "\u5408\u8ba1\u6765\u81ea\u6bcf\u6b65\u8bb0\u5f55\u7684\u771f\u5b9e usage\uff08\u7f13\u5b58\u547d\u4e2d + \u8f93\u5165 + \u8f93\u51fa\uff09\uff1b\u672c\u8868\u6309\u6765\u6e90\u7684\u62c6\u5206\u662f\u6309\u5185\u5bb9\u957f\u5ea6\u4f30\u7b97\uff08\u4e2d\u6587\u7ea6 1 token/\u5b57\uff0c\u82f1\u6587\u7ea6 4 \u5b57\u7b26/token\uff09\uff0c\u7528\u4e8e\u6bd4\u8f83\u5360\u6bd4\uff0c\u4e0d\u662f\u8ba1\u8d39\u53e3\u5f84\u3002",
+          "stats.agentDetail": "主 agent 构成：思考 {reasoning} · 回复 {text} · 用户消息 {user} · 系统提示 {system}",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
         };
@@ -158,6 +199,24 @@
           "menu.flag": "Mark as needs follow-up",
           "menu.unflag": "Clear follow-up mark",
           "menu.trash": "Delete session (move to trash)",
+          "menu.stats": "Token statistics",
+          "stats.title": "Token statistics",
+          "stats.loading": "Counting\u2026 (a large session takes a second or two)",
+          "stats.failed": "Statistics failed: ",
+          "stats.steps": "steps",
+          "stats.input": "input (uncached)",
+          "stats.cache": "cache read",
+          "stats.output": "output",
+          "stats.total": "total",
+          "stats.agent": "main agent",
+          "stats.col.source": "source",
+          "stats.col.calls": "calls",
+          "stats.col.args": "args",
+          "stats.col.results": "results",
+          "stats.col.total": "estimate",
+          "stats.col.share": "share",
+          "stats.note": "Totals come from the recorded per-step usage (cache read + input + output). The per-source split is estimated from content length (about 1 token per CJK character, 4 characters per token otherwise) so the shares are comparable, not billable.",
+          "stats.agentDetail": "Agent composition: reasoning {reasoning} \u00b7 reply {text} \u00b7 user messages {user} \u00b7 system prompt {system}",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
         };
@@ -844,6 +903,186 @@
           }, props.t("menu.trash"));
         }
 
+        /* ------------------------- token statistics ------------------------- */
+
+        var statsModal = null;
+
+        function formatTokens(value) {
+          var n = Number(value) || 0;
+          if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+          if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+          if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+          return String(Math.round(n));
+        }
+
+        function formatShare(share) {
+          if (typeof share !== "number" || !Number.isFinite(share)) return "-";
+          return (share * 100).toFixed(1) + "%";
+        }
+
+        function closeStatsPanel() {
+          if (statsModal !== null) {
+            if (typeof statsModal.remove === "function") statsModal.remove();
+            statsModal = null;
+          }
+          if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+            document.removeEventListener("keydown", onStatsKey);
+          }
+        }
+
+        function onStatsKey(event) {
+          if (event !== undefined && event.key === "Escape") closeStatsPanel();
+        }
+
+        function statsDiv(className, text) {
+          var node = document.createElement("div");
+          node.className = className;
+          if (text !== undefined) node.textContent = text;
+          return node;
+        }
+
+        /** One table row: source, calls, argument tokens, result tokens, total, share. */
+        function statsRow(label, calls, args, results, total, share) {
+          var row = document.createElement("div");
+          row.className = "wsr-stats-row";
+          var name = statsDiv("wsr-td wsr-td-name", label);
+          row.appendChild(name);
+          row.appendChild(statsDiv("wsr-td", calls === null ? "-" : String(calls)));
+          row.appendChild(statsDiv("wsr-td", args === null ? "-" : formatTokens(args)));
+          row.appendChild(statsDiv("wsr-td", results === null ? "-" : formatTokens(results)));
+          row.appendChild(statsDiv("wsr-td wsr-td-strong", formatTokens(total)));
+          row.appendChild(statsDiv("wsr-td", formatShare(share)));
+          return row;
+        }
+
+        function renderStats(body, stats) {
+          body.textContent = "";
+          while (body.firstChild !== null) body.removeChild(body.firstChild);
+          var totals = stats.totals || {};
+          var estimate = stats.estimate || {};
+          var agent = estimate.agent || {};
+
+          var grid = document.createElement("div");
+          grid.className = "wsr-stats-grid";
+          var cards = [
+            [t("stats.steps"), formatTokens(stats.steps)],
+            [t("stats.input"), formatTokens(totals.inputTokens)],
+            [t("stats.cache"), formatTokens(totals.cacheReadTokens)],
+            [t("stats.output"), formatTokens(totals.outputTokens)],
+            [t("stats.total"), formatTokens(totals.totalTokens)],
+          ];
+          for (var i = 0; i < cards.length; i += 1) {
+            var card = statsDiv("wsr-stats-card");
+            card.appendChild(statsDiv("wsr-stats-value", cards[i][1]));
+            card.appendChild(statsDiv("wsr-stats-label", cards[i][0]));
+            grid.appendChild(card);
+          }
+          body.appendChild(grid);
+
+          var tools = estimate.tools || [];
+          var palette = ["#d97706", "#059669", "#7c3aed", "#db2777", "#0891b2", "#65a30d", "#9333ea", "#dc2626"];
+          var segments = [{ name: t("stats.agent"), share: agent.share || 0, color: "#4b8bf5" }];
+          for (var j = 0; j < tools.length; j += 1) segments.push({ name: tools[j].name, share: tools[j].share || 0, color: palette[j % palette.length] });
+
+          var bar = statsDiv("wsr-stats-bar");
+          for (var k = 0; k < segments.length; k += 1) {
+            if (segments[k].share <= 0) continue;
+            var piece = statsDiv("wsr-stats-seg");
+            piece.style.width = (segments[k].share * 100).toFixed(2) + "%";
+            piece.style.background = segments[k].color;
+            piece.setAttribute("title", segments[k].name + " " + formatShare(segments[k].share));
+            bar.appendChild(piece);
+          }
+          body.appendChild(bar);
+
+          var legend = statsDiv("wsr-stats-legend");
+          for (var m = 0; m < segments.length; m += 1) {
+            if (segments[m].share <= 0) continue;
+            var item = statsDiv("wsr-stats-legend-item");
+            var swatch = statsDiv("wsr-stats-swatch");
+            swatch.style.background = segments[m].color;
+            item.appendChild(swatch);
+            item.appendChild(statsDiv("wsr-stats-legend-text", segments[m].name + " " + formatShare(segments[m].share)));
+            legend.appendChild(item);
+          }
+          body.appendChild(legend);
+
+          var table = statsDiv("wsr-stats-table");
+          var head = document.createElement("div");
+          head.className = "wsr-stats-row wsr-stats-head";
+          var columns = ["stats.col.source", "stats.col.calls", "stats.col.args", "stats.col.results", "stats.col.total", "stats.col.share"];
+          for (var n = 0; n < columns.length; n += 1) head.appendChild(statsDiv("wsr-td", t(columns[n])));
+          table.appendChild(head);
+          table.appendChild(statsRow(t("stats.agent"), stats.steps, null, null, agent.total, agent.share));
+          for (var p = 0; p < tools.length; p += 1) {
+            var tool = tools[p];
+            table.appendChild(statsRow(tool.name, tool.calls, tool.args, tool.results, tool.total, tool.share));
+          }
+          body.appendChild(table);
+
+          body.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
+            reasoning: formatTokens(agent.reasoning),
+            text: formatTokens(agent.text),
+            user: formatTokens(agent.user),
+            system: formatTokens(agent.system),
+          })));
+          body.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
+        }
+
+        function openStatsPanel(sessionId) {
+          if (typeof document === "undefined") return;
+          closeStatsPanel();
+          var backdrop = statsDiv("wsr-modal-backdrop");
+          var panel = statsDiv("wsr-modal");
+          backdrop.appendChild(panel);
+          var head = statsDiv("wsr-modal-head");
+          head.appendChild(statsDiv("wsr-modal-title", t("stats.title")));
+          var close = document.createElement("button");
+          close.type = "button";
+          close.className = "wsr-modal-close";
+          close.textContent = "\u00d7";
+          close.addEventListener("click", closeStatsPanel);
+          head.appendChild(close);
+          panel.appendChild(head);
+          var body = statsDiv("wsr-modal-body");
+          body.textContent = t("stats.loading");
+          panel.appendChild(body);
+          backdrop.addEventListener("click", function (event) {
+            if (event !== undefined && event.target === backdrop) closeStatsPanel();
+          });
+          document.body.appendChild(backdrop);
+          statsModal = backdrop;
+          document.addEventListener("keydown", onStatsKey);
+
+          fetch("/ws-recency/session-stats", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: sessionId }),
+          })
+            .then(function (response) { return response.json(); })
+            .then(function (result) {
+              if (result === null || result.ok !== true) {
+                body.textContent = t("stats.failed") + (result && result.error ? result.error : "unknown");
+                return;
+              }
+              renderStats(body, result.stats);
+            })
+            .catch(function (error) {
+              body.textContent = t("stats.failed") + (error && error.message ? error.message : error);
+            });
+        }
+
+        /** Session "..." menu row: token statistics of that session. */
+        function StatsMenuItem(props) {
+          var Item = ui.MenuItemButton;
+          if (typeof Item !== "function") return null;
+          var Icon = ui.IconDataOutlineRegular;
+          return h(Item, {
+            icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
+            onSelect: function () { openStatsPanel(props.sessionId); },
+          }, props.t("menu.stats"));
+        }
+
         /** Settings -> General row: how old a session must be before it is folded. */
         function SettingsRow(props) {
           var settings = props.useStore(function (state) { return state; });
@@ -1075,6 +1314,16 @@
               store: prefs,
               locale: NS,
             }, FollowUpDot);
+          });
+
+          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
+            return ctx.slots.register({
+              name: "sidebar.workspaces.session.menu.item",
+              id: "ws-recency-stats",
+              order: 710,
+              store: prefs,
+              locale: NS,
+            }, StatsMenuItem);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {

@@ -19,8 +19,9 @@
  *
  * @module dsh-ws-recency
  */
-import { mkdir, readdir, rename } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { zstdDecompressSync } from "node:zlib";
 
 /** Cordis plugin name shown by the loader. */
 export const name = "ws-recency";
@@ -208,7 +209,271 @@ export async function handleTrashRequest(ctx, req, res) {
   }
 }
 
-/** Cordis entry point: mount the route when the host has a web server. */
+/* ------------------------------------------------------------------------- *
+ * Token statistics
+ *
+ * The Client knows nothing about what a finished session cost, and a session may
+ * be months old, so this reads the session's own log. Recorded usage is exact
+ * (per assistant step: input / cache-read / output); the split between the agent
+ * itself and each tool is an estimate over the recorded content, because a
+ * prompt's tokens cannot be attributed to a single message - the whole context
+ * is billed every step.
+ *
+ * The log is a sequence of independent Zstandard frames, one per append, and the
+ * standard decoder stops after the first one. Splitting on the frame magic and
+ * decoding each frame is what makes the whole transcript readable.
+ * ------------------------------------------------------------------------- */
+
+export const STATS_SESSION_PATH = "/ws-recency/session-stats";
+
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+const STATS_CACHE_MS = 10 * 1000;
+const statsCache = new Map();
+
+/** bytes/4 per Latin character, ~1 token per CJK character. */
+export function estimateTokens(text) {
+  if (typeof text !== "string" || text === "") return 0;
+  let cjk = 0;
+  let other = 0;
+  for (const character of text) {
+    const code = character.codePointAt(0);
+    if ((code >= 0x2e80 && code <= 0x9fff) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0x3000 && code <= 0x303f) || (code >= 0xff00 && code <= 0xffef)) cjk += 1;
+    else other += 1;
+  }
+  return Math.ceil(cjk + other / 4);
+}
+
+/** Text of one content block / a whole content array, whatever shape it takes. */
+function blockText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  let text = "";
+  for (const block of content) {
+    if (block === null || typeof block !== "object") continue;
+    if (typeof block.text === "string") text += block.text;
+    else if (typeof block.arguments === "string") text += block.arguments;
+    else if (typeof block.content === "string") text += block.content;
+  }
+  return text;
+}
+
+/**
+ * Aggregate one session's events into costs.
+ *
+ * Pure on purpose: the tests call it with hand-written events, and the route
+ * calls it with the decoded log.
+ */
+export function aggregateSession(events) {
+  const summary = {
+    session: { id: "", title: "", cwd: "", createdAt: 0, lastAt: 0 },
+    steps: 0,
+    totals: { inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, totalTokens: 0 },
+    estimate: { agent: { reasoning: 0, text: 0, user: 0, system: 0, total: 0 }, tools: [], toolsTotal: 0, grandTotal: 0 },
+  };
+  const tools = new Map();
+  const callNames = new Map();
+  const toolOf = (name) => {
+    const key = typeof name === "string" && name !== "" ? name : "unknown";
+    let entry = tools.get(key);
+    if (entry === undefined) {
+      entry = { name: key, calls: 0, args: 0, results: 0, total: 0, share: 0 };
+      tools.set(key, entry);
+    }
+    return entry;
+  };
+
+  for (const event of events) {
+    if (event === null || typeof event !== "object") continue;
+    const data = event.data ?? {};
+    if (typeof event.time === "number") {
+      if (summary.session.createdAt === 0 || event.time < summary.session.createdAt) summary.session.createdAt = event.time;
+      if (event.time > summary.session.lastAt) summary.session.lastAt = event.time;
+    }
+    switch (event.type) {
+      case "session": {
+        if (typeof event.id === "string") summary.session.id = event.id;
+        if (typeof event.cwd === "string") summary.session.cwd = event.cwd;
+        if (typeof event.createdAt === "number") summary.session.createdAt = event.createdAt;
+        if (typeof data.createdAt === "number") summary.session.createdAt = data.createdAt;
+        break;
+      }
+      case "session/title": {
+        const title = typeof data === "string" ? data : data.title;
+        if (typeof title === "string" && title !== "") summary.session.title = title;
+        break;
+      }
+      case "assistant/message": {
+        const usage = data.usage;
+        if (usage !== null && typeof usage === "object") {
+          summary.steps += 1;
+          summary.totals.inputTokens += Number(usage.inputTokens) || 0;
+          summary.totals.cacheReadTokens += Number(usage.cacheReadTokens) || 0;
+          summary.totals.outputTokens += Number(usage.outputTokens) || 0;
+          summary.totals.totalTokens += Number(usage.totalTokens) || 0;
+        }
+        const content = data.message !== null && data.message !== undefined ? data.message.content : undefined;
+        for (const block of Array.isArray(content) ? content : []) {
+          if (block === null || typeof block !== "object") continue;
+          if (block.type === "reasoning") summary.estimate.agent.reasoning += estimateTokens(block.text);
+          else if (block.type === "text") summary.estimate.agent.text += estimateTokens(block.text);
+          else if (block.type === "tool-call" && block.id !== undefined) callNames.set(String(block.id), block.name);
+        }
+        break;
+      }
+      case "tool/call": {
+        const name = data.name;
+        if (data.callId !== undefined) callNames.set(String(data.callId), name);
+        const entry = toolOf(name);
+        entry.calls += 1;
+        entry.args += estimateTokens(data.arguments);
+        break;
+      }
+      case "tool/result": {
+        const name = callNames.get(String(data.toolCallId ?? data.message?.source?.callId ?? ""));
+        const entry = toolOf(name);
+        entry.results += estimateTokens(blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content));
+        break;
+      }
+      case "user/message": {
+        summary.estimate.agent.user += estimateTokens(blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content));
+        break;
+      }
+      case "system/message": {
+        summary.estimate.agent.system += estimateTokens(blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content));
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  const agent = summary.estimate.agent;
+  agent.total = agent.reasoning + agent.text + agent.user + agent.system;
+  const list = [...tools.values()].sort((a, b) => (b.args + b.results) - (a.args + a.results));
+  for (const entry of list) entry.total = entry.args + entry.results;
+  summary.estimate.tools = list;
+  summary.estimate.toolsTotal = list.reduce((sum, entry) => sum + entry.total, 0);
+  summary.estimate.grandTotal = agent.total + summary.estimate.toolsTotal;
+  const grand = summary.estimate.grandTotal;
+  if (grand > 0) {
+    for (const entry of list) entry.share = entry.total / grand;
+    summary.estimate.agent.share = agent.total / grand;
+  }
+  return summary;
+}
+
+/** Decode every Zstandard frame of a session log and parse its JSONL records. */
+export async function readSessionEvents(path) {
+  const bytes = await readFile(path);
+  const offsets = [];
+  let at = bytes.indexOf(ZSTD_MAGIC, 0);
+  while (at !== -1) {
+    offsets.push(at);
+    at = bytes.indexOf(ZSTD_MAGIC, at + 4);
+  }
+  const parts = [];
+  for (let index = 0; index < offsets.length; index += 1) {
+    const end = index + 1 < offsets.length ? offsets[index + 1] : bytes.length;
+    try {
+      parts.push(zstdDecompressSync(bytes.subarray(offsets[index], end)));
+    } catch {
+      /* a torn tail: the rest of the log is still usable */
+    }
+  }
+  const events = [];
+  for (const line of Buffer.concat(parts).toString("utf8").split("\n")) {
+    if (line === "") continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      /* a torn final record */
+    }
+  }
+  return events;
+}
+
+/** Absolute path of a session log, or undefined when it is gone. */
+async function sessionLogPath(ctx, sessionId) {
+  try {
+    const stat = await ctx.sessionPersistence.stat(sessionId);
+    const meta = stat !== undefined && stat !== null ? stat.header ?? stat : undefined;
+    if (meta !== undefined && typeof ctx.sessionPersistence.locate === "function") {
+      const located = ctx.sessionPersistence.locate(meta);
+      if (located !== undefined && located !== null && typeof located.path === "string") return located.path;
+    }
+  } catch {
+    /* fall back to the scan */
+  }
+  const home = await dshHome();
+  const root = join(home, "sessions");
+  let projects;
+  try {
+    projects = await readdir(root, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  for (const project of projects) {
+    if (!project.isDirectory()) continue;
+    const candidate = join(root, project.name, sessionId, "session.v4.jsonl.zstd");
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      /* keep scanning */
+    }
+  }
+  return undefined;
+}
+
+/** Statistics for one session, cached briefly so re-opening the panel is cheap. */
+export async function sessionStatistics(ctx, sessionId) {
+  const path = await sessionLogPath(ctx, sessionId);
+  if (path === undefined) return { ok: false, error: "session log not found" };
+  let info;
+  try {
+    info = await stat(path);
+  } catch {
+    return { ok: false, error: "session log not found" };
+  }
+  const cacheKey = `${info.size}:${info.mtimeMs}`;
+  const cached = statsCache.get(sessionId);
+  if (cached !== undefined && cached.cacheKey === cacheKey && Date.now() - cached.at < STATS_CACHE_MS) return { ok: true, stats: cached.stats };
+  try {
+    const events = await readSessionEvents(path);
+    const stats = aggregateSession(events);
+    if (stats.session.id === "") stats.session.id = sessionId;
+    statsCache.set(sessionId, { cacheKey, stats, at: Date.now() });
+    return { ok: true, stats };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** POST { sessionId } -> token statistics for that session. */
+export async function handleStatsRequest(ctx, req, res) {
+  if ((req.method ?? "POST").toUpperCase() !== "POST") {
+    sendJson(res, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+  if (!loopbackOrigin(req)) {
+    sendJson(res, 403, { ok: false, error: "origin not trusted" });
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const sessionId = body !== null && typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+    if (sessionId === "") {
+      sendJson(res, 400, { ok: false, error: "sessionId required" });
+      return;
+    }
+    const result = await sessionStatistics(ctx, sessionId);
+    sendJson(res, result.ok ? 200 : 404, result);
+  } catch (error) {
+    sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** Cordis entry point: mount the routes when the host has a web server. */
 export function apply(ctx) {
   try {
     if (typeof ctx.inject === "function") {
@@ -218,9 +483,14 @@ export function apply(ctx) {
           path: TRASH_SESSION_PATH,
           handler: (req, res) => handleTrashRequest(ctx, req, res),
         }), "ws-recency: trash route");
+        webCtx.effect(() => webCtx.webServer.register({
+          kind: "exact",
+          path: STATS_SESSION_PATH,
+          handler: (req, res) => handleStatsRequest(ctx, req, res),
+        }), "ws-recency: stats route");
       });
     }
   } catch {
-    /* a headless profile simply gets no route */
+    /* a headless profile simply gets no routes */
   }
 }

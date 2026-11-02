@@ -104,17 +104,26 @@ const flush = () => {
   }
 };
 
+const overlayRoot = el("div", "overlay-root");
 global.document = {
-  body: {},
+  body: overlayRoot,
   head: { appendChild() {} },
   querySelector: () => null,
   createElement: (tag) => el(tag),
+  addEventListener() {},
+  removeEventListener() {},
   querySelectorAll(selector) {
     if (selector.indexOf("workspace:") !== -1) return headers;
     return [];
   },
 };
 global.MutationObserver = class { observe() {} disconnect() {} };
+global.fetch = (url, options) => {
+  global.fetch.calls.push({ url, options });
+  return Promise.resolve({ json: () => Promise.resolve(global.fetch.answer) });
+};
+global.fetch.calls = [];
+global.fetch.answer = { ok: false, error: "not configured" };
 global.window = {
   setTimeout(fn) { pendingTimers.push(fn); return pendingTimers.length; },
   clearTimeout() {},
@@ -185,6 +194,13 @@ const react = {
 const mod = spec.factory((name) => {
   if (name === "react") return react;
   if (name === "@deepseek-ai/dsh-client-store") return { defineStore: () => ({}) };
+  if (name === "@deepseek-ai/dsh-client-ui-primitives") {
+    return {
+      MenuItemButton: (props, ...children) => ({ type: "menuitem", props: props || {}, children }),
+      IconDataOutlineRegular: () => ({ type: "icon" }),
+      IconTrashOutlineRegular: () => ({ type: "icon" }),
+    };
+  }
   return {};
 });
 
@@ -193,6 +209,8 @@ assert.strictEqual(mod.name, "dsh-ws-recency");
 let Sorter = null;
 let SettingsRow = null;
 let FollowUpDot = null;
+let StatsMenuItem = null;
+let TrashMenuItem = null;
 const service = {
   opened: [],
   unpinned: [],
@@ -210,6 +228,8 @@ const ctx = {
       if (spec2.name === "shell.overlay") Sorter = component;
       if (spec2.name === "settings.general.item") SettingsRow = component;
       if (spec2.name === "sidebar.session.row.leading") FollowUpDot = component;
+      if (spec2.id === "ws-recency-stats") StatsMenuItem = component;
+      if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
     },
   },
@@ -379,4 +399,67 @@ render();
 assert.strictEqual(root.children.some((child) => child.className === "wsr-pin"), false, "the section disappears when nothing is pinned");
 assert.strictEqual(A.rows[0].getAttribute("data-wsr-pin-hidden"), null, "the original row comes back");
 
-console.log("selfcheck ok: order A>C>B, fold >3d, one control per group, colors + persistent follow-up, pinned section");
+/* ---------- token statistics panel -------------------------------------- */
+
+function textOf(node) {
+  const parts = [typeof node.textContent === "string" ? node.textContent : ""];
+  for (const child of node.children || []) parts.push(textOf(child));
+  return parts.join(" ");
+}
+
+(async () => {
+  assert.ok(StatsMenuItem !== null, "the stats menu row was not registered");
+  assert.ok(TrashMenuItem !== null, "the trash menu row was not registered");
+
+  global.fetch.answer = {
+    ok: true,
+    stats: {
+      session: { id: "A-fresh-1", title: "demo" },
+      steps: 3,
+      totals: { inputTokens: 1000, cacheReadTokens: 9000, outputTokens: 500, totalTokens: 10500 },
+      estimate: {
+        agent: { reasoning: 100, text: 200, user: 50, system: 10, total: 360, share: 0.36 },
+        tools: [
+          { name: "pwsh", calls: 4, args: 100, results: 500, total: 600, share: 0.6 },
+          { name: "read", calls: 2, args: 10, results: 30, total: 40, share: 0.04 },
+        ],
+        toolsTotal: 640,
+        grandTotal: 1000,
+      },
+    },
+  };
+
+  const item = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
+  assert.ok(item !== null, "the stats row renders");
+  assert.strictEqual(item.children[0], "menu.stats");
+  assert.ok(item.props.icon !== undefined, "the row carries an icon");
+
+  item.props.onSelect();
+  assert.strictEqual(global.fetch.calls.length, 1, "selecting the row asks the host for statistics");
+  assert.ok(String(global.fetch.calls[0].url).indexOf("/ws-recency/session-stats") !== -1);
+  assert.deepStrictEqual(JSON.parse(global.fetch.calls[0].options.body), { sessionId: "A-fresh-1" });
+
+  const backdrop = overlayRoot.children[overlayRoot.children.length - 1];
+  assert.ok(String(backdrop.className).indexOf("wsr-modal-backdrop") !== -1, "a modal opens");
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const panel = backdrop.children[0];
+  const body = panel.querySelector(".wsr-modal-body");
+  const text = textOf(body);
+  assert.ok(text.indexOf("stats.loading") === -1, "the loading text is replaced by the statistics");
+  assert.ok(text.indexOf("pwsh") !== -1, "the tool table lists the tool");
+  assert.ok(text.indexOf("stats.agent") !== -1, "the agent row is present");
+  assert.ok(text.indexOf("60.0%") !== -1, "shares are shown as percentages");
+  assert.ok(text.indexOf("10.5K") !== -1, "token totals are compact");
+  assert.strictEqual(body.querySelectorAll(".wsr-stats-card").length, 5, "five exact totals are shown");
+
+  panel.querySelector(".wsr-modal-close").click();
+  assert.strictEqual(overlayRoot.children.indexOf(backdrop), -1, "closing removes the modal");
+})().then(() => {
+  console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel");
+}).catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+
