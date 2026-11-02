@@ -43,7 +43,7 @@ function fakeResponse() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "wsr-archive-"));
   process.env.DSH_HOME = home;
 
-  const archived = new Set(["session-new", "session-old", "session-gone"]);
+  const archived = new Set(["session-new", "session-old", "session-gone", "session-titled", "session-untitled"]);
   const emitted = [];
   const attached = [];
   const unarchived = [];
@@ -54,6 +54,17 @@ function fakeResponse() {
     /* Its workspace is gone: nothing holds its slot any more. */
     "session-gone": { id: "session-gone", cwd: "D:\\unregistered", createdAt: 3000 },
     "session-routed": { id: "session-routed", cwd: "D:\\proj", createdAt: 4000 },
+    /* No projection-cache record at all: the title has to come from the log. */
+    "session-titled": { id: "session-titled", cwd: "D:\\proj", createdAt: 600 },
+    "session-untitled": { id: "session-untitled", cwd: "D:\\proj", createdAt: 500 },
+  };
+  const logs = {
+    "session-titled": [
+      { type: "session", id: "session-titled", cwd: "D:\\proj" },
+      { type: "session/title", data: { title: "named from the log" } },
+      { type: "user/message", data: { content: "never used" } },
+    ],
+    "session-untitled": [{ type: "session", id: "session-untitled", cwd: "D:\\proj" }],
   };
   const checkpoints = {
     "session-new": {
@@ -108,7 +119,14 @@ function fakeResponse() {
     sessionPersistence: {
       list: async () => Object.values(headers).map((header) => ({ header, sizeBytes: header.id === "session-new" ? 2048 : 64 })),
       stat: async (id) => (headers[id] === undefined ? undefined : { header: headers[id], sizeBytes: 64 }),
-      open: async () => { throw new Error("this stand-in has no log"); },
+      open: async (id) => {
+        const events = logs[id];
+        if (events === undefined) throw new Error("this stand-in has no log");
+        return {
+          read: async (offset, limit) => ({ events: events.slice(offset, offset + limit) }),
+          close: async () => {},
+        };
+      },
     },
     sessions: { get: () => undefined },
     parallel: async () => {},
@@ -120,8 +138,8 @@ function fakeResponse() {
   assert.strictEqual(listing.ok, true);
   assert.deepStrictEqual(
     listing.entries.map((entry) => entry.sessionId),
-    ["session-old", "session-new", "session-gone"],
-    "newest activity first",
+    ["session-old", "session-new", "session-gone", "session-titled", "session-untitled"],
+    "newest activity first, then the sessions with only a createdAt",
   );
   const fresh = listing.entries.find((entry) => entry.sessionId === "session-new");
   assert.strictEqual(fresh.title, "a real title", "the cached title is used");
@@ -134,6 +152,11 @@ function fakeResponse() {
   assert.strictEqual(gone.workspaceId, null, "a workspace that no longer exists is not claimed");
   assert.strictEqual(gone.listed, false);
   assert.strictEqual(gone.blank, true, "the blank-draft hint is carried through");
+
+  const titled = listing.entries.find((entry) => entry.sessionId === "session-titled");
+  assert.strictEqual(titled.title, "named from the log", "a session the cache never saw takes its title from the log");
+  const untitled = listing.entries.find((entry) => entry.sessionId === "session-untitled");
+  assert.strictEqual(untitled.title, "", "a session with neither a cache row nor a title event stays untitled");
 
   const empty = await mod.listArchivedSessions({ ...ctx, workspaceRegistry: { get archivedSessionIds() { return []; }, list: () => [] } });
   assert.deepStrictEqual(empty.entries, [], "an empty archive set is not an error");

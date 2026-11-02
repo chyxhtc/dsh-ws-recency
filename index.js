@@ -975,6 +975,44 @@ function checkpointValue(record, key) {
   return row !== null && typeof row === "object" && "val" in row ? row.val : undefined;
 }
 
+/**
+ * Title fallback for a session the projection cache has no record for.
+ *
+ * A title is written right after the first prompt, so the first page of the log
+ * is enough - and reading one page is far cheaper than folding the whole Log.
+ */
+async function titleFromLog(ctx, sessionId) {
+  let handle;
+  try {
+    handle = await ctx.sessionPersistence.open(sessionId, "read");
+  } catch {
+    return "";
+  }
+  try {
+    const slice = await handle.read(0, 60);
+    const events = slice !== null && slice !== undefined && Array.isArray(slice.events) ? slice.events : [];
+    for (const event of events) {
+      if (event?.type !== "session/title") continue;
+      const title = typeof event.data === "string" ? event.data : event.data?.title;
+      if (typeof title === "string" && title.trim() !== "") return title.trim();
+    }
+    for (const event of events) {
+      if (event?.type !== "user/message") continue;
+      const line = blockText(event.data?.content).split("\n")[0].trim();
+      if (line !== "") return line.slice(0, 120);
+    }
+    return "";
+  } catch {
+    return "";
+  } finally {
+    try {
+      if (typeof handle.close === "function") await handle.close();
+    } catch {
+      /* closing is best effort */
+    }
+  }
+}
+
 /** Whether a workspace lists the session in the stored table rather than the filtered view. */
 function listedBy(workspace, raw, sessionId) {
   const record = raw === null ? undefined : raw.get(workspace.id);
@@ -1033,6 +1071,8 @@ export async function listArchivedSessions(ctx) {
       if (typeof prompt === "string") title = prompt.split("\n")[0].trim().slice(0, 120);
     }
     if (title === "" && typeof header?.title === "string") title = header.title.trim();
+    /* Last resort: the cache may have no record for this session at all. */
+    if (title === "") title = await titleFromLog(ctx, sessionId);
 
     const listMeta = checkpointValue(checkpoint, "sessionListMetadata");
     let lastAt = typeof listMeta?.lastPromptAt === "number" ? listMeta.lastPromptAt : 0;
@@ -1053,8 +1093,8 @@ export async function listArchivedSessions(ctx) {
       blank: listMeta?.blank === true,
       workspaceId: workspace !== undefined ? workspace.id : null,
       workspacePath: workspace !== undefined ? workspace.path : null,
-      /* Without a Workspace whose path is this cwd, an unarchive has nowhere to show up. */
-      listed: workspace !== undefined && cwd !== null && workspace.path === cwd,
+      /* Whether a Workspace still lists it: an unarchive without one has nowhere to show up. */
+      listed: workspace !== undefined,
     });
   }
   entries.sort((a, b) => b.lastAt - a.lastAt || (a.sessionId < b.sessionId ? -1 : 1));

@@ -1898,6 +1898,8 @@
               var archive = answers[1];
               var entries = [];
               var archived = [];
+              /* One error line: the trash failure is the one that matters, an
+                 archive-only failure still explains itself below. */
               var failed = "";
               if (trash.json === null || trash.json.ok !== true) {
                 failed = t("trash.failed") + "HTTP " + trash.status + " \u00b7 " + (trash.text || "").slice(0, 120);
@@ -1909,7 +1911,7 @@
               } else if (typeof archive.json === "object" && archive.json !== null && typeof archive.json.error === "string" && archive.json.error.indexOf("unknown action") !== -1) {
                 /* An older host half: no archive section, not an error. */
                 archived = null;
-              } else {
+              } else if (failed === "") {
                 failed = t("archive.failed") + "HTTP " + archive.status + " \u00b7 " + (archive.text || "").slice(0, 120);
               }
               setView({ loaded: true, entries: entries, archived: archived, note: note === undefined ? "" : note, failed: failed });
