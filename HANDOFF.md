@@ -12,8 +12,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，仓库里已是 `0.15.0`；**尚未发布**，npm / tag / Release 还停在 `0.14.0` |
-| 最新已发布 tag / Release | `v0.14.0`（附件 `dsh-ws-recency-0.14.0.tgz`，44234 字节） |
+| npm | `dsh-ws-recency`，当前 `0.15.0`（已发布，`latest` 指向它；2026-11-02 16:13 UTC+8） |
+| 最新已发布 tag / Release | `v0.15.0`（附件 `dsh-ws-recency-0.15.0.tgz`，49493 字节） |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791，2026-10-31），页面 `https://awesome-dsh-plugin.com/p/chyxhtc/dsh-ws-recency/` |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
@@ -78,9 +78,14 @@ node tests/archive-page.cjs
 
 1. 改 `package.json` 版本（`HOST_VERSION` 跟着改）+ README 里的 release 链接；
 2. 六个测试全过；
-3. `git add -A && git commit && git tag -f vX.Y.Z && git push origin main && git push origin vX.Y.Z`（失败的推送重试几轮）；
-4. `npm publish --access public`（npm 需要代理配置 `proxy/https-proxy=http://127.0.0.1:7897`）；
-5. `npm pack` 后建 GitHub Release 并上传 tgz：用 `undici` 的 `ProxyAgent("http://127.0.0.1:7897")` 走 `api.github.com` / `uploads.github.com`（直连 git 能通但 network 常断）。
+3. `git add -A && git commit && git tag -f vX.Y.Z && git push origin main && git push origin vX.Y.Z`（失败的推送重试几轮；`GIT_TERMINAL_PROMPT=0` 可避免卡住，push 用的是 Windows 凭据管理器里的账号）；
+4. `npm publish --access public`（npm 需要代理配置 `proxy/https-proxy=http://127.0.0.1:7897`，已在 `~/.npmrc`）；
+   - **注意**：npm 11 是异步发布，PUT 返回 `202` + 提示「may take a few minutes」，CLI 退出码就是 0；此时立刻 `npm view` 可能还是旧版本，**要等 1–3 分钟**；
+   - 期间重跑 `npm publish` 会报 `E409 Cannot publish over previously staged version`——不是失败前的重复，而是第一次已经进了发布流水线，**不要再发请求**，换成轮询 `https://registry.npmjs.org/dsh-ws-recency/<version>`。
+5. `npm pack` 后建 GitHub Release 并上传 tgz：用 `undici` 的 `ProxyAgent("http://127.0.0.1:7897")` 走 `api.github.com` / `uploads.github.com`（直连 git 能通但 network 常断）；
+   - 没有存 GitHub token，但**可以从 git 自己的凭据里取**：`git credential fill`（stdin: `protocol=https` / `host=github.com` / 空行）拿到的 `password` 是 `gho_…` 的 OAuth token，`Authorization: Bearer <token>` 能建 Release 和上传 asset（2026-11-02 实测成功）；
+   - `undici` 不在仓库依赖里，用 `createRequire("D:/IDE/Hypers Work/resources/app/package.json")("undici")` 从应用目录解析；
+   - 上传走 `POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=<file>`，`content-type: application/octet-stream`，成功返回 `201` + `browser_download_url`。
 
 ## 已知遗留 / 可做
 
