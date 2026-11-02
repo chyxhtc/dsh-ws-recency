@@ -17,6 +17,11 @@
  * Nothing is erased irreversibly: the log directory is renamed, so restoring is
  * a move back. The route only answers loopback origins and only accepts POST.
  *
+ * The same module owns the other kind of put-away: the Host's archive set. An
+ * archived Session keeps its slot and its log but is hidden from every grouping
+ * surface, so the trash panel lists it too and can unarchive it, delete it into
+ * the trash above, or erase it for good.
+ *
  * @module dsh-ws-recency
  */
 import { mkdir, readFile, readdir, rename, rm, stat as statPath, writeFile } from "node:fs/promises";
@@ -26,7 +31,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.10.1";
+export const HOST_VERSION = "0.15.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -928,7 +933,210 @@ export async function purgeTrashEntry(name) {
   return { ok: true };
 }
 
-/** POST { action, name } -> list, restore or purge the plugin's trash. */
+/* ------------------------------------------------------------------------- *
+ * Archived sessions
+ *
+ * The Host's archive is nothing but a flag in the registry's
+ * `archivedSessionIds`: the Session keeps its slot in the Workspace that owns it
+ * and its log stays under `sessions/`, yet every grouping surface hides it. That
+ * makes "archived" a second kind of put-away that nothing manages - only DSH's
+ * own view filter can show it again. The trash panel lists it next to the trash
+ * so both kinds of "put away" live in one place: unarchive (back into its old
+ * slot), delete into the plugin's trash (recoverable), or delete for good.
+ * ------------------------------------------------------------------------- */
+
+/** The registry's durable archive set; a Host without one has none. */
+function archivedSessionIds(ctx) {
+  try {
+    const ids = ctx.workspaceRegistry?.archivedSessionIds;
+    return Array.isArray(ids) ? ids.slice() : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One session's projection-cache record: a listing hint, never authority. */
+function cachedCheckpoint(ctx, sessionId) {
+  try {
+    const domain = ctx.get("storageDomain");
+    const table = domain !== undefined && domain !== null && typeof domain.get === "function"
+      ? domain.get("session_projcache")?.table("sessions")
+      : undefined;
+    const record = table !== undefined && table !== null && typeof table.get === "function" ? table.get(sessionId) : undefined;
+    return record !== undefined && record !== null && typeof record === "object" ? record : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A checkpoint row's `val`, whichever fold unit it belongs to. */
+function checkpointValue(record, key) {
+  const row = record?.rows?.[key];
+  return row !== null && typeof row === "object" && "val" in row ? row.val : undefined;
+}
+
+/** Whether a workspace lists the session in the stored table rather than the filtered view. */
+function listedBy(workspace, raw, sessionId) {
+  const record = raw === null ? undefined : raw.get(workspace.id);
+  if (record !== undefined) return record.sessionIds.includes(sessionId);
+  return Array.isArray(workspace.sessionIds) && workspace.sessionIds.includes(sessionId);
+}
+
+/**
+ * Every archived session, newest activity first.
+ *
+ * One persistence listing covers the stored headers (cwd, createdAt); the title
+ * and the last prompt time come from the projection cache, which is far cheaper
+ * than folding each log - and is only a display hint, so a stale title is fine.
+ */
+export async function listArchivedSessions(ctx) {
+  const ids = archivedSessionIds(ctx);
+  if (ids.length === 0) return { ok: true, entries: [] };
+
+  const headers = new Map();
+  const sizes = new Map();
+  try {
+    const snapshots = await ctx.sessionPersistence.list();
+    for (const snapshot of Array.isArray(snapshots) ? snapshots : []) {
+      const header = snapshot !== null && snapshot !== undefined ? snapshot.header : undefined;
+      if (header === null || header === undefined || typeof header.id !== "string") continue;
+      headers.set(header.id, header);
+      if (typeof snapshot.sizeBytes === "number") sizes.set(header.id, snapshot.sizeBytes);
+    }
+  } catch {
+    /* fall back to a stat per id below */
+  }
+
+  const raw = await rawWorkspaceMembership();
+  const workspaces = ctx.workspaceRegistry.list();
+  const entries = [];
+  for (const sessionId of ids) {
+    let header = headers.get(sessionId);
+    let sizeBytes = sizes.get(sessionId) ?? 0;
+    if (header === undefined) {
+      try {
+        const stat = await ctx.sessionPersistence.stat(sessionId);
+        header = stat !== undefined && stat !== null ? stat.header : undefined;
+        sizeBytes = Number(stat?.sizeBytes) || 0;
+      } catch {
+        header = undefined;
+      }
+    }
+
+    const checkpoint = cachedCheckpoint(ctx, sessionId);
+    let title = checkpointValue(checkpoint, "title");
+    title = typeof title === "string" ? title.trim() : "";
+    if (title === "") {
+      /* The first prompt is what the sidebar itself falls back to. */
+      const outline = checkpointValue(checkpoint, "turnOutline");
+      const prompt = Array.isArray(outline?.turns) && outline.turns.length > 0 ? outline.turns[0]?.prompt : undefined;
+      if (typeof prompt === "string") title = prompt.split("\n")[0].trim().slice(0, 120);
+    }
+    if (title === "" && typeof header?.title === "string") title = header.title.trim();
+
+    const listMeta = checkpointValue(checkpoint, "sessionListMetadata");
+    let lastAt = typeof listMeta?.lastPromptAt === "number" ? listMeta.lastPromptAt : 0;
+    if (lastAt === 0 && typeof header?.updatedAt === "number") lastAt = header.updatedAt;
+    if (lastAt === 0 && typeof header?.createdAt === "number") lastAt = header.createdAt;
+
+    const cwd = typeof header?.cwd === "string" && header.cwd !== "" ? header.cwd : null;
+    let workspace = workspaces.find((candidate) => listedBy(candidate, raw, sessionId));
+    if (workspace === undefined && cwd !== null) workspace = workspaces.find((candidate) => candidate.path === cwd);
+
+    entries.push({
+      sessionId,
+      title,
+      cwd,
+      createdAt: typeof header?.createdAt === "number" ? header.createdAt : 0,
+      lastAt,
+      sizeBytes,
+      blank: listMeta?.blank === true,
+      workspaceId: workspace !== undefined ? workspace.id : null,
+      workspacePath: workspace !== undefined ? workspace.path : null,
+      /* Without a Workspace whose path is this cwd, an unarchive has nowhere to show up. */
+      listed: workspace !== undefined && cwd !== null && workspace.path === cwd,
+    });
+  }
+  entries.sort((a, b) => b.lastAt - a.lastAt || (a.sessionId < b.sessionId ? -1 : 1));
+  return { ok: true, entries };
+}
+
+/**
+ * Put an archived session back.
+ *
+ * Unarchiving never touches workspace accounting, so the slot the session had is
+ * normally enough. A session whose Workspace was deleted while it was archived
+ * has nowhere to return to: attach it to a Workspace whose path matches its cwd,
+ * and report that it could not be shown otherwise.
+ */
+export async function restoreArchivedSession(ctx, sessionId) {
+  if (!archivedSessionIds(ctx).includes(sessionId)) return { ok: false, error: "session is not archived" };
+  try {
+    await ctx.workspaceRegistry.unarchiveSession(sessionId);
+  } catch (error) {
+    return { ok: false, error: `could not unarchive: ${error instanceof Error ? error.message : String(error)}` };
+  }
+
+  let cwd = null;
+  let createdAt = 0;
+  try {
+    const stat = await ctx.sessionPersistence.stat(sessionId);
+    const header = stat !== undefined && stat !== null ? stat.header : undefined;
+    if (typeof header?.cwd === "string") cwd = header.cwd;
+    if (typeof header?.createdAt === "number") createdAt = header.createdAt;
+  } catch {
+    /* the archive flag is already gone; membership follows below */
+  }
+
+  const workspaces = ctx.workspaceRegistry.list();
+  const raw = await rawWorkspaceMembership();
+  let listed = workspaces.some((workspace) => listedBy(workspace, raw, sessionId));
+  if (!listed && cwd !== null) {
+    const owner = workspaces.find((workspace) => workspace.path === cwd);
+    if (owner !== undefined) {
+      try {
+        await owner.attachSession(sessionId);
+        listed = true;
+      } catch {
+        /* a stale header is refused; the log is untouched */
+      }
+    }
+  }
+
+  await announceSession(ctx, sessionId);
+  return { ok: true, sessionId, cwd, createdAt, listed };
+}
+
+/**
+ * Delete an archived session for good.
+ *
+ * The normal delete already unarchives, detaches and moves the log into the
+ * plugin's trash - erasing it is then the trash's own purge, so the two paths
+ * cannot drift apart.
+ */
+export async function forgetArchivedSession(ctx, sessionId) {
+  const result = await trashSession(ctx, sessionId);
+  if (result.ok !== true) return result;
+  let purged = false;
+  if (typeof result.trash === "string" && result.trash !== "") {
+    const name = result.trash.split(/[/\\]/).filter((part) => part !== "").pop();
+    if (typeof name === "string" && name !== "") {
+      try {
+        purged = (await purgeTrashEntry(name)).ok === true;
+      } catch {
+        purged = false;
+      }
+    }
+  }
+  return { ok: true, sessionId, purged };
+}
+
+/**
+ * POST { action, name?, sessionId? } -> the plugin's trash and the archive set.
+ *
+ * `list`/`restore`/`purge` address trash entries by directory name; `archived`
+ * lists the archive set, and `unarchive`/`forget`/`delete` address sessions by id.
+ */
 export async function handleTrashListRequest(ctx, req, res) {
   if ((req.method ?? "POST").toUpperCase() !== "POST") {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
@@ -943,6 +1151,26 @@ export async function handleTrashListRequest(ctx, req, res) {
     const action = body !== null && typeof body.action === "string" ? body.action : "list";
     if (action === "list") {
       sendJson(res, 200, await listTrash());
+      return;
+    }
+    if (action === "archived") {
+      sendJson(res, 200, await listArchivedSessions(ctx));
+      return;
+    }
+    if (action === "unarchive" || action === "forget" || action === "delete") {
+      const sessionId = sessionIdFrom(req, body);
+      if (sessionId === "") {
+        sendJson(res, 400, { ok: false, error: "sessionId required" });
+        return;
+      }
+      /* `delete` is the archived row's way into the recoverable trash; the other
+         two either put the session back or erase it afterwards. */
+      const result = action === "unarchive"
+        ? await restoreArchivedSession(ctx, sessionId)
+        : action === "forget"
+          ? await forgetArchivedSession(ctx, sessionId)
+          : await trashSession(ctx, sessionId);
+      sendJson(res, result.ok ? 200 : 500, result);
       return;
     }
     const name = body !== null && typeof body.name === "string" ? body.name.trim() : "";

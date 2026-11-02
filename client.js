@@ -148,6 +148,9 @@
 ".wsr-page-actions{display:flex;gap:6px;flex:none;align-items:center;white-space:nowrap}",
 ".wsr-page-note{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.6}",
 ".wsr-page-error{color:var(--dsw-alias-state-error-primary,#d9534f)}",
+".wsr-page-section{display:flex;align-items:baseline;gap:8px;margin-top:8px;padding-bottom:2px;border-bottom:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.1));font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+".wsr-page-count{font-weight:400;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
+".wsr-page-title-blank{color:var(--dsw-alias-label-tertiary);font-style:italic}",
           ".wsr-footer-action:active{background:var(--dsw-alias-interactive-bg-active)}",
           ".wsr-footer-action:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:3px}",
           '.wsr-footer-action[data-wide="false"]{width:36px;height:36px;margin:8px 0 10px;padding:0;gap:0;border-radius:50%;justify-content:center}',
@@ -266,6 +269,23 @@
           "trash.working": "处理中…",
           "trash.failed": "操作失败：",
           "trash.note": "回收站里的都是完整日志目录；恢复会按记录的 cwd 放回 sessions/<项目> 并重新挂到对应工作区。",
+          "trash.section.trash": "已删除的会话",
+          "trash.section.archived": "已归档的会话",
+          "archive.description": "归档是宿主的「视图选项 → 仅显示已归档」那一套：会话被隐藏，但日志仍在 sessions/ 里，原工作区的槽位也保留着。这里可以取消归档、移入回收站，或者彻底删除。",
+          "archive.empty": "没有已归档的会话。",
+          "archive.unarchive": "取消归档",
+          "archive.delete": "移到回收站",
+          "archive.forget": "彻底删除",
+          "archive.confirmUnarchive": "把这个会话放回原工作区的原位置？",
+          "archive.confirmDelete": "把这个会话移入回收站？之后仍可在上面一栏恢复。",
+          "archive.confirmForget": "彻底删除这个会话的日志？不可恢复。",
+          "archive.unarchived": "已取消归档，会话回到原来的位置。",
+          "archive.deleted": "已移入回收站，可在「已删除的会话」里恢复。",
+          "archive.forgotten": "已彻底删除。",
+          "archive.failed": "归档操作失败：",
+          "archive.noWorkspace": "（它原来的目录现在没有对应的工作区，需要先建一个同名工作区才能看到它）",
+          "archive.blank": "空白草稿",
+          "archive.workspace": "工作区",
           "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
           "stats.details.show": "显示明细 ▾",
@@ -346,6 +366,23 @@
           "trash.working": "Working\u2026",
           "trash.failed": "Action failed: ",
           "trash.note": "Every entry is a complete log directory; restoring puts it back under sessions/<project> using the recorded cwd and re-attaches it.",
+          "trash.section.trash": "Deleted sessions",
+          "trash.section.archived": "Archived sessions",
+          "archive.description": "Archiving is the Host's own view filter (\"Show archived only\"): the session is hidden, but its log stays under sessions/ and its workspace still holds its slot. Unarchive it here, move it into the trash, or delete it for good.",
+          "archive.empty": "No archived sessions.",
+          "archive.unarchive": "Unarchive",
+          "archive.delete": "Move to trash",
+          "archive.forget": "Delete for good",
+          "archive.confirmUnarchive": "Put this session back where it was in its workspace?",
+          "archive.confirmDelete": "Move this session into the trash? You can still restore it from the section above.",
+          "archive.confirmForget": "Delete this session's log for good? This cannot be undone.",
+          "archive.unarchived": "Unarchived: the session is back in its place.",
+          "archive.deleted": "Moved into the trash; restore it from \"Deleted sessions\".",
+          "archive.forgotten": "Deleted for good.",
+          "archive.failed": "Archive action failed: ",
+          "archive.noWorkspace": " (its original directory has no workspace right now - create one with the same path to see it again)",
+          "archive.blank": "blank draft",
+          "archive.workspace": "workspace",
           "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
           "stats.details.show": "Show details",
@@ -1843,21 +1880,41 @@
           return h(Icon, { size: size });
         }
 
-        /** The trash page itself: same data as the dialog, rendered in the main region. */
+        /**
+         * The trash page itself: the plugin's trash (deleted logs) on top, the
+         * Host's archive set (hidden sessions whose logs are still in place)
+         * below. Both are "put away", so both are managed from here.
+         */
         function TrashPanelPage() {
-          var state = react.useState({ loaded: false, entries: [], note: "", failed: "" });
+          var state = react.useState({ loaded: false, entries: [], archived: [], note: "", failed: "" });
           var view = state[0];
           var setView = state[1];
 
           var load = function (note) {
-            trashPost({ action: "list" }).then(function (answer) {
-              if (answer.json === null || answer.json.ok !== true) {
-                setView({ loaded: true, entries: [], note: "", failed: t("trash.failed") + "HTTP " + answer.status + " \u00b7 " + (answer.text || "").slice(0, 120) });
-                return;
+            /* The two listings are independent: a Host without the archive route
+               still gets a working trash, so failures are reported per section. */
+            return Promise.all([trashPost({ action: "list" }), trashPost({ action: "archived" })]).then(function (answers) {
+              var trash = answers[0];
+              var archive = answers[1];
+              var entries = [];
+              var archived = [];
+              var failed = "";
+              if (trash.json === null || trash.json.ok !== true) {
+                failed = t("trash.failed") + "HTTP " + trash.status + " \u00b7 " + (trash.text || "").slice(0, 120);
+              } else {
+                entries = Array.isArray(trash.json.entries) ? trash.json.entries : [];
               }
-              setView({ loaded: true, entries: Array.isArray(answer.json.entries) ? answer.json.entries : [], note: note === undefined ? "" : note, failed: "" });
+              if (archive.json !== null && archive.json.ok === true) {
+                archived = Array.isArray(archive.json.entries) ? archive.json.entries : [];
+              } else if (typeof archive.json === "object" && archive.json !== null && typeof archive.json.error === "string" && archive.json.error.indexOf("unknown action") !== -1) {
+                /* An older host half: no archive section, not an error. */
+                archived = null;
+              } else {
+                failed = t("archive.failed") + "HTTP " + archive.status + " \u00b7 " + (archive.text || "").slice(0, 120);
+              }
+              setView({ loaded: true, entries: entries, archived: archived, note: note === undefined ? "" : note, failed: failed });
             }).catch(function (error) {
-              setView({ loaded: true, entries: [], note: "", failed: t("trash.failed") + (error && error.message ? error.message : error) });
+              setView({ loaded: true, entries: [], archived: [], note: "", failed: t("trash.failed") + (error && error.message ? error.message : error) });
             });
           };
 
@@ -1872,6 +1929,29 @@
               load(ok ? (action === "restore" ? t("trash.restored") : t("trash.purged")) : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
             }).catch(function (error) {
               load(t("trash.failed") + (error && error.message ? error.message : error));
+            });
+          };
+
+          var actArchived = function (entry, action) {
+            var question = action === "unarchive" ? t("archive.confirmUnarchive")
+              : action === "forget" ? t("archive.confirmForget")
+                : t("archive.confirmDelete");
+            if (typeof window.confirm === "function" && !window.confirm(question)) return;
+            load(t("trash.working"));
+            trashPost({ action: action, sessionId: entry.sessionId }).then(function (result) {
+              if (result.json === null || result.json.ok !== true) {
+                load(t("archive.failed") + (result.json && result.json.error ? result.json.error : result.text));
+                return;
+              }
+              if (action === "unarchive") {
+                load(t("archive.unarchived") + (result.json.listed === false ? t("archive.noWorkspace") : ""));
+              } else if (action === "forget") {
+                load(t("archive.forgotten"));
+              } else {
+                load(t("archive.deleted"));
+              }
+            }).catch(function (error) {
+              load(t("archive.failed") + (error && error.message ? error.message : error));
             });
           };
 
@@ -1905,6 +1985,57 @@
             })(view.entries[i]);
           }
 
+          var archivedRows = [];
+          var archivedList = Array.isArray(view.archived) ? view.archived : [];
+          for (var j = 0; j < archivedList.length; j += 1) {
+            (function (entry) {
+              var meta = [];
+              if (entry.blank === true) meta.push(t("archive.blank"));
+              if (typeof entry.workspacePath === "string" && entry.workspacePath !== "") meta.push(entry.workspacePath);
+              meta.push(formatBytes(entry.sizeBytes));
+              var when = formatWhen(entry.lastAt !== 0 ? entry.lastAt : entry.createdAt);
+              if (when !== "") meta.push(when);
+              var label = typeof entry.title === "string" && entry.title !== "" ? entry.title : entry.sessionId;
+              archivedRows.push(h("div", { className: "wsr-page-row", key: entry.sessionId },
+                h("div", { className: "wsr-page-text" },
+                  h("div", {
+                    className: typeof entry.title === "string" && entry.title !== "" ? "wsr-page-title" : "wsr-page-title wsr-page-title-blank",
+                  }, label),
+                  h("div", { className: "wsr-page-meta" }, meta.join(" \u00b7 ")),
+                  typeof entry.cwd === "string" && entry.cwd !== "" ? h("div", { className: "wsr-page-path" }, entry.cwd) : null,
+                ),
+                h("div", { className: "wsr-page-actions" },
+                  h("button", {
+                    type: "button",
+                    className: "wsr-btn",
+                    onClick: function () { actArchived(entry, "unarchive"); },
+                  }, t("archive.unarchive")),
+                  h("button", {
+                    type: "button",
+                    className: "wsr-btn",
+                    onClick: function () { actArchived(entry, "delete"); },
+                  }, t("archive.delete")),
+                  h("button", {
+                    type: "button",
+                    className: "wsr-btn wsr-btn-danger",
+                    onClick: function () { actArchived(entry, "forget"); },
+                  }, t("archive.forget")),
+                ),
+              ));
+            })(archivedList[j]);
+          }
+
+          var archiveSection = view.archived === null ? null : [
+            h("div", { className: "wsr-page-section", key: "archive-head" },
+              h("span", null, t("trash.section.archived")),
+              h("span", { className: "wsr-page-count" }, String(archivedList.length)),
+            ),
+            archivedList.length === 0
+              ? h("div", { className: "wsr-page-note", key: "archive-empty" }, t("archive.empty"))
+              : h("div", { className: "wsr-page-list", key: "archive-list" }, archivedRows),
+            h("div", { className: "wsr-page-note", key: "archive-note" }, t("archive.description")),
+          ];
+
           return h("div", { className: "wsr-page" },
             h("div", { className: "wsr-page-head" },
               h("div", { className: "wsr-page-heading" }, t("trash.title")),
@@ -1922,9 +2053,17 @@
             view.note !== "" ? h("div", { className: "wsr-page-note" }, view.note) : null,
             view.failed !== "" ? h("div", { className: "wsr-page-note wsr-page-error" }, view.failed) : null,
             !view.loaded ? h("div", { className: "wsr-page-note" }, t("trash.loading"))
-              : view.entries.length === 0 ? h("div", { className: "wsr-page-note" }, t("trash.empty"))
-                : h("div", { className: "wsr-page-list" }, rows),
-            h("div", { className: "wsr-page-note" }, t("trash.note")),
+              : [
+                h("div", { className: "wsr-page-section", key: "trash-head" },
+                  h("span", null, t("trash.section.trash")),
+                  h("span", { className: "wsr-page-count" }, String(view.entries.length)),
+                ),
+                view.entries.length === 0
+                  ? h("div", { className: "wsr-page-note", key: "trash-empty" }, t("trash.empty"))
+                  : h("div", { className: "wsr-page-list", key: "trash-list" }, rows),
+                h("div", { className: "wsr-page-note", key: "trash-note" }, t("trash.note")),
+                archiveSection,
+              ],
           );
         }
 
