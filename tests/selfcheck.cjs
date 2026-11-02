@@ -492,6 +492,11 @@ function textOf(node) {
   assert.strictEqual(widest, "100.00%", "the largest bar fills the track");
   assert.ok(chartRows[0].querySelector(".wsr-chart-fill").style.width !== widest, "smaller bars are shorter");
 
+  /* Colour identity: curated hue per known tool, hash for the rest, rank fades. */
+  assert.strictEqual(chartRows[0].querySelector(".wsr-chart-fill").style.background, "hsl(217, 88%, 50%)");
+  assert.strictEqual(chartRows[1].querySelector(".wsr-chart-fill").style.background, "hsl(32, 80%, 52%)", "pwsh keeps its orange");
+  assert.strictEqual(chartRows[2].querySelector(".wsr-chart-fill").style.background, "hsl(152, 72%, 54%)", "read keeps its green and fades one rank");
+
   const details = body.querySelector(".wsr-stats-details");
   assert.strictEqual(details.style.display, "none", "the table starts folded");
   const toggle = body.querySelector(".wsr-details-toggle");

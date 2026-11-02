@@ -1138,6 +1138,57 @@
           return row;
         }
 
+        /**
+         * Colour identity for a source.
+         *
+         * The tool set is open - every plugin and MCP server adds tools - so it
+         * cannot be enumerated. A curated hue for the common tools plus a stable
+         * hash for everything else keeps one name on one hue across sessions, and
+         * the rank only modulates how vivid it is: the heaviest source reads
+         * strongest, the tail fades back.
+         */
+        var TOOL_HUES = {
+          pwsh: 32, powershell: 32, shell: 32, bash: 32, command: 32,
+          read: 152, write: 217, edit: 268, grep: 190, glob: 88,
+          todo_write: 292, todo_read: 292, todo: 292,
+          job_output: 330, job_list: 330, job_kill: 330,
+          web_fetch: 205, web_search: 205, platform_search: 205, multi_search: 205, advanced_search: 205,
+          subagent: 250, subagent_fork: 250, workflow: 250, spawn_teammate: 250, send_message: 250, wait_agent: 250,
+          ask_user_question: 12, present: 12,
+          skill: 60, create_goal: 60, update_goal: 60,
+        };
+        var TOOL_PREFIX_HUES = [
+          ["mcp__", 235],
+          ["browser_", 0],
+          ["univer_", 175],
+          ["weknora_", 300],
+          ["job_", 330],
+          ["team_", 250],
+        ];
+
+        function hashHue(name) {
+          var hash = 0;
+          for (var i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) % 360;
+          return hash;
+        }
+
+        function sourceHue(name) {
+          if (typeof name !== "string" || name === "") return 210;
+          var key = name.toLowerCase();
+          if (TOOL_HUES[key] !== undefined) return TOOL_HUES[key];
+          for (var i = 0; i < TOOL_PREFIX_HUES.length; i += 1) {
+            if (key.indexOf(TOOL_PREFIX_HUES[i][0]) === 0) return TOOL_PREFIX_HUES[i][1];
+          }
+          return hashHue(key);
+        }
+
+        /** Rank 0 is the heaviest source; later ranks fade towards grey. */
+        function sourceColor(hue, rank) {
+          var saturation = Math.max(40, 88 - rank * 8);
+          var lightness = Math.min(64, 50 + rank * 2);
+          return "hsl(" + hue + ", " + saturation + "%, " + lightness + "%)";
+        }
+
         function renderStats(body, stats) {
           body.textContent = "";
           while (body.firstChild !== null) body.removeChild(body.firstChild);
@@ -1163,10 +1214,14 @@
           body.appendChild(grid);
 
           var tools = estimate.tools || [];
-          var palette = ["#d97706", "#059669", "#7c3aed", "#db2777", "#0891b2", "#65a30d", "#9333ea", "#dc2626"];
-          var entries = [{ name: t("stats.agent"), value: agent.total || 0, share: agent.share || 0, color: "#4b8bf5" }];
+          var entries = [{ name: t("stats.agent"), value: agent.total || 0, share: agent.share || 0, color: sourceColor(217, 0) }];
           for (var j = 0; j < tools.length; j += 1) {
-            entries.push({ name: tools[j].name, value: tools[j].total || 0, share: tools[j].share || 0, color: palette[j % palette.length] });
+            entries.push({
+              name: tools[j].name,
+              value: tools[j].total || 0,
+              share: tools[j].share || 0,
+              color: sourceColor(sourceHue(tools[j].name), j + 1),
+            });
           }
 
           /* The picture first: one bar per source, sized against the largest. */
