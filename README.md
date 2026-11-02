@@ -61,11 +61,11 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 5. 把日志目录移动到 `~/.hypers-work/.trash/ws-recency/<sessionId>-<时间戳>/`；
 6. 广播 `api-session/removed`，浏览器立即移除该行。
 
-**不是物理删除**：目录只是被改名搬走。每个条目在 `.trash/ws-recency/` 下带一份 `.wsr-trash.json`（会话 id、原 cwd、时间、来源），界面里的**回收站**（设置 → 通用 → 回收站 → 打开）会列出它们：
+**不是物理删除**：目录只是被改名搬走。每个条目在 `.trash/ws-recency/` 下带一份 `.wsr-trash.json`（会话 id、原 cwd、时间、来源），界面里的**回收站**（侧栏底部「回收站」按钮）会列出它们：
 
 - 「恢复」：按记录的 cwd 算回 `sessions/<project>/<id>/`，并重新挂到对应工作区；
 - 「彻底删除」：真正删掉这份日志（二次确认）；
-- 恢复/扫描/移动之后宿主会广播 `api-session/added`，面板里还提供一个「刷新界面」按钮（重载页面，不重启应用），让侧栏立刻看到改动；
+- 恢复/扫描/移动之后宿主会广播 `api-session/added`；面板与「扫描并刷新」都能重载页面（不重启应用）让侧栏立刻看到改动；
 - 移动操作留下的旧副本会标成「移动时的旧副本」，只允许彻底删除。
 
 ## 六、Token 消耗统计
@@ -135,7 +135,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.12.2/dsh-ws-recency-0.12.2.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.13.0/dsh-ws-recency-0.13.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

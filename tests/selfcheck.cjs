@@ -240,6 +240,7 @@ let SettingsRow = null;
 let FollowUpDot = null;
 let StatsMenuItem = null;
 let MoveMenuItem = null;
+let TrashAction = null;
 let TrashMenuItem = null;
 const service = {
   opened: [],
@@ -260,6 +261,7 @@ const ctx = {
       if (spec2.name === "sidebar.session.row.leading") FollowUpDot = component;
       if (spec2.id === "ws-recency-stats") StatsMenuItem = component;
       if (spec2.id === "ws-recency-move") MoveMenuItem = component;
+      if (spec2.id === "ws-recency-trash-footer") TrashAction = component;
       if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
     },
@@ -523,6 +525,17 @@ function textOf(node) {
   pillButton.click();
   assert.strictEqual(global.fetch.calls.length, before + 1, "clicking the pill asks for statistics");
   assert.ok(String(global.fetch.calls[before].url).indexOf("sessionId=A-fresh-1") !== -1, "it analyses the conversation it sits in");
+
+  /* ---------- footer trash action ----------------------------------- */
+  assert.ok(TrashAction !== null, "the footer trash action was registered");
+  global.fetch.answer = { ok: true, entries: [] };
+  const action = TrashAction({ wide: true });
+  assert.strictEqual(action.type, "button");
+  assert.strictEqual(action.props.title, "Trash");
+  const beforeTrash = global.fetch.calls.length;
+  action.props.onClick();
+  assert.strictEqual(global.fetch.calls.length, beforeTrash + 1, "clicking opens the trash panel");
+  assert.ok(String(global.fetch.calls[beforeTrash].url).indexOf("/ws-recency/trash") !== -1);
 
   /* ---------- move to workspace ------------------------------------- */
   global.window.confirm = () => true;

@@ -133,6 +133,9 @@
           ".wsr-move-path{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-move-badge{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-trash-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+          ".wsr-footer-action{display:inline-flex;align-items:center;gap:6px;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;padding:4px 8px;border-radius:6px}",
+          ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
+          ".wsr-footer-label{font-size:12px}",
           ".wsr-trash-actions{display:flex;gap:6px;flex:none}",
           ".wsr-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
@@ -219,7 +222,7 @@
           "move.repaired": "已补登记到「{workspace}」：上一次移动只搬了日志、没登记工作区，这次把它补上了。",
           "adopt.title": "补登记游离会话",
           "adopt.description": "修复会话归属：把“目录属于某工作区却不在任何分组”的会话挂回去，并把仍挂在旧工作区分组里的重复归属清掉。",
-          "adopt.action": "扫描",
+          "adopt.action": "扫描并刷新",
           "adopt.working": "扫描中…",
           "adopt.done": "已补登记 {n} 个会话。",
           "adopt.cleaned": "清理了 {n} 处重复/失效的工作区归属。",
@@ -298,7 +301,7 @@
           "move.repaired": "Registered in \"{workspace}\": the previous attempt moved the log without the bookkeeping, and this repaired it.",
           "adopt.title": "Adopt unlisted sessions",
           "adopt.description": "Repairs session membership: re-attaches sessions whose directory belongs to a workspace but are listed nowhere, and clears stale memberships that make one session appear twice.",
-          "adopt.action": "Scan",
+          "adopt.action": "Scan and reload",
           "adopt.working": "Scanning\u2026",
           "adopt.done": "Re-attached {n} session(s).",
           "adopt.cleaned": " Cleared {n} stale membership(s).",
@@ -1776,17 +1779,20 @@
           load("");
         }
 
-        /** Settings -> General: open the trash panel. */
-        function TrashRow() {
-          return h("div", { className: "wsr-setRow" },
-            h("div", { className: "wsr-setText" },
-              h("div", { className: "wsr-setTitle" }, t("trash.title")),
-              h("div", { className: "wsr-setDesc" }, t("trash.description")),
-            ),
-            h("div", { className: "wsr-controls" },
-              h("button", { type: "button", className: "wsr-step", onClick: function () { openTrashPanel(); } }, t("trash.open")),
-            ),
-          );
+        /** Sidebar footer action: the trash, one click away from the account area. */
+        function TrashFooterAction(props) {
+          var wide = props === undefined || props === null || props.wide !== false;
+          var label = t("trash.title");
+          var Icon = ui.IconTrashOutlineRegular;
+          return h("button", {
+            type: "button",
+            className: "wsr-footer-action",
+            title: label,
+            "aria-label": label,
+            onClick: function () { openTrashPanel(); },
+          },
+            typeof Icon === "function" ? h(Icon, {}) : null,
+            wide ? h("span", { className: "wsr-footer-label" }, label) : null);
         }
 
         /** Settings -> General: re-attach sessions that belong to no workspace. */
@@ -1811,6 +1817,16 @@
                   var text = t("adopt.done", { n: count });
                   if (cleaned > 0) text += t("adopt.cleaned", { n: cleaned });
                   setMessage(text);
+                  /* The scan is the refresh: reload once it has changed something. */
+                  if (count > 0 || cleaned > 0) {
+                    window.setTimeout(function () {
+                      try {
+                        if (window.location !== undefined && typeof window.location.reload === "function") window.location.reload();
+                      } catch (error) {
+                        /* nothing to do */
+                      }
+                    }, 900);
+                  }
                   return;
                 }
                 setMessage(t("adopt.failed") + (answer.json && answer.json.error ? answer.json.error : answer.text.slice(0, 120)));
@@ -1826,7 +1842,6 @@
             ),
             h("div", { className: "wsr-controls" },
               h("button", { type: "button", className: "wsr-step", onClick: run }, t("adopt.action")),
-              h("button", { type: "button", className: "wsr-step", onClick: function () { reloadButton().click(); } }, t("ui.reload")),
             ),
           );
         }
@@ -1969,14 +1984,13 @@
             }, ColorsRow);
           });
 
-          ctx.slots.inject("settings.general.item", function () {
+          ctx.slots.inject("sidebar.footer.action", function () {
             return ctx.slots.register({
-              name: "settings.general.item",
-              id: "ws-recency-trash-panel",
-              order: 48,
-              store: prefs,
+              name: "sidebar.footer.action",
+              id: "ws-recency-trash-footer",
+              order: 30,
               locale: NS,
-            }, TrashRow);
+            }, TrashFooterAction);
           });
 
           ctx.slots.inject("settings.general.item", function () {
