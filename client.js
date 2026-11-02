@@ -123,6 +123,14 @@
           ".wsr-stats-legend{display:flex;flex-wrap:wrap;gap:10px}",
           ".wsr-stats-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-stats-swatch{width:8px;height:8px;border-radius:2px}",
+          ".wsr-move-list{display:flex;flex-direction:column;gap:4px}",
+          ".wsr-move-row{display:flex;align-items:center;gap:8px;text-align:left;border:none;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:inherit;font:inherit;padding:8px 10px;border-radius:8px;cursor:pointer}",
+          ".wsr-move-row:hover:not([disabled]){background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08))}",
+          ".wsr-move-row[disabled]{opacity:.55;cursor:default}",
+          ".wsr-move-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
+          ".wsr-move-title{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-move-path{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-move-badge{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
           ".wsr-chart-title{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-chart-row{display:grid;grid-template-columns:120px 1fr 64px 56px;align-items:center;gap:8px}",
@@ -195,6 +203,14 @@
           "stats.agentDetail": "主 agent 构成：思考 {reasoning} · 回复 {text} · 用户消息 {user} · 系统提示 {system}",
           "stats.diagnose.unmounted": "\n\n（宿主半已加载，但统计路由没挂上——重启应用再试）",
           "stats.diagnose.noHost": "\n\n（宿主半未加载：需要重启应用加载新版本）",
+          "menu.move": "移动到工作区…",
+          "move.title": "移动到工作区",
+          "move.note": "会话属于哪个工作区，由它创建时的目录决定；移动会改写会话记录的 cwd，把日志搬到新工作区目录，旧日志备份在 .trash/ws-recency。",
+          "move.confirm": "把会话移动到「{workspace}」？",
+          "move.current": "当前",
+          "move.working": "移动中…（会先停止会话）",
+          "move.done": "已移动到「{workspace}」。若列表没刷新，切换一下工作区或重启应用。",
+          "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
           "stats.details.show": "显示明细 ▾",
           "stats.details.hide": "收起明细 ▴",
@@ -239,6 +255,14 @@
           "stats.agentDetail": "Agent composition: reasoning {reasoning} \u00b7 reply {text} \u00b7 user messages {user} \u00b7 system prompt {system}",
           "stats.diagnose.unmounted": "\n\n(the host half is loaded but the statistics route did not mount - restart the app and retry)",
           "stats.diagnose.noHost": "\n\n(the host half is not loaded: restart the app to pick up the new version)",
+          "menu.move": "Move to workspace\u2026",
+          "move.title": "Move to workspace",
+          "move.note": "A session belongs to the workspace of the directory it was created in. Moving rewrites the stored cwd, relocates the log and keeps the old one as a backup in .trash/ws-recency.",
+          "move.confirm": "Move this session to \"{workspace}\"?",
+          "move.current": "current",
+          "move.working": "Moving\u2026 (the session is stopped first)",
+          "move.done": "Moved to \"{workspace}\". If the list has not refreshed, switch workspaces or restart the app.",
+          "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
           "stats.details.show": "Show details",
           "stats.details.hide": "Hide details",
@@ -1354,6 +1378,104 @@
           });
         }
 
+        /** Which workspace currently owns a session, per the client snapshot. */
+        function workspaceOfSession(sessionId) {
+          var items = (data.workspaces && data.workspaces.items) || [];
+          for (var i = 0; i < items.length; i += 1) {
+            if ((items[i].sessionIds || []).indexOf(sessionId) !== -1) return items[i];
+          }
+          return null;
+        }
+
+        /** Modal that lists the workspaces and moves the session into the chosen one. */
+        function openMovePanel(sessionId) {
+          if (typeof document === "undefined") return;
+          closeStatsPanel();
+          var backdrop = statsDiv("wsr-modal-backdrop");
+          var panel = statsDiv("wsr-modal");
+          backdrop.appendChild(panel);
+          var head = statsDiv("wsr-modal-head");
+          head.appendChild(statsDiv("wsr-modal-title", t("move.title")));
+          var close = document.createElement("button");
+          close.type = "button";
+          close.className = "wsr-modal-close";
+          close.textContent = "\u00d7";
+          close.addEventListener("click", closeStatsPanel);
+          head.appendChild(close);
+          panel.appendChild(head);
+          var body = statsDiv("wsr-modal-body");
+          panel.appendChild(body);
+          body.appendChild(statsDiv("wsr-stats-note", t("move.note")));
+
+          var current = workspaceOfSession(sessionId);
+          var items = (data.workspaces && data.workspaces.items) || [];
+          var list = statsDiv("wsr-move-list");
+          for (var i = 0; i < items.length; i += 1) {
+            (function (item) {
+              var isCurrent = current !== null && current.workspaceId === item.workspaceId;
+              var row = document.createElement("button");
+              row.type = "button";
+              row.className = "wsr-move-row";
+              row.setAttribute("data-wsr-move-target", String(item.workspaceId));
+              if (isCurrent) row.setAttribute("disabled", "true");
+              var text = statsDiv("wsr-move-text");
+              text.appendChild(statsDiv("wsr-move-title", (item.title && String(item.title)) || baseName(item.path)));
+              text.appendChild(statsDiv("wsr-move-path", String(item.path || "")));
+              row.appendChild(text);
+              row.appendChild(statsDiv("wsr-move-badge", isCurrent ? t("move.current") : ""));
+              if (!isCurrent) {
+                row.addEventListener("click", function () {
+                  var label = (item.title && String(item.title)) || baseName(item.path);
+                  if (typeof window.confirm !== "function" || !window.confirm(t("move.confirm", { workspace: label }))) return;
+                  body.textContent = t("move.working");
+                  fetch("/ws-recency/session-move?sessionId=" + encodeURIComponent(sessionId), {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ sessionId: sessionId, workspaceId: item.workspaceId }),
+                  })
+                    .then(function (response) {
+                      return response.text().then(function (text) {
+                        var parsed = null;
+                        try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+                        return { status: response.status, text: text, json: parsed };
+                      });
+                    })
+                    .then(function (result) {
+                      if (result.json !== null && result.json.ok === true) {
+                        body.textContent = t("move.done", { workspace: label });
+                        return;
+                      }
+                      var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 160) || "(empty response)";
+                      body.textContent = t("move.failed") + "HTTP " + result.status + " \u00b7 " + reason;
+                    })
+                    .catch(function (error) {
+                      body.textContent = t("move.failed") + (error && error.message ? error.message : error);
+                    });
+                });
+              }
+              list.appendChild(row);
+            })(items[i]);
+          }
+          body.appendChild(list);
+          backdrop.addEventListener("click", function (event) {
+            if (event !== undefined && event.target === backdrop) closeStatsPanel();
+          });
+          document.body.appendChild(backdrop);
+          statsModal = backdrop;
+          document.addEventListener("keydown", onStatsKey);
+        }
+
+        /** Session "..." menu row: move the conversation to another workspace. */
+        function MoveMenuItem(props) {
+          var Item = ui.MenuItemButton;
+          if (typeof Item !== "function") return null;
+          var Icon = ui.IconFolderOpenOutlineRegular;
+          return h(Item, {
+            icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
+            onSelect: function () { openMovePanel(props.sessionId); },
+          }, t("menu.move"));
+        }
+
         /** Session "..." menu row: token statistics of that session. */
         function StatsMenuItem(props) {
           var Item = ui.MenuItemButton;
@@ -1598,6 +1720,16 @@
               store: prefs,
               locale: NS,
             }, FollowUpDot);
+          });
+
+          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
+            return ctx.slots.register({
+              name: "sidebar.workspaces.session.menu.item",
+              id: "ws-recency-move",
+              order: 690,
+              store: prefs,
+              locale: NS,
+            }, MoveMenuItem);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {

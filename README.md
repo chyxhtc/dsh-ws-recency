@@ -1,6 +1,6 @@
 # dsh-ws-recency
 
-DSH 侧栏的六件事：**工作区分组按最近活跃排序**、**过期历史自动折叠**、**运行中/未读/需跟进三色标记**、**所有置顶会话汇总到顶部一个区**、**删除会话到可恢复的回收站**、**按工具分类的 token 消耗统计**。单独装上就有效，不依赖其它插件。
+DSH 侧栏的六件事：**工作区分组按最近活跃排序**、**过期历史自动折叠**、**运行中/未读/需跟进三色标记**、**所有置顶会话汇总到顶部一个区**、**删除会话到可恢复的回收站**、**按工具分类的 token 消耗统计**、**把会话移动到另一个工作区**。单独装上就有效，不依赖其它插件。
 
 ## 一、分组排序
 
@@ -75,6 +75,24 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 宿主半（`index.js`）把统计与删除的路由挂在 webServer 上；如果面板报“宿主半未加载”，说明应用还没重启加载新版本。0.10.1 起面板失败时会带上 HTTP 状态和 `/ws-recency/health` 的自检结果，便于定位。
 
+## 七、移动到工作区
+
+「…」菜单 →「移动到工作区…」，选目标工作区即可。
+
+**为什么核心做不到**：会话属于哪个工作区由它创建时的 `cwd` 决定，工作区的 attach 会校验「header.cwd 必须等于工作区路径」，而 header 是日志里不可变的第一条记录——所以在核心层面没有任何"改工作区"的入口。
+
+**本插件怎么做**（宿主侧，唯一的写操作）：
+
+1. 停掉会话；
+2. 通过 persistence 读出全部事件；
+3. 把旧日志目录移进 `.trash/ws-recency/<id>-move-<时间戳>`（既是备份，也腾出这个 id）；
+4. 用新 `cwd`、原 id 重建日志，再回放全部事件；
+5. 校验新 header 的 cwd；
+6. 先 attach 到目标工作区（失败就回滚原目录），再 detach 旧工作区；
+7. 删投影缓存，让它按新路径重建。
+
+**风险与退路**：这是插件里唯一改写会话存储的操作。备份会保留，回滚 = 把备份目录移回 `sessions/<project>/<id>`。
+
 ## 设置
 
 **设置 → 通用**：
@@ -110,7 +128,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.10.6/dsh-ws-recency-0.10.6.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.11.0/dsh-ws-recency-0.11.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

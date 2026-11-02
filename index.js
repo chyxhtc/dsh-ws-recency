@@ -19,7 +19,7 @@
  *
  * @module dsh-ws-recency
  */
-import { mkdir, readdir, rename } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat as statPath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 /** Cordis plugin name shown by the loader. */
@@ -35,6 +35,7 @@ export const HOST_VERSION = "0.10.1";
 export const TRASH_SESSION_PATH = "/ws-recency/session-trash";
 export const STATS_SESSION_PATH = "/ws-recency/session-stats";
 export const HEALTH_PATH = "/ws-recency/health";
+export const MOVE_SESSION_PATH = "/ws-recency/session-move";
 
 const STOP_SETTLE_MS = 500;
 const MAX_BODY_BYTES = 16 * 1024;
@@ -438,6 +439,168 @@ export async function sessionStatistics(ctx, sessionId) {
   }
 }
 
+/**
+ * Move one session into another workspace.
+ *
+ * A Session belongs to a Workspace through its stored header's `cwd`, and the
+ * Workspace registry refuses to attach a session whose header names another
+ * directory - so the header itself has to change. It is the immutably stored
+ * first record, so the move rewrites the log:
+ *
+ *   1. stop the session and read every event through the persistence seam
+ *   2. rename the old log directory into `.trash/ws-recency` (a backup, and it
+ *      frees the id for the create below)
+ *   3. create the same id with the new `cwd` and append the same events
+ *   4. verify the new header, then detach from the old workspace and attach to
+ *      the target (which validates the new cwd)
+ *   5. drop the projection cache so it rebuilds against the new path
+ *
+ * Any failure before step 4 rolls the backup back into place. The backup is kept
+ * afterwards on purpose: it is the only undo, and it is one rename away.
+ */
+export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
+  const stat = await ctx.sessionPersistence.stat(sessionId);
+  if (stat === undefined || stat === null) return { ok: false, error: "session not found" };
+  const header = stat.header;
+  if (header === undefined || header === null) return { ok: false, error: "session header unavailable" };
+
+  const workspaces = ctx.workspaceRegistry.list();
+  const target = workspaces.find((workspace) => workspace.id === workspaceId)
+    ?? workspaces.find((workspace) => workspace.path === workspaceId);
+  if (target === undefined) return { ok: false, error: "workspace not found" };
+  const targetPath = target.path;
+  if (header.cwd === targetPath) return { ok: false, error: "already in that workspace" };
+
+  let targetDirectory;
+  try {
+    targetDirectory = await statPath(targetPath);
+  } catch {
+    return { ok: false, error: `target directory does not exist: ${targetPath}` };
+  }
+  if (!targetDirectory.isDirectory()) return { ok: false, error: "target path is not a directory" };
+
+  try {
+    await ctx.parallel("workspace/session-stop", { sessionId });
+  } catch {
+    /* stopping is best effort, exactly like "stop and archive" */
+  }
+  await new Promise((resolve) => setTimeout(resolve, STOP_SETTLE_MS));
+
+  let events;
+  try {
+    events = await readSessionEvents(ctx, sessionId);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+
+  const located = typeof ctx.sessionPersistence.locate === "function" ? ctx.sessionPersistence.locate(header) : undefined;
+  const sourceDirectory = located !== undefined && located !== null && typeof located.path === "string" ? dirname(located.path) : undefined;
+  if (sourceDirectory === undefined) return { ok: false, error: "session log not found" };
+
+  const home = await dshHome();
+  const backupRoot = join(home, ".trash", "ws-recency");
+  const backup = join(backupRoot, `${sessionId}-move-${Date.now()}`);
+  let movedAside = false;
+  try {
+    await mkdir(backupRoot, { recursive: true });
+    await rename(sourceDirectory, backup);
+    movedAside = true;
+  } catch (error) {
+    return { ok: false, error: `could not park the old log: ${error instanceof Error ? error.message : String(error)}` };
+  }
+
+  /** Undo the rewrite: drop whatever was written and put the original back. */
+  const rollback = async () => {
+    try {
+      const partial = typeof ctx.sessionPersistence.locate === "function" ? ctx.sessionPersistence.locate({ ...header, cwd: targetPath }) : undefined;
+      if (partial !== undefined && partial !== null && typeof partial.path === "string") await rm(dirname(partial.path), { recursive: true, force: true });
+    } catch {
+      /* nothing partial to clean */
+    }
+    try {
+      await rename(backup, sourceDirectory);
+    } catch {
+      /* the backup stays in the trash folder */
+    }
+  };
+
+  try {
+    const created = await ctx.sessionPersistence.create({ ...header, cwd: targetPath }, { inheritedEventCount: 0 });
+    try {
+      if (events.length > 0) await created.append(events);
+      if (typeof created.flush === "function") await created.flush();
+    } finally {
+      try {
+        await created.close();
+      } catch {
+        /* closing is best effort */
+      }
+    }
+    const check = await ctx.sessionPersistence.stat(sessionId);
+    if (check === undefined || check === null || check.header === undefined || check.header.cwd !== targetPath) {
+      throw new Error("the rewritten header did not take");
+    }
+  } catch (error) {
+    await rollback();
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+
+  /* Attach first, detach second: a refused attach must not orphan the session. */
+  try {
+    await target.attachSession(sessionId);
+  } catch (error) {
+    await rollback();
+    return { ok: false, error: `the workspace refused the attach: ${error instanceof Error ? error.message : String(error)}` };
+  }
+
+  const detached = [];
+  for (const workspace of workspaces) {
+    if (!Array.isArray(workspace.sessionIds) || !workspace.sessionIds.includes(sessionId)) continue;
+    if (workspace.id === target.id) continue;
+    try {
+      await workspace.detachSession(sessionId);
+      detached.push(workspace.id);
+    } catch {
+      /* the session is already in the target; a stale membership is cosmetic */
+    }
+  }
+
+  try {
+    const domain = ctx.get("storageDomain");
+    const projcache = typeof domain?.get === "function" ? domain.get("session_projcache") : undefined;
+    if (projcache !== undefined) await projcache.table("sessions").delete(sessionId);
+  } catch {
+    /* the cache is derived data */
+  }
+
+  return { ok: true, workspace: target.id, path: targetPath, detached, backup };
+}
+
+/** POST { sessionId, workspaceId } -> move that session to another workspace. */
+export async function handleMoveRequest(ctx, req, res) {
+  if ((req.method ?? "POST").toUpperCase() !== "POST") {
+    sendJson(res, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+  if (!loopbackOrigin(req)) {
+    sendJson(res, 403, { ok: false, error: "origin not trusted" });
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const sessionId = sessionIdFrom(req, body);
+    const workspaceId = body !== null && typeof body.workspaceId === "string" ? body.workspaceId.trim() : "";
+    if (sessionId === "" || workspaceId === "") {
+      sendJson(res, 400, { ok: false, error: "sessionId and workspaceId are required" });
+      return;
+    }
+    const result = await moveSessionToWorkspace(ctx, sessionId, workspaceId);
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (error) {
+    sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 /** POST { sessionId } -> token statistics for that session. */
 export async function handleStatsRequest(ctx, req, res) {
   if ((req.method ?? "POST").toUpperCase() !== "POST") {
@@ -483,7 +646,7 @@ export function apply(ctx) {
         handler: (req, res) => sendJson(res, 200, {
           ok: true,
           version: HOST_VERSION,
-          routes: { stats: statsMounted, trash: trashMounted },
+          routes: { stats: statsMounted, trash: trashMounted, move: moveMounted },
         }),
       }), "ws-recency: health route");
 
@@ -494,6 +657,15 @@ export function apply(ctx) {
           path: STATS_SESSION_PATH,
           handler: (req, res) => handleStatsRequest(statsCtx, req, res),
         }), "ws-recency: stats route");
+      });
+
+      webCtx.inject(["sessionPersistence", "workspaceRegistry"], (moveCtx) => {
+        moveMounted = true;
+        webCtx.effect(() => server.register({
+          kind: "exact",
+          path: MOVE_SESSION_PATH,
+          handler: (req, res) => handleMoveRequest(moveCtx, req, res),
+        }), "ws-recency: move route");
       });
 
       webCtx.inject(["sessionPersistence", "workspaceRegistry", "sessions"], (trashCtx) => {
@@ -512,3 +684,4 @@ export function apply(ctx) {
 
 let statsMounted = false;
 let trashMounted = false;
+let moveMounted = false;

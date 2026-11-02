@@ -239,6 +239,7 @@ let Sorter = null;
 let SettingsRow = null;
 let FollowUpDot = null;
 let StatsMenuItem = null;
+let MoveMenuItem = null;
 let TrashMenuItem = null;
 const service = {
   opened: [],
@@ -258,6 +259,7 @@ const ctx = {
       if (spec2.name === "settings.general.item") SettingsRow = component;
       if (spec2.name === "sidebar.session.row.leading") FollowUpDot = component;
       if (spec2.id === "ws-recency-stats") StatsMenuItem = component;
+      if (spec2.id === "ws-recency-move") MoveMenuItem = component;
       if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
     },
@@ -521,6 +523,28 @@ function textOf(node) {
   pillButton.click();
   assert.strictEqual(global.fetch.calls.length, before + 1, "clicking the pill asks for statistics");
   assert.ok(String(global.fetch.calls[before].url).indexOf("sessionId=A-fresh-1") !== -1, "it analyses the conversation it sits in");
+
+  /* ---------- move to workspace ------------------------------------- */
+  global.window.confirm = () => true;
+  global.fetch.answer = { ok: true, workspace: "B" };
+  assert.ok(MoveMenuItem !== null, "the move menu row was registered");
+  const moveItem = MoveMenuItem({ sessionId: "A-fresh-1" });
+  assert.ok(moveItem !== null);
+  assert.strictEqual(moveItem.children[0], "Move to workspace\u2026");
+  moveItem.props.onSelect();
+  const moveBackdrop = overlayRoot.children[overlayRoot.children.length - 1];
+  assert.ok(String(moveBackdrop.className).indexOf("wsr-modal-backdrop") !== -1);
+  const moveBody = moveBackdrop.querySelector(".wsr-modal-body");
+  const targets = moveBody.querySelectorAll("[data-wsr-move-target]");
+  assert.strictEqual(targets.length, 4, "every workspace is offered");
+  assert.strictEqual(targets[0].getAttribute("disabled"), "true", "the current workspace is not a target");
+  const beforeMove = global.fetch.calls.length;
+  targets[1].click();
+  assert.strictEqual(global.fetch.calls.length, beforeMove + 1, "picking a workspace posts the move");
+  assert.ok(String(global.fetch.calls[beforeMove].url).indexOf("/ws-recency/session-move") !== -1);
+  assert.deepStrictEqual(JSON.parse(global.fetch.calls[beforeMove].options.body), { sessionId: "A-fresh-1", workspaceId: "B" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(moveBody.children.length > 0);
 
   conversationNode.attrs["data-conversation-session"] = "";
   render();
