@@ -19,7 +19,7 @@
  *
  * @module dsh-ws-recency
  */
-import { mkdir, readdir, rename, rm, stat as statPath } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat as statPath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 /** Cordis plugin name shown by the loader. */
@@ -440,6 +440,24 @@ export async function sessionStatistics(ctx, sessionId) {
   }
 }
 
+/** Which workspaces list a session in the stored table (the registry view is filtered). */
+async function rawWorkspaceMembership() {
+  try {
+    const home = await dshHome();
+    const raw = JSON.parse(await readFile(join(home, "storages", "workspace.json"), "utf8"));
+    const table = raw !== null && raw.tables !== undefined && raw.tables !== null ? raw.tables.workspaces : undefined;
+    if (table === undefined || table === null || typeof table !== "object") return null;
+    const map = new Map();
+    for (const [id, record] of Object.entries(table)) {
+      const ids = record !== null && Array.isArray(record.sessionIds) ? record.sessionIds : [];
+      map.set(id, { path: typeof record.path === "string" ? record.path : "", sessionIds: ids });
+    }
+    return map;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Move one session into another workspace.
  *
@@ -619,10 +637,15 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
     return { ok: false, error: `the workspace refused the attach: ${error instanceof Error ? error.message : String(error)}` };
   }
 
+  /* Detach by the RAW record, not the filtered view: once the header carries the
+     new cwd, the old workspace's own `sessionIds` getter already hides the id, so
+     an "is it listed?" check would skip exactly the membership that has to go. */
   const detached = [];
+  const raw = await rawWorkspaceMembership();
   for (const workspace of workspaces) {
-    if (!Array.isArray(workspace.sessionIds) || !workspace.sessionIds.includes(sessionId)) continue;
     if (workspace.id === target.id) continue;
+    const record = raw === null ? undefined : raw.get(workspace.id);
+    if (record !== undefined && !record.sessionIds.includes(sessionId)) continue;
     try {
       await workspace.detachSession(sessionId);
       detached.push(workspace.id);
@@ -653,13 +676,34 @@ export async function adoptOrphanSessions(ctx) {
   const byPath = new Map();
   for (const workspace of workspaces) byPath.set(workspace.path, workspace);
   const adopted = [];
+  const raw = await rawWorkspaceMembership();
+  let cleaned = 0;
   for (const snapshot of snapshots) {
     const header = snapshot !== null && snapshot !== undefined ? snapshot.header : undefined;
     if (header === undefined || header === null || typeof header.cwd !== "string" || typeof header.id !== "string") continue;
     const target = byPath.get(header.cwd);
+    /* Stale memberships first: a workspace whose path is not this session's cwd
+       must not keep listing it - that is what puts one session in two groups. */
+    if (raw !== null) {
+      for (const workspace of workspaces) {
+        if (target !== undefined && workspace.id === target.id) continue;
+        const record = raw.get(workspace.id);
+        if (record === undefined || !record.sessionIds.includes(header.id)) continue;
+        try {
+          await workspace.detachSession(header.id);
+          cleaned += 1;
+        } catch {
+          /* leave it */
+        }
+      }
+    }
     if (target === undefined) continue;
-    const listed = workspaces.some((workspace) => Array.isArray(workspace.sessionIds) && workspace.sessionIds.includes(header.id));
-    if (listed) continue;
+    const record = raw === null ? undefined : raw.get(target.id);
+    /* Without the raw table, fall back to the registry's own (filtered) view. */
+    const physically = record !== undefined
+      ? record.sessionIds.includes(header.id)
+      : Array.isArray(target.sessionIds) && target.sessionIds.includes(header.id);
+    if (physically) continue;
     try {
       await target.attachSession(header.id);
       adopted.push(header.id);
@@ -667,7 +711,7 @@ export async function adoptOrphanSessions(ctx) {
       /* the registry refused it; leave it alone */
     }
   }
-  return { ok: true, adopted };
+  return { ok: true, adopted, cleaned };
 }
 
 /** POST {} -> attach every session that belongs nowhere. */

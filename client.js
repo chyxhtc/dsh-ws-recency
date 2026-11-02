@@ -215,10 +215,11 @@
           "move.doneLive": "\n\n这个会话刚才是打开状态：建议重启应用后再继续对话，避免它沿用旧的目录。",
           "move.repaired": "已补登记到「{workspace}」：上一次移动只搬了日志、没登记工作区，这次把它补上了。",
           "adopt.title": "补登记游离会话",
-          "adopt.description": "有些会话的目录已经指向某个工作区，却不在任何分组里（移动中断会留下这种状态）。这里可以一次性找回。",
+          "adopt.description": "修复会话归属：把“目录属于某工作区却不在任何分组”的会话挂回去，并把仍挂在旧工作区分组里的重复归属清掉。",
           "adopt.action": "扫描",
           "adopt.working": "扫描中…",
           "adopt.done": "已补登记 {n} 个会话。",
+          "adopt.cleaned": "清理了 {n} 处重复/失效的工作区归属。",
           "adopt.failed": "扫描失败：",
           "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
@@ -276,10 +277,11 @@
           "move.doneLive": "\n\nThe session was open: restart the app before continuing it so it does not keep using the old directory.",
           "move.repaired": "Registered in \"{workspace}\": the previous attempt moved the log without the bookkeeping, and this repaired it.",
           "adopt.title": "Adopt unlisted sessions",
-          "adopt.description": "A session whose directory already belongs to a workspace can end up listed nowhere (an interrupted move leaves exactly this). Scan to re-attach them.",
+          "adopt.description": "Repairs session membership: re-attaches sessions whose directory belongs to a workspace but are listed nowhere, and clears stale memberships that make one session appear twice.",
           "adopt.action": "Scan",
           "adopt.working": "Scanning\u2026",
           "adopt.done": "Re-attached {n} session(s).",
+          "adopt.cleaned": " Cleared {n} stale membership(s).",
           "adopt.failed": "Scan failed: ",
           "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
@@ -1597,7 +1599,10 @@
               .then(function (answer) {
                 if (answer.json !== null && answer.json.ok === true) {
                   var count = Array.isArray(answer.json.adopted) ? answer.json.adopted.length : 0;
-                  setMessage(t("adopt.done", { n: count }));
+                  var cleaned = typeof answer.json.cleaned === "number" ? answer.json.cleaned : 0;
+                  var text = t("adopt.done", { n: count });
+                  if (cleaned > 0) text += t("adopt.cleaned", { n: cleaned });
+                  setMessage(text);
                   return;
                 }
                 setMessage(t("adopt.failed") + (answer.json && answer.json.error ? answer.json.error : answer.text.slice(0, 120)));

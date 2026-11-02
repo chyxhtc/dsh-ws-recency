@@ -181,7 +181,7 @@ function fixture(root) {
 
   /* ---------- adopting sessions that belong nowhere ------------------- */
   {
-    const target = { id: "w", path: "D:\\proj", sessionIds: [], attachSession: async (id) => { target.sessionIds.push(id); } };
+    const target = { id: "w", path: "D:\\proj", sessionIds: ["listed"], attachSession: async (id) => { target.sessionIds.push(id); } };
     const ctx = {
       sessionPersistence: {
         list: async () => [
@@ -190,11 +190,35 @@ function fixture(root) {
           { header: { id: "elsewhere", cwd: "D:\\other" } },
         ],
       },
-      workspaceRegistry: { list: () => [{ ...target, sessionIds: ["listed"] }, target] },
+      workspaceRegistry: { list: () => [target] },
     };
     const result = await mod.adoptOrphanSessions(ctx);
     assert.deepStrictEqual(result.adopted, ["orphan"], "only the unlisted matching session is adopted");
-    assert.deepStrictEqual(target.sessionIds, ["orphan"]);
+    assert.deepStrictEqual(target.sessionIds, ["listed", "orphan"]);
+  }
+
+  /* ---------- a stale membership is cleared ------------------------- */
+  {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "wsr-dup-"));
+    process.env.DSH_HOME = base;
+    fs.mkdirSync(path.join(base, "storages"), { recursive: true });
+    fs.writeFileSync(path.join(base, "storages", "workspace.json"), JSON.stringify({
+      tables: { workspaces: { "w-old": { path: "D:\\old", sessionIds: ["sid"] }, "w-new": { path: "D:\\new", sessionIds: ["sid"] } } },
+    }));
+    const detached = [];
+    const workspaces = [
+      { id: "w-old", path: "D:\\old", sessionIds: [], detachSession: async (id) => { detached.push(id); } },
+      { id: "w-new", path: "D:\\new", sessionIds: [], attachSession: async () => {} },
+    ];
+    const ctx = {
+      sessionPersistence: { list: async () => [{ header: { id: "sid", cwd: "D:\\new" } }] },
+      workspaceRegistry: { list: () => workspaces },
+    };
+    const result = await mod.adoptOrphanSessions(ctx);
+    assert.deepStrictEqual(detached, ["sid"], "the workspace that no longer owns the cwd lets go");
+    assert.strictEqual(result.cleaned, 1);
+    fs.rmSync(base, { recursive: true, force: true });
+    process.env.DSH_HOME = root;
   }
 
   fs.rmSync(root, { recursive: true, force: true });
