@@ -56,7 +56,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 1. 先停掉它正在跑的工作；
 2. 摘掉归档标记与置顶；
-3. 从每个工作区的 `sessionIds` 记账里 detach；
+3. 从每个工作区的记账里 detach（按 `workspace.json` 的原始记录判断，避免过滤视图漏删）；
 4. 删掉投影缓存记录；
 5. 把日志目录移动到 `~/.hypers-work/.trash/ws-recency/<sessionId>-<时间戳>/`；
 6. 广播 `api-session/removed`，浏览器立即移除该行。
@@ -130,7 +130,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.11.6/dsh-ws-recency-0.11.6.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.11.7/dsh-ws-recency-0.11.7.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

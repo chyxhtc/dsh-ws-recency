@@ -178,8 +178,15 @@ export async function trashSession(ctx, sessionId) {
   try { await ctx.workspaceRegistry.unarchiveSession(sessionId); } catch { /* not archived */ }
   try { await ctx.workspaceRegistry.unpinSession(sessionId); } catch { /* not pinned */ }
 
+  /* Same filtered-view trap as the move: the workspace's own sessionIds may
+     already hide the id while the stored record still lists it. */
+  const rawMembers = await rawWorkspaceMembership();
   for (const workspace of ctx.workspaceRegistry.list()) {
-    if (!Array.isArray(workspace.sessionIds) || !workspace.sessionIds.includes(sessionId)) continue;
+    const record = rawMembers === null ? undefined : rawMembers.get(workspace.id);
+    const listed = record !== undefined
+      ? record.sessionIds.includes(sessionId)
+      : Array.isArray(workspace.sessionIds) && workspace.sessionIds.includes(sessionId);
+    if (!listed) continue;
     try { await workspace.detachSession(sessionId); } catch { /* keep going */ }
   }
 
