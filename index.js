@@ -19,7 +19,7 @@
  *
  * @module dsh-ws-recency
  */
-import { mkdir, readFile, readdir, rename, rm, stat as statPath } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat as statPath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 /** Cordis plugin name shown by the loader. */
@@ -37,6 +37,9 @@ export const STATS_SESSION_PATH = "/ws-recency/session-stats";
 export const HEALTH_PATH = "/ws-recency/health";
 export const MOVE_SESSION_PATH = "/ws-recency/session-move";
 export const ADOPT_SESSION_PATH = "/ws-recency/session-adopt";
+export const TRASH_LIST_PATH = "/ws-recency/trash";
+
+const TRASH_SIDECAR = ".wsr-trash.json";
 
 const STOP_SETTLE_MS = 500;
 const MAX_BODY_BYTES = 16 * 1024;
@@ -203,6 +206,9 @@ export async function trashSession(ctx, sessionId) {
   let moved;
   try {
     moved = await trashSessionLog(ctx, meta, trashRoot);
+    if (moved !== undefined) {
+      await writeTrashSidecar(moved, { sessionId: meta.id, cwd: typeof meta.cwd === "string" ? meta.cwd : null, reason: "delete", at: Date.now() });
+    }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -552,6 +558,7 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
     await mkdir(backupRoot, { recursive: true });
     await rename(sourceDirectory, backup);
     movedAside = true;
+    await writeTrashSidecar(backup, { sessionId, cwd: header.cwd, reason: "move", at: Date.now() });
   } catch (error) {
     return { ok: false, error: `could not park the old log: ${error instanceof Error ? error.message : String(error)}` };
   }
@@ -721,6 +728,179 @@ export async function adoptOrphanSessions(ctx) {
   return { ok: true, adopted, cleaned };
 }
 
+/** The session root's project-directory key: separators collapse to `-`. */
+export function projectKey(cwd) {
+  if (typeof cwd !== "string" || cwd === "") return undefined;
+  let readable = "";
+  let separatorRun = false;
+  for (let i = 0; i < cwd.length; i += 1) {
+    const code = cwd.charCodeAt(i);
+    const ch = String.fromCharCode(code);
+    if (ch === "/" || ch === "\\" || ch === ":") {
+      if (!separatorRun) readable += "-";
+      separatorRun = true;
+    } else if (ch !== "~" && /^[A-Za-z0-9._-]$/.test(ch)) {
+      readable += ch;
+      separatorRun = false;
+    } else {
+      readable += "~" + code.toString(16).toUpperCase().padStart(4, "0");
+      separatorRun = false;
+    }
+  }
+  return `--${(readable.replace(/^-+/, "") || "root").slice(0, 251)}--`;
+}
+
+async function trashRoot() {
+  return join(await dshHome(), ".trash", "ws-recency");
+}
+
+/** Record what a trashed directory was, so the UI can put it back. */
+export async function writeTrashSidecar(directory, sidecar) {
+  try {
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, TRASH_SIDECAR), JSON.stringify(sidecar, null, 2), "utf8");
+  } catch {
+    /* the entry stays restorable-by-hand only */
+  }
+}
+
+async function readTrashSidecar(directory) {
+  try {
+    const raw = JSON.parse(await readFile(join(directory, TRASH_SIDECAR), "utf8"));
+    return raw !== null && typeof raw === "object" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Every entry in the plugin's trash, newest first. */
+export async function listTrash() {
+  const root = await trashRoot();
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return { ok: true, entries: [] };
+  }
+  const results = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const directory = join(root, entry.name);
+    const sidecar = await readTrashSidecar(directory);
+    let size = 0;
+    try {
+      for (const file of await readdir(directory, { withFileTypes: true })) {
+        if (file.name === TRASH_SIDECAR || !file.isFile()) continue;
+        try {
+          size += (await statPath(join(directory, file.name))).size;
+        } catch {
+          /* skip unreadable files */
+        }
+      }
+    } catch {
+      /* skip unreadable directories */
+    }
+    results.push({
+      name: entry.name,
+      sizeBytes: size,
+      sessionId: sidecar !== null && typeof sidecar.sessionId === "string" ? sidecar.sessionId : null,
+      cwd: sidecar !== null && typeof sidecar.cwd === "string" ? sidecar.cwd : null,
+      reason: sidecar !== null && typeof sidecar.reason === "string" ? sidecar.reason : "unknown",
+      at: sidecar !== null && typeof sidecar.at === "number" ? sidecar.at : 0,
+      restorable: sidecar !== null && sidecar.reason === "delete" && typeof sidecar.cwd === "string" && typeof sidecar.sessionId === "string",
+    });
+  }
+  results.sort((a, b) => b.at - a.at || (a.name < b.name ? 1 : -1));
+  return { ok: true, entries: results };
+}
+
+/** Put one deleted session back where its cwd says it belongs, and re-attach it. */
+export async function restoreTrashEntry(ctx, name) {
+  const root = await trashRoot();
+  const directory = join(root, name);
+  const sidecar = await readTrashSidecar(directory);
+  if (sidecar === null || typeof sidecar.cwd !== "string" || typeof sidecar.sessionId !== "string") {
+    return { ok: false, error: "this entry has no recorded directory; restore it by hand" };
+  }
+  const key = projectKey(sidecar.cwd);
+  if (key === undefined) return { ok: false, error: "the recorded directory is not usable" };
+  const home = await dshHome();
+  const target = join(home, "sessions", key, sidecar.sessionId);
+  try {
+    await mkdir(target, { recursive: true });
+    for (const file of await readdir(directory, { withFileTypes: true })) {
+      if (file.name === TRASH_SIDECAR) continue;
+      await rename(join(directory, file.name), join(target, file.name));
+    }
+  } catch (error) {
+    return { ok: false, error: `could not move the files back: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  const workspaces = ctx.workspaceRegistry.list();
+  const owner = workspaces.find((workspace) => workspace.path === sidecar.cwd);
+  let attached = false;
+  if (owner !== undefined) {
+    try {
+      await owner.attachSession(sidecar.sessionId);
+      attached = true;
+    } catch {
+      /* an old header may be refused; the files are back either way */
+    }
+  }
+  try {
+    await rm(directory, { recursive: true, force: true });
+  } catch {
+    /* an empty leftover directory is harmless */
+  }
+  return { ok: true, sessionId: sidecar.sessionId, cwd: sidecar.cwd, attached };
+}
+
+/** Delete one trash entry for good. */
+export async function purgeTrashEntry(name) {
+  const root = await trashRoot();
+  if (name === "" || name.indexOf("..") !== -1 || name.indexOf("/") !== -1 || name.indexOf("\\") !== -1) {
+    return { ok: false, error: "invalid entry name" };
+  }
+  await rm(join(root, name), { recursive: true, force: true });
+  return { ok: true };
+}
+
+/** POST { action, name } -> list, restore or purge the plugin's trash. */
+export async function handleTrashListRequest(ctx, req, res) {
+  if ((req.method ?? "POST").toUpperCase() !== "POST") {
+    sendJson(res, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+  if (!loopbackOrigin(req)) {
+    sendJson(res, 403, { ok: false, error: "origin not trusted" });
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const action = body !== null && typeof body.action === "string" ? body.action : "list";
+    if (action === "list") {
+      sendJson(res, 200, await listTrash());
+      return;
+    }
+    const name = body !== null && typeof body.name === "string" ? body.name.trim() : "";
+    if (name === "") {
+      sendJson(res, 400, { ok: false, error: "entry name required" });
+      return;
+    }
+    if (action === "restore") {
+      const result = await restoreTrashEntry(ctx, name);
+      sendJson(res, result.ok ? 200 : 500, result);
+      return;
+    }
+    if (action === "purge") {
+      sendJson(res, 200, await purgeTrashEntry(name));
+      return;
+    }
+    sendJson(res, 400, { ok: false, error: "unknown action" });
+  } catch (error) {
+    sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 /** POST {} -> attach every session that belongs nowhere. */
 export async function handleAdoptRequest(ctx, req, res) {
   if ((req.method ?? "POST").toUpperCase() !== "POST") {
@@ -828,6 +1008,11 @@ export function apply(ctx) {
           path: MOVE_SESSION_PATH,
           handler: (req, res) => handleMoveRequest(moveCtx, req, res),
         }), "ws-recency: move route");
+        webCtx.effect(() => server.register({
+          kind: "exact",
+          path: TRASH_LIST_PATH,
+          handler: (req, res) => handleTrashListRequest(moveCtx, req, res),
+        }), "ws-recency: trash route");
         webCtx.effect(() => server.register({
           kind: "exact",
           path: ADOPT_SESSION_PATH,

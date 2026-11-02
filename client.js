@@ -132,6 +132,9 @@
           ".wsr-move-title{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-move-path{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-move-badge{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-trash-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+          ".wsr-trash-actions{display:flex;gap:6px;flex:none}",
+          ".wsr-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
           ".wsr-chart-title{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-chart-row{display:grid;grid-template-columns:120px 1fr 64px 56px;align-items:center;gap:8px}",
@@ -221,6 +224,22 @@
           "adopt.done": "已补登记 {n} 个会话。",
           "adopt.cleaned": "清理了 {n} 处重复/失效的工作区归属。",
           "adopt.failed": "扫描失败：",
+          "trash.title": "回收站",
+          "trash.description": "被删除的会话会移到这里（日志目录），可以恢复，也可以彻底删除。",
+          "trash.open": "打开",
+          "trash.loading": "读取中…",
+          "trash.empty": "回收站是空的。",
+          "trash.reason.delete": "已删除",
+          "trash.reason.move": "移动时的旧副本",
+          "trash.restore": "恢复",
+          "trash.purge": "彻底删除",
+          "trash.confirmRestore": "恢复到原来的工作区？",
+          "trash.confirmPurge": "彻底删除这份日志？不可恢复。",
+          "trash.restored": "已恢复，并重新挂回原工作区。",
+          "trash.purged": "已彻底删除。",
+          "trash.working": "处理中…",
+          "trash.failed": "操作失败：",
+          "trash.note": "回收站里的都是完整日志目录；恢复会按记录的 cwd 放回 sessions/<项目> 并重新挂到对应工作区。",
           "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
           "stats.details.show": "显示明细 ▾",
@@ -283,6 +302,22 @@
           "adopt.done": "Re-attached {n} session(s).",
           "adopt.cleaned": " Cleared {n} stale membership(s).",
           "adopt.failed": "Scan failed: ",
+          "trash.title": "Trash",
+          "trash.description": "Deleted sessions land here (their log directory). Restore them, or delete them for good.",
+          "trash.open": "Open",
+          "trash.loading": "Loading\u2026",
+          "trash.empty": "The trash is empty.",
+          "trash.reason.delete": "deleted",
+          "trash.reason.move": "old copy from a move",
+          "trash.restore": "Restore",
+          "trash.purge": "Delete for good",
+          "trash.confirmRestore": "Restore it to its original workspace?",
+          "trash.confirmPurge": "Delete this log for good? This cannot be undone.",
+          "trash.restored": "Restored and re-attached to its workspace.",
+          "trash.purged": "Deleted for good.",
+          "trash.working": "Working\u2026",
+          "trash.failed": "Action failed: ",
+          "trash.note": "Every entry is a complete log directory; restoring puts it back under sessions/<project> using the recorded cwd and re-attaches it.",
           "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
           "stats.details.show": "Show details",
@@ -1581,6 +1616,156 @@
           );
         }
 
+        /* ---------------------------- trash panel ---------------------------- */
+
+        function formatBytes(value) {
+          var n = Number(value) || 0;
+          if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+          if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+          return n + " B";
+        }
+
+        function formatWhen(at) {
+          if (typeof at !== "number" || at <= 0) return "";
+          try {
+            return new Date(at).toLocaleString();
+          } catch (error) {
+            return "";
+          }
+        }
+
+        /** Modal: list the plugin's trash, restore an entry or delete it for good. */
+        function openTrashPanel() {
+          if (typeof document === "undefined") return;
+          closeStatsPanel();
+          var backdrop = statsDiv("wsr-modal-backdrop");
+          var panel = statsDiv("wsr-modal");
+          backdrop.appendChild(panel);
+          var head = statsDiv("wsr-modal-head");
+          head.appendChild(statsDiv("wsr-modal-title", t("trash.title")));
+          var close = document.createElement("button");
+          close.type = "button";
+          close.className = "wsr-modal-close";
+          close.textContent = "\u00d7";
+          close.addEventListener("click", closeStatsPanel);
+          head.appendChild(close);
+          panel.appendChild(head);
+          var body = statsDiv("wsr-modal-body");
+          panel.appendChild(body);
+          backdrop.addEventListener("click", function (event) {
+            if (event !== undefined && event.target === backdrop) closeStatsPanel();
+          });
+          document.body.appendChild(backdrop);
+          statsModal = backdrop;
+          document.addEventListener("keydown", onStatsKey);
+
+          var post = function (payload) {
+            return fetch("/ws-recency/trash", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(payload),
+            }).then(function (response) {
+              return response.text().then(function (text) {
+                var parsed = null;
+                try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+                return { status: response.status, text: text, json: parsed };
+              });
+            });
+          };
+
+          var load = function (note) {
+            body.textContent = t("trash.loading");
+            post({ action: "list" }).then(function (answer) {
+              body.textContent = "";
+              if (note !== undefined && note !== "") body.appendChild(statsDiv("wsr-stats-detail", note));
+              if (answer.json === null || answer.json.ok !== true) {
+                body.appendChild(statsDiv("wsr-stats-note", t("trash.failed") + "HTTP " + answer.status + " \u00b7 " + (answer.text || "").slice(0, 120)));
+                return;
+              }
+              var entries = Array.isArray(answer.json.entries) ? answer.json.entries : [];
+              if (entries.length === 0) {
+                body.appendChild(statsDiv("wsr-stats-note", t("trash.empty")));
+                return;
+              }
+              var list = statsDiv("wsr-move-list");
+              for (var i = 0; i < entries.length; i += 1) {
+                (function (entry) {
+                  var row = document.createElement("div");
+                  row.className = "wsr-trash-row";
+                  var text = statsDiv("wsr-move-text");
+                  var title = entry.sessionId === null ? entry.name : entry.sessionId;
+                  text.appendChild(statsDiv("wsr-move-title", title));
+                  var meta = [];
+                  if (entry.reason === "delete") meta.push(t("trash.reason.delete"));
+                  else if (entry.reason === "move") meta.push(t("trash.reason.move"));
+                  meta.push(formatBytes(entry.sizeBytes));
+                  var when = formatWhen(entry.at);
+                  if (when !== "") meta.push(when);
+                  text.appendChild(statsDiv("wsr-move-path", meta.join(" \u00b7 ")));
+                  if (typeof entry.cwd === "string" && entry.cwd !== "") {
+                    text.appendChild(statsDiv("wsr-move-path", entry.cwd));
+                  }
+                  row.appendChild(text);
+
+                  var actions = statsDiv("wsr-trash-actions");
+                  if (entry.restorable === true) {
+                    var restore = document.createElement("button");
+                    restore.type = "button";
+                    restore.className = "wsr-step";
+                    restore.textContent = t("trash.restore");
+                    restore.addEventListener("click", function () {
+                      if (typeof window.confirm === "function" && !window.confirm(t("trash.confirmRestore"))) return;
+                      load(t("trash.working"));
+                      post({ action: "restore", name: entry.name }).then(function (result) {
+                        var ok = result.json !== null && result.json.ok === true;
+                        load(ok ? t("trash.restored") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
+                      }).catch(function (error) {
+                        load(t("trash.failed") + (error && error.message ? error.message : error));
+                      });
+                    });
+                    actions.appendChild(restore);
+                  }
+                  var purge = document.createElement("button");
+                  purge.type = "button";
+                  purge.className = "wsr-step wsr-danger";
+                  purge.textContent = t("trash.purge");
+                  purge.addEventListener("click", function () {
+                    if (typeof window.confirm === "function" && !window.confirm(t("trash.confirmPurge"))) return;
+                    load(t("trash.working"));
+                    post({ action: "purge", name: entry.name }).then(function (result) {
+                      var ok = result.json !== null && result.json.ok === true;
+                      load(ok ? t("trash.purged") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
+                    }).catch(function (error) {
+                      load(t("trash.failed") + (error && error.message ? error.message : error));
+                    });
+                  });
+                  actions.appendChild(purge);
+                  row.appendChild(actions);
+                  list.appendChild(row);
+                })(entries[i]);
+              }
+              body.appendChild(list);
+              body.appendChild(statsDiv("wsr-stats-note", t("trash.note")));
+            }).catch(function (error) {
+              body.textContent = t("trash.failed") + (error && error.message ? error.message : error);
+            });
+          };
+          load("");
+        }
+
+        /** Settings -> General: open the trash panel. */
+        function TrashRow() {
+          return h("div", { className: "wsr-setRow" },
+            h("div", { className: "wsr-setText" },
+              h("div", { className: "wsr-setTitle" }, t("trash.title")),
+              h("div", { className: "wsr-setDesc" }, t("trash.description")),
+            ),
+            h("div", { className: "wsr-controls" },
+              h("button", { type: "button", className: "wsr-step", onClick: function () { openTrashPanel(); } }, t("trash.open")),
+            ),
+          );
+        }
+
         /** Settings -> General: re-attach sessions that belong to no workspace. */
         function AdoptRow() {
           var result = react.useState("");
@@ -1758,6 +1943,16 @@
               store: prefs,
               locale: NS,
             }, ColorsRow);
+          });
+
+          ctx.slots.inject("settings.general.item", function () {
+            return ctx.slots.register({
+              name: "settings.general.item",
+              id: "ws-recency-trash-panel",
+              order: 48,
+              store: prefs,
+              locale: NS,
+            }, TrashRow);
           });
 
           ctx.slots.inject("settings.general.item", function () {
