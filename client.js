@@ -924,6 +924,53 @@
           return typeof id === "string" && id !== "" ? id : null;
         }
 
+        /** Clone one real footer entry into the slot so the icon box and text line up. */
+        function decorateFooterAction() {
+          if (typeof document === "undefined") return;
+          var mine = document.querySelector('[data-wsr-footer="true"]');
+          if (mine === null || typeof mine.parentElement === "undefined" || mine.parentElement === null) return;
+          var container = mine.parentElement;
+          if (typeof container.querySelectorAll !== "function" || typeof container.insertBefore !== "function") return;
+          if (container.querySelector("[data-wsr-clone]") !== null || typeof mine.style === "undefined") return;
+          var template = null;
+          var buttons = container.querySelectorAll("button");
+          for (var i = 0; i < buttons.length; i += 1) {
+            var candidate = buttons[i];
+            if (candidate === mine) continue;
+            if (typeof candidate.closest === "function" && candidate.closest("[data-wsr-footer]") !== null) continue;
+            if (typeof candidate.querySelector !== "function" || candidate.querySelector("svg") === null) continue;
+            template = candidate;
+            break;
+          }
+          if (template === null || typeof template.cloneNode !== "function") return;
+          var clone;
+          try {
+            clone = template.cloneNode(true);
+          } catch (error) {
+            return;
+          }
+          var icon = typeof clone.querySelector === "function" ? clone.querySelector("svg") : null;
+          var labelClass = "";
+          if (typeof clone.querySelector === "function") {
+            var labelTemplate = clone.querySelector("span");
+            if (labelTemplate !== null && typeof labelTemplate.className === "string") labelClass = labelTemplate.className;
+          }
+          while (clone.firstChild !== null) clone.removeChild(clone.firstChild);
+          if (icon !== null) clone.appendChild(icon);
+          var label = document.createElement("span");
+          if (labelClass !== "") label.className = labelClass;
+          label.textContent = t("trash.title");
+          clone.appendChild(label);
+          clone.setAttribute("data-wsr-clone", "true");
+          clone.setAttribute("aria-label", t("trash.title"));
+          clone.addEventListener("click", function (event) {
+            if (event !== undefined && typeof event.preventDefault === "function") event.preventDefault();
+            openTrashPanel();
+          });
+          container.insertBefore(clone, mine);
+          mine.style.display = "none";
+        }
+
         /** The nearest horizontal flex row above the stats: the whole footer dock. */
         function composerDockOf(row) {
           var node = row;
@@ -1052,12 +1099,14 @@
           var settings = settingsOf();
           if (!ready(sessions) || !ready(workspaces)) {
             decorateComposerStats();
+            decorateFooterAction();
             return;
           }
 
           var entries = collect();
           if (entries.length === 0) {
             decorateComposerStats();
+            decorateFooterAction();
             return;
           }
 
@@ -1066,6 +1115,7 @@
           renderPinned(entries, sessions, workspaces, settings);
           if (settings.colors) decorateRows(entries, sessions, data.statuses, settings);
           decorateComposerStats();
+          decorateFooterAction();
         }
 
         function schedule() {
@@ -1820,6 +1870,7 @@
           return h("button", {
             type: "button",
             className: "wsr-footer-action",
+            "data-wsr-footer": "true",
             "data-wide": wide ? "true" : "false",
             title: label,
             "aria-label": label,
