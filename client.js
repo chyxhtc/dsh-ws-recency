@@ -72,8 +72,10 @@
         /** Safety stop for driving the host's own "show more" (5 rows per click). */
         var MAX_EXPAND_CLICKS = 40;
         var TICK_MS = 5 * 60 * 1000;
+        /** A row press, for when the host's handler listens on one of these. */
+        var PRESS_EVENTS = ["pointerdown", "mousedown", "mouseup"];
 
-        var data = { sessions: null, workspaces: null, settings: null, statuses: null, actions: null, service: null, t: null };
+        var data = { sessions: null, workspaces: null, settings: null, statuses: null, actions: null, service: null, ctx: null, t: null };
         var timer = null;
         var ticker = null;
         var observer = null;
@@ -84,6 +86,7 @@
         var dots = new Set();
         var pinHidden = new Set();
         var pinHost = null;
+        var prefsStore = null;
         var expandClicks = new Map();
         var composerPill = null;
         var expandedSections = new Set();
@@ -163,11 +166,18 @@
           ".wsr-btn-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
+          ".wsr-chart-head{display:flex;align-items:center;justify-content:space-between;gap:10px}",
           ".wsr-chart-title{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-chart-row{display:grid;grid-template-columns:120px 1fr 64px 56px;align-items:center;gap:8px}",
           ".wsr-chart-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}",
-          ".wsr-chart-track{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}",
-          ".wsr-chart-fill{height:100%;border-radius:4px;min-width:2px}",
+          ".wsr-chart-track{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden;display:flex}",
+          ".wsr-chart-fill{height:100%;border-radius:0;min-width:0}",
+          ".wsr-chart-group{display:flex;height:100%;min-width:2px;border-radius:4px;overflow:hidden}",
+          ".wsr-chart-swatch{width:8px;height:8px;border-radius:2px;background:hsl(217, 88%, 50%)}",
+          ".wsr-chart-swatch-dim{background:hsl(217, 56%, 68%)}",
+          ".wsr-chart-legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center}",
+          ".wsr-chart-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-chart-legend-text{white-space:nowrap}",
           ".wsr-chart-value{text-align:right;font-variant-numeric:tabular-nums}",
           ".wsr-chart-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
           ".wsr-details-toggle{align-self:flex-start;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer;padding:2px 0}",
@@ -179,6 +189,7 @@
           ".wsr-td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-td-name{font-weight:500}",
           ".wsr-td-strong{font-weight:600}",
+          ".wsr-td-dim{color:var(--dsw-alias-label-tertiary);opacity:.65}",
           ".wsr-stats-note{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}",
           ".wsr-toggle{width:100%;height:28px;padding:0 12px 0 calc(28px + var(--dsh-workspace-indent,0px));cursor:pointer;text-align:left;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;font-size:12px}",
           ".wsr-toggle:hover{color:var(--dsw-alias-label-secondary)}",
@@ -211,6 +222,9 @@
           "pin.enabled": "\u663e\u793a\u7f6e\u9876\u533a",
           "pin.head": "\u7f6e\u9876",
           "pin.unpin": "\u53d6\u6d88\u7f6e\u9876",
+          "argmode.title": "把工具参数计入主 agent",
+          "argmode.description": "工具参数是模型自己写的（pwsh 的命令、write 的文件内容），严格说算主 agent 的输出，不算工具的消耗。打开后消耗分布里工具只算返回结果，参数并入主 agent。",
+          "argmode.enabled": "工具参数计入主 agent",
           "menu.flag": "\u6807\u8bb0\u9700\u8981\u8ddf\u8fdb",
           "menu.unflag": "\u53d6\u6d88\u8ddf\u8fdb\u6807\u8bb0",
           "menu.trash": "\u5220\u9664\u4f1a\u8bdd\uff08\u79fb\u5165\u56de\u6536\u7ad9\uff09",
@@ -291,6 +305,9 @@
           "stats.details.show": "显示明细 ▾",
           "stats.details.hide": "收起明细 ▴",
           "composer.analysis": "用量分析",
+          "stats.legend.args": "参数（模型写的）",
+          "stats.legend.results": "结果（环境返回的）",
+          "stats.argModeNote": "当前把工具参数计入主 agent：每个工具只算返回结果，表格里「参数」列显示为淡色（那些 token 记在主 agent 那一行）。",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
         };
@@ -306,6 +323,9 @@
           "pin.title": "Global pinned section",
           "pin.description": "Lists pinned sessions in one section above every workspace; unpinning sends a session back to its own group.",
           "pin.enabled": "Show the pinned section",
+          "argmode.title": "Count tool arguments as the agent's writing",
+          "argmode.description": "A tool's arguments are what the model wrote (a shell command, a file body), so they arguably belong to the agent rather than to the tool. When this is on, the usage chart counts only tool results and moves the argument tokens onto the agent.",
+          "argmode.enabled": "Tool arguments count for the agent",
           "pin.head": "Pinned",
           "pin.unpin": "Unpin",
           "menu.flag": "Mark as needs follow-up",
@@ -388,6 +408,9 @@
           "stats.details.show": "Show details",
           "stats.details.hide": "Hide details",
           "composer.analysis": "Usage analysis",
+          "stats.legend.args": "arguments (written by the model)",
+          "stats.legend.results": "results (returned by the environment)",
+          "stats.argModeNote": "Tool arguments currently count towards the agent: each tool shows only its results, and the table's \"args\" column is faded because those tokens sit on the agent's row.",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
         };
@@ -445,6 +468,7 @@
             keepActive: settings.keepActive !== false,
             colors: settings.colors !== false,
             pinnedSection: settings.pinnedSection !== false,
+            argMode: settings.argMode === "agent" ? "agent" : "tool",
             followUps: settings.followUps !== null && typeof settings.followUps === "object" ? settings.followUps : {},
           };
         }
@@ -807,6 +831,83 @@
           return out;
         }
 
+        /**
+         * The browser's workspace-navigation service (`uiWorkspace`).
+         *
+         * Resolved late on purpose: a client plugin can apply before the Workspace
+         * UI has provided the service, and cordis refuses un-injected service
+         * access. The value is cached once it is available and re-asked on use
+         * until then, so a plugin that lost the race still navigates.
+         */
+        function workspaceService() {
+          if (data.service !== null && data.service !== undefined) return data.service;
+          var ctx = data.ctx;
+          if (ctx === null || ctx === undefined) return null;
+          try {
+            var service = typeof ctx.get === "function" ? ctx.get("uiWorkspace") : undefined;
+            if (service !== null && service !== undefined) data.service = service;
+          } catch (error) {
+            /* not resolvable from this context yet */
+          }
+          return data.service === undefined ? null : data.service;
+        }
+
+        /**
+         * Open a session this plugin rendered itself (the pinned section).
+         *
+         * The service call is the one the host's own rows make, so it is the
+         * primary path. If the service is unreachable or throws, fall back to the
+         * host's own row for that session - it is still in the DOM, only hidden
+         * behind the pinned section - and let the app navigate itself.
+         */
+        function openSessionRow(sessionId) {
+          var service = workspaceService();
+          if (service !== null && typeof service.openSession === "function") {
+            try {
+              service.openSession(sessionId);
+              return true;
+            } catch (error) {
+              log("openSession threw; falling back to the host row", error);
+            }
+          }
+          var row = null;
+          try {
+            row = document.querySelector('[data-row-key="session:' + sessionId + '"]');
+          } catch (error) {
+            row = null;
+          }
+          if (row !== null && typeof row.click === "function") {
+            try {
+              /* Some row handlers listen on mousedown: send the whole press so the
+                 host's own navigation runs whichever event it uses. */
+              if (typeof MouseEvent === "function") {
+                for (var t = 0; t < PRESS_EVENTS.length; t += 1) {
+                  row.dispatchEvent(new MouseEvent(PRESS_EVENTS[t], { bubbles: true, cancelable: true, view: typeof window === "undefined" ? null : window }));
+                }
+              }
+              row.click();
+              return true;
+            } catch (error) {
+              log("the host row could not be clicked", error);
+            }
+          }
+          return false;
+        }
+
+        /** Ask the host to drop a pin; same late-resolution rule as above. */
+        function unpinSession(sessionId) {
+          var service = workspaceService();
+          if (service !== null && typeof service.unpinSession === "function") {
+            try {
+              service.unpinSession(sessionId);
+              return true;
+            } catch (error) {
+              log("unpinSession threw", error);
+            }
+          }
+          return false;
+        }
+
         function pinnedRowElement(item) {
           var row = document.createElement("div");
           row.className = "wsr-pin-row";
@@ -828,12 +929,12 @@
           unpin.textContent = t("pin.unpin");
           unpin.addEventListener("click", function (event) {
             if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
-            if (data.service !== null && typeof data.service.unpinSession === "function") data.service.unpinSession(item.id);
+            unpinSession(item.id);
             schedule();
           });
           row.appendChild(unpin);
           row.addEventListener("click", function () {
-            if (data.service !== null && typeof data.service.openSession === "function") data.service.openSession(item.id);
+            openSessionRow(item.id);
           });
           return row;
         }
@@ -1270,17 +1371,87 @@
         }
 
         /** One table row: source, calls, argument tokens, result tokens, total, share. */
-        function statsRow(label, calls, args, results, total, share) {
+        function statsRow(label, calls, args, results, total, share, dimArgs) {
           var row = document.createElement("div");
           row.className = "wsr-stats-row";
           var name = statsDiv("wsr-td wsr-td-name", label);
           row.appendChild(name);
           row.appendChild(statsDiv("wsr-td", calls === null ? "-" : String(calls)));
-          row.appendChild(statsDiv("wsr-td", args === null ? "-" : formatTokens(args)));
+          /* In "arguments belong to the agent" mode the cell stays readable but
+             fades: those tokens are no longer part of this tool's total. */
+          row.appendChild(statsDiv(dimArgs === true ? "wsr-td wsr-td-dim" : "wsr-td", args === null ? "-" : formatTokens(args)));
           row.appendChild(statsDiv("wsr-td", results === null ? "-" : formatTokens(results)));
           row.appendChild(statsDiv("wsr-td wsr-td-strong", formatTokens(total)));
           row.appendChild(statsDiv("wsr-td", formatShare(share)));
           return row;
+        }
+
+        /**
+         * Where a tool's argument tokens are counted.
+         *
+         * A tool's arguments are what the model wrote (a shell command, a file
+         * body), so they arguably belong to the agent rather than to the tool. The
+         * default keeps the historical per-tool total; "agent" moves the argument
+         * tokens onto the agent's bar and leaves each tool its results.
+         */
+        function argModeOf() {
+          var fromRenderer = data.settings !== null && data.settings !== undefined ? data.settings.argMode : undefined;
+          if (fromRenderer === "agent" || fromRenderer === "tool") return fromRenderer;
+          try {
+            var store = prefsStore;
+            var snapshot = store !== null && store !== undefined && typeof store.getSnapshot === "function" ? store.getSnapshot() : null;
+            if (snapshot !== null && snapshot !== undefined && (snapshot.argMode === "agent" || snapshot.argMode === "tool")) return snapshot.argMode;
+          } catch (error) {
+            /* the store is not readable here */
+          }
+          return "tool";
+        }
+
+        /** A thin legend for the two-tone bar: arguments vs results. */
+        function chartLegend() {
+          var legend = statsDiv("wsr-chart-legend");
+          var pairs = [["stats.legend.args", "wsr-chart-swatch wsr-chart-swatch-dim"], ["stats.legend.results", "wsr-chart-swatch"]];
+          for (var i = 0; i < pairs.length; i += 1) {
+            var item = statsDiv("wsr-chart-legend-item");
+            item.appendChild(statsDiv(pairs[i][1]));
+            var text = statsDiv("wsr-chart-legend-text");
+            text.textContent = t(pairs[i][0]);
+            item.appendChild(text);
+            legend.appendChild(item);
+          }
+          return legend;
+        }
+
+        /**
+         * One bar. The coloured group is the source's own total against the largest
+         * source; inside a tool's group the faded segment is its argument tokens.
+         */
+        function chartBar(entry, largest) {
+          var line = statsDiv("wsr-chart-row");
+          line.appendChild(statsDiv("wsr-chart-label", entry.name));
+          var track = statsDiv("wsr-chart-track");
+          var group = statsDiv("wsr-chart-group");
+          var width = largest > 0 ? (entry.value / largest) * 100 : 0;
+          group.style.width = width.toFixed(2) + "%";
+          /* No background on the group: the two segments paint themselves, and a
+             same-hue group behind a translucent argument segment would hide the
+             split entirely. */
+          var argsPart = entry.split === true && entry.value > 0 ? (entry.args / entry.value) * 100 : 0;
+          if (argsPart > 0) {
+            var argsSeg = statsDiv("wsr-chart-fill wsr-bar-args");
+            argsSeg.style.width = argsPart.toFixed(2) + "%";
+            argsSeg.style.background = sourceColorDim(entry.hue, entry.rank);
+            group.appendChild(argsSeg);
+          }
+          var resultsSeg = statsDiv("wsr-chart-fill wsr-bar-results");
+          resultsSeg.style.width = (100 - argsPart).toFixed(2) + "%";
+          resultsSeg.style.background = sourceColor(entry.hue, entry.rank);
+          group.appendChild(resultsSeg);
+          track.appendChild(group);
+          line.appendChild(track);
+          line.appendChild(statsDiv("wsr-chart-value", formatTokens(entry.value)));
+          line.appendChild(statsDiv("wsr-chart-share", formatShare(entry.share)));
+          return line;
         }
 
         /**
@@ -1334,6 +1505,19 @@
           return "hsl(" + hue + ", " + saturation + "%, " + lightness + "%)";
         }
 
+        /**
+         * The same hue, lifted and softened: the argument segment of a tool's bar.
+         *
+         * It has to be a real colour rather than an opacity: the segment sits on a
+         * solid bar of the same hue, so a translucent copy of it would composite
+         * back to exactly the same colour and the split would be invisible.
+         */
+        function sourceColorDim(hue, rank) {
+          var saturation = Math.max(28, 62 - rank * 6);
+          var lightness = Math.min(76, 66 + rank * 2);
+          return "hsl(" + hue + ", " + saturation + "%, " + lightness + "%)";
+        }
+
         function renderStats(body, stats) {
           body.textContent = "";
           while (body.firstChild !== null) body.removeChild(body.firstChild);
@@ -1359,34 +1543,57 @@
           body.appendChild(grid);
 
           var tools = estimate.tools || [];
-          var entries = [{ name: t("stats.agent"), value: agent.total || 0, share: agent.share || 0, color: sourceColor(217, 0) }];
+          var mode = argModeOf();
+          var movedArgs = 0;
+          if (mode === "agent") {
+            for (var a = 0; a < tools.length; a += 1) movedArgs += tools[a].args || 0;
+          }
+          var grand = estimate.grandTotal || 0;
+          if (grand <= 0 && mode === "agent") {
+            /* An older host half may not send grandTotal: rebuild the denominator. */
+            grand = (agent.total || 0) + movedArgs;
+            for (var g = 0; g < tools.length; g += 1) grand += tools[g].total || 0;
+          }
+          var shareOf = function (value) {
+            if (grand > 0) return value / grand;
+            return 0;
+          };
+
+          var agentValue = (agent.total || 0) + movedArgs;
+          var entries = [{
+            name: t("stats.agent"),
+            value: agentValue,
+            share: grand > 0 ? shareOf(agentValue) : (agent.share || 0),
+            hue: 217,
+            rank: 0,
+            args: 0,
+            split: false,
+          }];
           for (var j = 0; j < tools.length; j += 1) {
+            var tool = tools[j];
+            var args = tool.args || 0;
+            var results = tool.results || 0;
+            var value = mode === "agent" ? results : (tool.total || args + results);
             entries.push({
-              name: tools[j].name,
-              value: tools[j].total || 0,
-              share: tools[j].share || 0,
-              color: sourceColor(sourceHue(tools[j].name), j + 1),
+              name: tool.name,
+              value: value,
+              share: shareOf(value),
+              hue: sourceHue(tool.name),
+              rank: j + 1,
+              args: args,
+              split: mode !== "agent" && args > 0 && results > 0,
             });
           }
 
-          /* The picture first: one bar per source, sized against the largest. */
+          /* The picture first: one bar per source, split into args and results. */
           var chart = statsDiv("wsr-chart");
-          chart.appendChild(statsDiv("wsr-chart-title", t("stats.chart")));
+          var chartHead = statsDiv("wsr-chart-head");
+          chartHead.appendChild(statsDiv("wsr-chart-title", t("stats.chart")));
+          if (mode !== "agent") chartHead.appendChild(chartLegend());
+          chart.appendChild(chartHead);
           var largest = 1;
           for (var m = 0; m < entries.length; m += 1) if (entries[m].value > largest) largest = entries[m].value;
-          for (var k = 0; k < entries.length; k += 1) {
-            var line = statsDiv("wsr-chart-row");
-            line.appendChild(statsDiv("wsr-chart-label", entries[k].name));
-            var track = statsDiv("wsr-chart-track");
-            var fill = statsDiv("wsr-chart-fill");
-            fill.style.width = ((entries[k].value / largest) * 100).toFixed(2) + "%";
-            fill.style.background = entries[k].color;
-            track.appendChild(fill);
-            line.appendChild(track);
-            line.appendChild(statsDiv("wsr-chart-value", formatTokens(entries[k].value)));
-            line.appendChild(statsDiv("wsr-chart-share", formatShare(entries[k].share)));
-            chart.appendChild(line);
-          }
+          for (var k = 0; k < entries.length; k += 1) chart.appendChild(chartBar(entries[k], largest));
           body.appendChild(chart);
 
           /* The table is the detail view: folded away until asked for. */
@@ -1404,10 +1611,13 @@
           var columns = ["stats.col.source", "stats.col.calls", "stats.col.args", "stats.col.results", "stats.col.total", "stats.col.share"];
           for (var n = 0; n < columns.length; n += 1) head.appendChild(statsDiv("wsr-td", t(columns[n])));
           table.appendChild(head);
-          table.appendChild(statsRow(t("stats.agent"), stats.steps, null, null, agent.total, agent.share));
+          table.appendChild(statsRow(t("stats.agent"), stats.steps, null, null, agentValue, shareOf(agentValue)));
           for (var q = 0; q < tools.length; q += 1) {
-            var tool = tools[q];
-            table.appendChild(statsRow(tool.name, tool.calls, tool.args, tool.results, tool.total, tool.share));
+            var toolRow = tools[q];
+            var toolArgs = toolRow.args || 0;
+            var toolResults = toolRow.results || 0;
+            var toolValue = mode === "agent" ? toolResults : (toolRow.total || toolArgs + toolResults);
+            table.appendChild(statsRow(toolRow.name, toolRow.calls, toolArgs, toolResults, toolValue, shareOf(toolValue), mode === "agent"));
           }
           details.appendChild(table);
           details.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
@@ -1426,6 +1636,7 @@
           body.appendChild(toggle);
           body.appendChild(details);
           body.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
+          if (mode === "agent") body.appendChild(statsDiv("wsr-stats-note", t("stats.argModeNote")));
         }
 
         function openStatsPanel(sessionId) {
@@ -2169,6 +2380,30 @@
           );
         }
 
+        /**
+         * Settings -> General row: whether a tool's argument tokens count as tool
+         * consumption or as the agent's own writing.
+         */
+        function ArgModeRow(props) {
+          var settings = props.useStore(function (state) { return state; });
+          var agentMode = settings.argMode === "agent";
+          return h("div", { className: "wsr-setRow" },
+            h("div", { className: "wsr-setText" },
+              h("div", { className: "wsr-setTitle" }, t("argmode.title")),
+              h("div", { className: "wsr-setDesc" }, t("argmode.description")),
+            ),
+            h("div", { className: "wsr-controls" },
+              h("label", { className: "wsr-exempt" },
+                h("input", {
+                  type: "checkbox",
+                  checked: agentMode,
+                  onChange: function (event) { props.actions.setArgMode(event.target.checked ? "agent" : "tool"); },
+                }),
+                t("argmode.enabled")),
+            ),
+          );
+        }
+
         function shutdown() {
           disposed = true;
           if (timer !== null) window.clearTimeout(timer);
@@ -2212,10 +2447,24 @@
 
         function apply_(ctx) {
           installCss();
+          /* Navigation and unpinning live in the Workspace UI service. It can be
+             provided after this plugin applies, so take it now when it is there and
+             let cordis hand it over later when it is not. Never fail the plugin over
+             it: workspaceService() also retries at use time. */
+          data.ctx = ctx;
           try { data.service = ctx.get("uiWorkspace") || null; } catch (error) { data.service = null; }
+          try {
+            if (typeof ctx.inject === "function") {
+              ctx.inject(["uiWorkspace"], function (workspaceCtx) {
+                try { data.service = workspaceCtx.uiWorkspace || null; } catch (error) { /* the lazy path covers it */ }
+              });
+            }
+          } catch (error) {
+            /* an older client runtime without per-service inject */
+          }
           var prefs = clientStore.defineStore({
             init: function () {
-              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, followUps: {} };
+              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, argMode: "tool", followUps: {} };
             },
             persist: "dsh.ws-recency.prefs.v1",
             actions: {
@@ -2223,6 +2472,7 @@
               setKeepActive: function (draft, value) { draft.keepActive = value === true; },
               setColors: function (draft, value) { draft.colors = value === true; },
               setPinnedSection: function (draft, value) { draft.pinnedSection = value === true; },
+              setArgMode: function (draft, value) { draft.argMode = value === "agent" ? "agent" : "tool"; },
               setFoldDays: function (draft, value) {
                 var next = Number(value);
                 if (!Number.isFinite(next)) return;
@@ -2244,6 +2494,10 @@
           ctx.effect(function () {
             return ctx.locale.register(NS, { zh: ZH, en: EN });
           }, "dsh-ws-recency: dictionaries");
+
+          /* The statistics renderer is plain DOM, not a slot component: keep the
+             store handle so it can read the argument-mode preference live. */
+          prefsStore = prefs;
 
           if (typeof MutationObserver === "function" && top() !== null) {
             observer = new MutationObserver(schedule);
@@ -2311,6 +2565,16 @@
               store: prefs,
               locale: NS,
             }, PinSectionRow);
+          });
+
+          ctx.slots.inject("settings.general.item", function () {
+            return ctx.slots.register({
+              name: "settings.general.item",
+              id: "ws-recency-argmode",
+              order: 48,
+              store: prefs,
+              locale: NS,
+            }, ArgModeRow);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {

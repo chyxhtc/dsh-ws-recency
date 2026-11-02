@@ -130,6 +130,11 @@ global.document = {
   querySelector(selector) {
     if (selector === "[data-composer-seat]") return composerSeat;
     if (selector === "[data-conversation-session]") return conversationNode;
+    /* The plugin looks rows up by their host key when it has to fall back to
+       clicking one (the pinned section's navigation fallback). */
+    if (selector.indexOf("[data-row-key=") === 0) {
+      return root.querySelector(selector) || overlayRoot.querySelector(selector);
+    }
     return composerSeat.querySelector(selector);
   },
   createElement: (tag) => el(tag),
@@ -428,6 +433,40 @@ assert.strictEqual(A.rows[0].getAttribute("data-wsr-pin-hidden"), "true", "the o
 pinRow.click();
 assert.deepStrictEqual(service.opened, ["A-fresh-1"], "clicking a pinned row opens it");
 
+/* ---------- pinned navigation never depends on one service call -------- */
+
+/* The row is the app's own way in, so it is the fallback for both failures. */
+let hostRowClicks = 0;
+A.rows[0].addEventListener("click", () => { hostRowClicks += 1; });
+const realOpenSession = service.openSession;
+
+service.openSession = () => { throw new Error("navigation service refused"); };
+pinRow.click();
+assert.strictEqual(hostRowClicks, 1, "a throwing openSession falls back to the host's own row");
+
+service.openSession = undefined;
+pinRow.click();
+assert.strictEqual(hostRowClicks, 2, "a missing openSession falls back to the host's own row");
+
+service.openSession = realOpenSession;
+pinRow.click();
+assert.deepStrictEqual(service.opened, ["A-fresh-1", "A-fresh-1"], "the service is preferred when it works again");
+assert.strictEqual(hostRowClicks, 2, "the working service does not click the row");
+
+/* Late resolution: apply() ran while the service was absent, and a later click
+   still finds it instead of giving up on the row fallback forever. */
+const lateService = { opened: [], openSession(id) { this.opened.push(id); } };
+const realGet = ctx.get;
+ctx.get = () => undefined;
+mod.apply(ctx);
+assert.strictEqual(hostRowClicks, 2, "no service at apply time: no navigation yet");
+ctx.get = (name) => (name === "uiWorkspace" ? lateService : undefined);
+pinRow.click();
+assert.deepStrictEqual(lateService.opened, ["A-fresh-1"], "a service provided after apply is resolved on use");
+assert.strictEqual(hostRowClicks, 2, "the late service is preferred over the row fallback");
+ctx.get = realGet;
+mod.apply(ctx);
+
 pinRow.querySelector(".wsr-pin-unpin").click();
 assert.deepStrictEqual(service.unpinned, ["A-fresh-1"], "unpin goes through the host service");
 
@@ -496,14 +535,48 @@ function textOf(node) {
   assert.strictEqual(chartRows.length, 3, "one bar per source: the agent plus both tools");
   assert.strictEqual(chartRows[0].querySelector(".wsr-chart-value").textContent, "360");
   assert.strictEqual(chartRows[1].querySelector(".wsr-chart-label").textContent, "pwsh");
-  const widest = chartRows[1].querySelector(".wsr-chart-fill").style.width;
+  const widest = chartRows[1].querySelector(".wsr-chart-group").style.width;
   assert.strictEqual(widest, "100.00%", "the largest bar fills the track");
-  assert.ok(chartRows[0].querySelector(".wsr-chart-fill").style.width !== widest, "smaller bars are shorter");
+  assert.ok(chartRows[0].querySelector(".wsr-chart-group").style.width !== widest, "smaller bars are shorter");
 
   /* Colour identity: curated hue per known tool, hash for the rest, rank fades. */
-  assert.strictEqual(chartRows[0].querySelector(".wsr-chart-fill").style.background, "hsl(217, 88%, 50%)");
-  assert.strictEqual(chartRows[1].querySelector(".wsr-chart-fill").style.background, "hsl(32, 80%, 52%)", "pwsh keeps its orange");
-  assert.strictEqual(chartRows[2].querySelector(".wsr-chart-fill").style.background, "hsl(152, 72%, 54%)", "read keeps its green and fades one rank");
+  assert.strictEqual(chartRows[0].querySelector(".wsr-chart-group").style.background, undefined, "the group never paints a colour behind the segments");
+  assert.strictEqual(chartRows[0].querySelector(".wsr-bar-results").style.background, "hsl(217, 88%, 50%)");
+  assert.strictEqual(chartRows[1].querySelector(".wsr-bar-results").style.background, "hsl(32, 80%, 52%)", "pwsh keeps its orange");
+  assert.strictEqual(chartRows[2].querySelector(".wsr-bar-results").style.background, "hsl(152, 72%, 54%)", "read keeps its green and fades one rank");
+
+  /* ---------- the argument / result split ------------------------------- */
+  /* pwsh: 100 args of 600 total -> the light segment is a sixth of the bar. */
+  const splitBar = chartRows[1];
+  const argsSeg = splitBar.querySelector(".wsr-bar-args");
+  const resultsSeg = splitBar.querySelector(".wsr-bar-results");
+  assert.ok(argsSeg !== null, "a tool bar carries an argument segment");
+  assert.ok(resultsSeg !== null, "a tool bar carries a result segment");
+  assert.strictEqual(argsSeg.style.width, "16.67%", "the argument segment is sized inside the tool's bar");
+  assert.strictEqual(resultsSeg.style.width, "83.33%", "the rest of the bar is results");
+  assert.strictEqual(argsSeg.style.background, "hsl(32, 56%, 68%)", "the argument segment is its own, lighter colour");
+  assert.notStrictEqual(argsSeg.style.background, resultsSeg.style.background, "the two segments must not composite to the same colour");
+  assert.strictEqual(argsSeg.style.opacity, undefined, "the contrast comes from the colour, not from opacity over a same-hue bar");
+  assert.strictEqual(chartRows[0].querySelector(".wsr-bar-args"), null, "the agent bar is not split");
+  const legend = body.querySelector(".wsr-chart-legend");
+  assert.ok(legend !== null, "the split bars come with a legend");
+  assert.strictEqual(legend.children.length, 2, "two legend entries: arguments and results");
+
+  /* The toggle moves the argument tokens onto the agent. */
+  prefs.argMode = "agent";
+  const itemAgain = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
+  itemAgain.props.onSelect();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const agentBody = overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-body");
+  const agentRows = agentBody.querySelectorAll(".wsr-chart-row");
+  assert.strictEqual(agentRows[0].querySelector(".wsr-chart-value").textContent, "470", "the agent keeps its own tokens plus the moved arguments");
+  assert.strictEqual(agentRows[1].querySelector(".wsr-chart-value").textContent, "500", "the tool keeps only its results");
+  assert.strictEqual(agentRows[1].querySelector(".wsr-bar-args"), null, "nothing is split when arguments belong to the agent");
+  assert.strictEqual(agentBody.querySelector(".wsr-chart-legend"), null, "the legend goes away too");
+  assert.ok(textOf(agentBody).indexOf("currently count towards the agent") !== -1, "the panel explains the mode");
+  overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-close").click();
+  prefs.argMode = "tool";
+  assert.strictEqual(prefs.argMode, "tool", "the default mode stays per-tool");
 
   const details = body.querySelector(".wsr-stats-details");
   assert.strictEqual(details.style.display, "none", "the table starts folded");

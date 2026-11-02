@@ -60,6 +60,10 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   assert.ok(pwsh.args > 0 && pwsh.results > 0);
   assert.strictEqual(pwsh.total, pwsh.args + pwsh.results);
   assert.ok(stats.estimate.grandTotal > 0);
+  /* The client's argument/result split and its "arguments belong to the agent"
+     mode both re-bucket these fields, so their arithmetic has to hold exactly. */
+  assert.strictEqual(stats.estimate.grandTotal, stats.estimate.agent.total + stats.estimate.toolsTotal);
+  assert.strictEqual(stats.estimate.toolsTotal, pwsh.total);
   const share = pwsh.share + stats.estimate.agent.share;
   assert.ok(Math.abs(share - 1) < 1e-9, "shares add up to 1");
 
@@ -98,5 +102,5 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   assert.strictEqual(missing.ok, false);
   assert.strictEqual(missing.error, "session not found");
 
-  console.log("stats ok: estimator, aggregation, shares, persistence seam, cache");
+  console.log("stats ok: estimator, aggregation, args/results split fields, shares, persistence seam, cache");
 })();
