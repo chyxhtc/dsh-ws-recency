@@ -123,6 +123,7 @@
           ".wsr-stats-legend{display:flex;flex-wrap:wrap;gap:10px}",
           ".wsr-stats-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-stats-swatch{width:8px;height:8px;border-radius:2px}",
+          ".wsr-move-warning{color:var(--dsw-alias-state-warn-primary,#d9a72c);font-size:11px;line-height:1.5}",
           ".wsr-move-list{display:flex;flex-direction:column;gap:4px}",
           ".wsr-move-row{display:flex;align-items:center;gap:8px;text-align:left;border:none;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:inherit;font:inherit;padding:8px 10px;border-radius:8px;cursor:pointer}",
           ".wsr-move-row:hover:not([disabled]){background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08))}",
@@ -205,8 +206,9 @@
           "stats.diagnose.noHost": "\n\n（宿主半未加载：需要重启应用加载新版本）",
           "menu.move": "移动到工作区…",
           "move.title": "移动到工作区",
+          "move.warning": "只移动会话本身：它在旧工作区里创建或修改的文件不会跟着走，仍留在原目录。",
           "move.note": "会话属于哪个工作区，由它创建时的目录决定；移动会改写会话记录的 cwd，把日志搬到新工作区目录，旧日志备份在 .trash/ws-recency。",
-          "move.confirm": "把会话移动到「{workspace}」？",
+          "move.confirm": "把会话移动到「{workspace}」？\n\n只移动会话记录，旧工作区里的文件不会跟着搬。",
           "move.current": "当前",
           "move.working": "移动中…（会先停止会话）",
           "move.done": "已移动到「{workspace}」。若列表没刷新，切换一下工作区或重启应用。",
@@ -257,8 +259,9 @@
           "stats.diagnose.noHost": "\n\n(the host half is not loaded: restart the app to pick up the new version)",
           "menu.move": "Move to workspace\u2026",
           "move.title": "Move to workspace",
+          "move.warning": "Only the session moves: files it created or changed in the old workspace stay where they are.",
           "move.note": "A session belongs to the workspace of the directory it was created in. Moving rewrites the stored cwd, relocates the log and keeps the old one as a backup in .trash/ws-recency.",
-          "move.confirm": "Move this session to \"{workspace}\"?",
+          "move.confirm": "Move this session to \"{workspace}\"?\n\nOnly the session record moves; its files stay in the old workspace.",
           "move.current": "current",
           "move.working": "Moving\u2026 (the session is stopped first)",
           "move.done": "Moved to \"{workspace}\". If the list has not refreshed, switch workspaces or restart the app.",
@@ -1406,6 +1409,7 @@
           var body = statsDiv("wsr-modal-body");
           panel.appendChild(body);
           body.appendChild(statsDiv("wsr-stats-note", t("move.note")));
+          body.appendChild(statsDiv("wsr-move-warning", t("move.warning")));
 
           var current = workspaceOfSession(sessionId);
           var items = (data.workspaces && data.workspaces.items) || [];

@@ -91,6 +91,8 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 6. 先 attach 到目标工作区（失败就回滚原目录），再 detach 旧工作区；
 7. 删投影缓存，让它按新路径重建。
 
+**只移动会话**：对话框里明确提示——它在旧工作区里创建/修改的文件不会跟着走，仍留在原目录（附件与 rewind 快照按会话 id 存，不受影响）。
+
 **风险与退路**：这是插件里唯一改写会话存储的操作。备份会保留，回滚 = 把备份目录移回 `sessions/<project>/<id>`。
 
 ## 设置
@@ -128,7 +130,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.11.0/dsh-ws-recency-0.11.0.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.11.1/dsh-ws-recency-0.11.1.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

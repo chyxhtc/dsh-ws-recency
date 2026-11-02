@@ -538,6 +538,9 @@ function textOf(node) {
   const targets = moveBody.querySelectorAll("[data-wsr-move-target]");
   assert.strictEqual(targets.length, 4, "every workspace is offered");
   assert.strictEqual(targets[0].getAttribute("disabled"), "true", "the current workspace is not a target");
+  const warning = moveBody.querySelector(".wsr-move-warning");
+  assert.ok(warning !== null, "the dialog warns that files stay behind");
+  assert.ok(warning.textContent.indexOf("Only the session moves") !== -1);
   const beforeMove = global.fetch.calls.length;
   targets[1].click();
   assert.strictEqual(global.fetch.calls.length, beforeMove + 1, "picking a workspace posts the move");
