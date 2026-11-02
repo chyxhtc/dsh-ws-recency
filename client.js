@@ -924,89 +924,6 @@
           return typeof id === "string" && id !== "" ? id : null;
         }
 
-        /** Clone one real footer entry into the slot so the icon box and text line up. */
-        function decorateFooterAction() {
-          if (typeof document === "undefined") return;
-          var mine = document.querySelector('[data-wsr-footer="true"]');
-          if (mine === null || typeof mine.parentElement === "undefined" || mine.parentElement === null) return;
-          var container = mine.parentElement;
-          if (typeof container.querySelectorAll !== "function" || typeof container.insertBefore !== "function") return;
-          if (container.querySelector("[data-wsr-clone]") !== null || typeof mine.style === "undefined") return;
-          var template = null;
-          var buttons = container.querySelectorAll("button");
-          for (var i = 0; i < buttons.length; i += 1) {
-            var candidate = buttons[i];
-            if (candidate === mine) continue;
-            if (typeof candidate.closest === "function" && candidate.closest("[data-wsr-footer]") !== null) continue;
-            if (typeof candidate.querySelector !== "function" || candidate.querySelector("svg") === null) continue;
-            template = candidate;
-            break;
-          }
-          if (template === null || typeof template.cloneNode !== "function") return;
-          /* The button usually sits inside a row wrapper that owns the width and the
-             alignment; cloning only the button loses them and the label wraps. */
-          var rowSource = template.parentElement !== null && template.parentElement !== undefined && template.parentElement !== container
-            ? template.parentElement
-            : template;
-          var clone;
-          try {
-            clone = rowSource.cloneNode(true);
-          } catch (error) {
-            return;
-          }
-          var icon = typeof clone.querySelector === "function" ? clone.querySelector("svg") : null;
-          var labelClass = "";
-          if (typeof clone.querySelector === "function") {
-            var labelTemplate = clone.querySelector("span");
-            if (labelTemplate !== null && typeof labelTemplate.className === "string") labelClass = labelTemplate.className;
-          }
-          /* The wrapper may rely on inline styles from React rather than classes. */
-          if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
-            var metrics = ["display", "width", "min-width", "align-items", "justify-content", "gap", "padding", "font-size", "font-family", "font-weight", "line-height", "color"];
-            for (var mi = 0; mi < metrics.length; mi += 1) {
-              var value = "";
-              try { value = window.getComputedStyle(rowSource).getPropertyValue(metrics[mi]) || ""; } catch (error) { value = ""; }
-              if (value !== "" && value !== "auto") clone.style[metrics[mi]] = value;
-            }
-            clone.style.whiteSpace = "nowrap";
-          }
-          /* Keep the wrapper that holds the icon (it owns the size and baseline) and
-             drop only the template's text. */
-          var iconChild = icon;
-          while (iconChild !== null && iconChild.parentElement !== null && iconChild.parentElement !== undefined && iconChild.parentElement !== clone) {
-            iconChild = iconChild.parentElement;
-          }
-          var kids = Array.prototype.slice.call(clone.children || []);
-          for (var k = 0; k < kids.length; k += 1) {
-            if (kids[k] !== iconChild) clone.removeChild(kids[k]);
-          }
-          var label = document.createElement("span");
-          if (labelClass !== "") label.className = labelClass;
-          label.textContent = t("trash.title");
-          label.style.whiteSpace = "nowrap";
-          label.style.overflow = "hidden";
-          label.style.textOverflow = "ellipsis";
-          clone.appendChild(label);
-          clone.setAttribute("data-wsr-clone", "true");
-          clone.setAttribute("aria-label", t("trash.title"));
-          clone.addEventListener("click", function (event) {
-            if (event !== undefined && typeof event.preventDefault === "function") event.preventDefault();
-            openTrashPanel();
-          });
-          /* Keep the template's icon box (it owns the size and the baseline) but put
-             our own trash glyph inside it. */
-          var ourSvg = typeof mine.querySelector === "function" ? mine.querySelector("svg") : null;
-          if (icon !== null && ourSvg !== null && icon.parentElement !== null && icon.parentElement !== undefined) {
-            try {
-              icon.parentElement.replaceChild(ourSvg, icon);
-            } catch (error) {
-              /* keep the template icon */
-            }
-          }
-          container.insertBefore(clone, mine);
-          mine.style.display = "none";
-        }
-
         /** The nearest horizontal flex row above the stats: the whole footer dock. */
         function composerDockOf(row) {
           var node = row;
@@ -1135,14 +1052,12 @@
           var settings = settingsOf();
           if (!ready(sessions) || !ready(workspaces)) {
             decorateComposerStats();
-            decorateFooterAction();
             return;
           }
 
           var entries = collect();
           if (entries.length === 0) {
             decorateComposerStats();
-            decorateFooterAction();
             return;
           }
 
@@ -1151,7 +1066,6 @@
           renderPinned(entries, sessions, workspaces, settings);
           if (settings.colors) decorateRows(entries, sessions, data.statuses, settings);
           decorateComposerStats();
-          decorateFooterAction();
         }
 
         function schedule() {
@@ -1906,17 +1820,36 @@
           return h("button", {
             type: "button",
             className: "wsr-footer-action",
-            "data-wsr-footer": "true",
-            "data-wide": wide ? "true" : "false",
             title: label,
             "aria-label": label,
             "aria-haspopup": "dialog",
+            style: {
+              boxSizing: "border-box",
+              width: "100%",
+              alignSelf: "stretch",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              gap: "10px",
+              minHeight: "40px",
+              padding: "0 10px",
+              border: "none",
+              background: "transparent",
+              color: "var(--dsw-alias-label-primary)",
+              borderRadius: "10px",
+              font: "inherit",
+              fontSize: "14px",
+              lineHeight: "22px",
+              cursor: "pointer",
+              textAlign: "left",
+            },
             onClick: function () { openTrashPanel(); },
           },
-            typeof Icon === "function"
-              ? h("span", { className: "wsr-footer-glyph", "aria-hidden": "true" }, h(Icon, { size: wide ? 16 : 18 }))
-              : null,
-            wide ? h("span", { className: "wsr-footer-label" }, label) : null);
+            h("span", {
+              style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", flex: "none" },
+              "aria-hidden": "true",
+            }, typeof Icon === "function" ? h(Icon, { size: 18 }) : null),
+            wide ? h("span", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, label) : null);
         }
 
         /**
