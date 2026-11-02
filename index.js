@@ -36,6 +36,7 @@ export const TRASH_SESSION_PATH = "/ws-recency/session-trash";
 export const STATS_SESSION_PATH = "/ws-recency/session-stats";
 export const HEALTH_PATH = "/ws-recency/health";
 export const MOVE_SESSION_PATH = "/ws-recency/session-move";
+export const ADOPT_SESSION_PATH = "/ws-recency/session-adopt";
 
 const STOP_SETTLE_MS = 500;
 const MAX_BODY_BYTES = 16 * 1024;
@@ -641,6 +642,51 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
   return { ok: true, workspace: target.id, path: targetPath, detached, backup, live: wasLive };
 }
 
+/**
+ * Re-attach sessions whose stored cwd already names a workspace but which are
+ * listed by none - the shape an aborted move leaves behind. Idempotent: it only
+ * ever adds memberships the registry's own validation accepts.
+ */
+export async function adoptOrphanSessions(ctx) {
+  const snapshots = await ctx.sessionPersistence.list();
+  const workspaces = ctx.workspaceRegistry.list();
+  const byPath = new Map();
+  for (const workspace of workspaces) byPath.set(workspace.path, workspace);
+  const adopted = [];
+  for (const snapshot of snapshots) {
+    const header = snapshot !== null && snapshot !== undefined ? snapshot.header : undefined;
+    if (header === undefined || header === null || typeof header.cwd !== "string" || typeof header.id !== "string") continue;
+    const target = byPath.get(header.cwd);
+    if (target === undefined) continue;
+    const listed = workspaces.some((workspace) => Array.isArray(workspace.sessionIds) && workspace.sessionIds.includes(header.id));
+    if (listed) continue;
+    try {
+      await target.attachSession(header.id);
+      adopted.push(header.id);
+    } catch {
+      /* the registry refused it; leave it alone */
+    }
+  }
+  return { ok: true, adopted };
+}
+
+/** POST {} -> attach every session that belongs nowhere. */
+export async function handleAdoptRequest(ctx, req, res) {
+  if ((req.method ?? "POST").toUpperCase() !== "POST") {
+    sendJson(res, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+  if (!loopbackOrigin(req)) {
+    sendJson(res, 403, { ok: false, error: "origin not trusted" });
+    return;
+  }
+  try {
+    sendJson(res, 200, await adoptOrphanSessions(ctx));
+  } catch (error) {
+    sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 /** POST { sessionId, workspaceId } -> move that session to another workspace. */
 export async function handleMoveRequest(ctx, req, res) {
   if ((req.method ?? "POST").toUpperCase() !== "POST") {
@@ -731,6 +777,11 @@ export function apply(ctx) {
           path: MOVE_SESSION_PATH,
           handler: (req, res) => handleMoveRequest(moveCtx, req, res),
         }), "ws-recency: move route");
+        webCtx.effect(() => server.register({
+          kind: "exact",
+          path: ADOPT_SESSION_PATH,
+          handler: (req, res) => handleAdoptRequest(moveCtx, req, res),
+        }), "ws-recency: adopt route");
       });
 
       webCtx.inject(["sessionPersistence", "workspaceRegistry", "sessions"], (trashCtx) => {

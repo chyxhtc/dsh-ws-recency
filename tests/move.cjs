@@ -179,6 +179,24 @@ function fixture(root) {
     assert.deepStrictEqual(f.state.attached, ["sid"], "the repair attaches it to its own workspace");
   }
 
+  /* ---------- adopting sessions that belong nowhere ------------------- */
+  {
+    const target = { id: "w", path: "D:\\proj", sessionIds: [], attachSession: async (id) => { target.sessionIds.push(id); } };
+    const ctx = {
+      sessionPersistence: {
+        list: async () => [
+          { header: { id: "orphan", cwd: "D:\\proj" } },
+          { header: { id: "listed", cwd: "D:\\proj" } },
+          { header: { id: "elsewhere", cwd: "D:\\other" } },
+        ],
+      },
+      workspaceRegistry: { list: () => [{ ...target, sessionIds: ["listed"] }, target] },
+    };
+    const result = await mod.adoptOrphanSessions(ctx);
+    assert.deepStrictEqual(result.adopted, ["orphan"], "only the unlisted matching session is adopted");
+    assert.deepStrictEqual(target.sessionIds, ["orphan"]);
+  }
+
   fs.rmSync(root, { recursive: true, force: true });
   console.log("move ok: success path, rollback, guards");
 })();

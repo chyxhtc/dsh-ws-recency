@@ -214,6 +214,12 @@
           "move.done": "已移动到「{workspace}」。若列表没刷新，切换一下工作区或重启应用。",
           "move.doneLive": "\n\n这个会话刚才是打开状态：建议重启应用后再继续对话，避免它沿用旧的目录。",
           "move.repaired": "已补登记到「{workspace}」：上一次移动只搬了日志、没登记工作区，这次把它补上了。",
+          "adopt.title": "补登记游离会话",
+          "adopt.description": "有些会话的目录已经指向某个工作区，却不在任何分组里（移动中断会留下这种状态）。这里可以一次性找回。",
+          "adopt.action": "扫描",
+          "adopt.working": "扫描中…",
+          "adopt.done": "已补登记 {n} 个会话。",
+          "adopt.failed": "扫描失败：",
           "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
           "stats.details.show": "显示明细 ▾",
@@ -269,6 +275,12 @@
           "move.done": "Moved to \"{workspace}\". If the list has not refreshed, switch workspaces or restart the app.",
           "move.doneLive": "\n\nThe session was open: restart the app before continuing it so it does not keep using the old directory.",
           "move.repaired": "Registered in \"{workspace}\": the previous attempt moved the log without the bookkeeping, and this repaired it.",
+          "adopt.title": "Adopt unlisted sessions",
+          "adopt.description": "A session whose directory already belongs to a workspace can end up listed nowhere (an interrupted move leaves exactly this). Scan to re-attach them.",
+          "adopt.action": "Scan",
+          "adopt.working": "Scanning\u2026",
+          "adopt.done": "Re-attached {n} session(s).",
+          "adopt.failed": "Scan failed: ",
           "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
           "stats.details.show": "Show details",
@@ -1567,6 +1579,44 @@
           );
         }
 
+        /** Settings -> General: re-attach sessions that belong to no workspace. */
+        function AdoptRow() {
+          var result = react.useState("");
+          var message = result[0];
+          var setMessage = result[1];
+          var run = function () {
+            setMessage(t("adopt.working"));
+            fetch("/ws-recency/session-adopt", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+              .then(function (response) {
+                return response.text().then(function (text) {
+                  var parsed = null;
+                  try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+                  return { status: response.status, text: text, json: parsed };
+                });
+              })
+              .then(function (answer) {
+                if (answer.json !== null && answer.json.ok === true) {
+                  var count = Array.isArray(answer.json.adopted) ? answer.json.adopted.length : 0;
+                  setMessage(t("adopt.done", { n: count }));
+                  return;
+                }
+                setMessage(t("adopt.failed") + (answer.json && answer.json.error ? answer.json.error : answer.text.slice(0, 120)));
+              })
+              .catch(function (error) {
+                setMessage(t("adopt.failed") + (error && error.message ? error.message : error));
+              });
+          };
+          return h("div", { className: "wsr-setRow" },
+            h("div", { className: "wsr-setText" },
+              h("div", { className: "wsr-setTitle" }, t("adopt.title")),
+              h("div", { className: "wsr-setDesc" }, message === "" ? t("adopt.description") : message),
+            ),
+            h("div", { className: "wsr-controls" },
+              h("button", { type: "button", className: "wsr-step", onClick: run }, t("adopt.action")),
+            ),
+          );
+        }
+
         /** Settings -> General row: the global pinned section on/off. */
         function PinSectionRow(props) {
           var settings = props.useStore(function (state) { return state; });
@@ -1703,6 +1753,16 @@
               store: prefs,
               locale: NS,
             }, ColorsRow);
+          });
+
+          ctx.slots.inject("settings.general.item", function () {
+            return ctx.slots.register({
+              name: "settings.general.item",
+              id: "ws-recency-adopt",
+              order: 49,
+              store: prefs,
+              locale: NS,
+            }, AdoptRow);
           });
 
           ctx.slots.inject("settings.general.item", function () {
