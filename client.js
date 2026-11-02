@@ -224,6 +224,7 @@
           "adopt.done": "已补登记 {n} 个会话。",
           "adopt.cleaned": "清理了 {n} 处重复/失效的工作区归属。",
           "adopt.failed": "扫描失败：",
+          "ui.reload": "刷新界面",
           "trash.title": "回收站",
           "trash.description": "被删除的会话会移到这里（日志目录），可以恢复，也可以彻底删除。",
           "trash.open": "打开",
@@ -302,6 +303,7 @@
           "adopt.done": "Re-attached {n} session(s).",
           "adopt.cleaned": " Cleared {n} stale membership(s).",
           "adopt.failed": "Scan failed: ",
+          "ui.reload": "Reload UI",
           "trash.title": "Trash",
           "trash.description": "Deleted sessions land here (their log directory). Restore them, or delete them for good.",
           "trash.open": "Open",
@@ -1618,6 +1620,22 @@
 
         /* ---------------------------- trash panel ---------------------------- */
 
+/** A page reload rebuilds the sidebar from disk without restarting the app. */
+        function reloadButton() {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "wsr-step";
+          button.textContent = t("ui.reload");
+          button.addEventListener("click", function () {
+            try {
+              if (typeof window !== "undefined" && window.location !== undefined && typeof window.location.reload === "function") window.location.reload();
+            } catch (error) {
+              /* nothing to do */
+            }
+          });
+          return button;
+        }
+
         function formatBytes(value) {
           var n = Number(value) || 0;
           if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
@@ -1677,7 +1695,12 @@
             body.textContent = t("trash.loading");
             post({ action: "list" }).then(function (answer) {
               body.textContent = "";
-              if (note !== undefined && note !== "") body.appendChild(statsDiv("wsr-stats-detail", note));
+              if (note !== undefined && note !== "") {
+                body.appendChild(statsDiv("wsr-stats-detail", note));
+                var noteActions = statsDiv("wsr-trash-actions");
+                noteActions.appendChild(reloadButton());
+                body.appendChild(noteActions);
+              }
               if (answer.json === null || answer.json.ok !== true) {
                 body.appendChild(statsDiv("wsr-stats-note", t("trash.failed") + "HTTP " + answer.status + " \u00b7 " + (answer.text || "").slice(0, 120)));
                 return;
@@ -1803,6 +1826,7 @@
             ),
             h("div", { className: "wsr-controls" },
               h("button", { type: "button", className: "wsr-step", onClick: run }, t("adopt.action")),
+              h("button", { type: "button", className: "wsr-step", onClick: function () { reloadButton().click(); } }, t("ui.reload")),
             ),
           );
         }

@@ -676,6 +676,7 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
     /* the cache is derived data */
   }
 
+  await announceSession(ctx, sessionId);
   return { ok: true, workspace: target.id, path: targetPath, detached, backup, live: wasLive };
 }
 
@@ -721,11 +722,58 @@ export async function adoptOrphanSessions(ctx) {
     try {
       await target.attachSession(header.id);
       adopted.push(header.id);
+      await announceSession(ctx, header.id);
     } catch {
       /* the registry refused it; leave it alone */
     }
   }
   return { ok: true, adopted, cleaned };
+}
+
+/**
+ * Tell the browser about a Session it does not know yet.
+ *
+ * A restored session exists on disk but not in the running Host's client-side
+ * list, so a sidebar that was loaded before the restore has no row to show. The
+ * session list is kept in sync by `api-session/added`; announce the summary the
+ * session controller itself would produce, or a minimal one built from the
+ * stored header when that service is not injected here.
+ */
+export async function announceSession(ctx, sessionId) {
+  try {
+    const controller = ctx.get("sessionController");
+    if (controller !== undefined && controller !== null && typeof controller.list === "function") {
+      const items = await controller.list();
+      const summary = Array.isArray(items) ? items.find((item) => item !== null && item !== undefined && item.sessionId === sessionId) : undefined;
+      if (summary !== undefined) {
+        ctx.emit("api-session/added", summary);
+        return true;
+      }
+    }
+  } catch {
+    /* fall through to the header-built summary */
+  }
+  try {
+    const stat = await ctx.sessionPersistence.stat(sessionId);
+    const header = stat !== undefined && stat !== null ? stat.header : undefined;
+    if (header !== undefined && header !== null) {
+      ctx.emit("api-session/added", {
+        sessionId: header.id,
+        updatedAt: typeof header.updatedAt === "number" ? header.updatedAt : Date.now(),
+        agentAvailable: false,
+        formatStatus: "current",
+        running: false,
+        blank: false,
+        title: header.title,
+        cwd: header.cwd,
+        createdAt: header.createdAt,
+      });
+      return true;
+    }
+  } catch {
+    /* nothing to announce */
+  }
+  return false;
 }
 
 /** The session root's project-directory key: separators collapse to `-`. */
@@ -866,6 +914,7 @@ export async function restoreTrashEntry(ctx, name) {
   } catch {
     /* an empty leftover directory is harmless */
   }
+  await announceSession(ctx, sidecar.sessionId);
   return { ok: true, sessionId: sidecar.sessionId, cwd: sidecar.cwd, attached };
 }
 

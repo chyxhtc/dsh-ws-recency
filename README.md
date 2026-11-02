@@ -65,6 +65,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 - 「恢复」：按记录的 cwd 算回 `sessions/<project>/<id>/`，并重新挂到对应工作区；
 - 「彻底删除」：真正删掉这份日志（二次确认）；
+- 恢复/扫描/移动之后宿主会广播 `api-session/added`，面板里还提供一个「刷新界面」按钮（重载页面，不重启应用），让侧栏立刻看到改动；
 - 移动操作留下的旧副本会标成「移动时的旧副本」，只允许彻底删除。
 
 ## 六、Token 消耗统计
@@ -134,7 +135,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.12.1/dsh-ws-recency-0.12.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.12.2/dsh-ws-recency-0.12.2.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
