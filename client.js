@@ -943,9 +943,14 @@
             break;
           }
           if (template === null || typeof template.cloneNode !== "function") return;
+          /* The button usually sits inside a row wrapper that owns the width and the
+             alignment; cloning only the button loses them and the label wraps. */
+          var rowSource = template.parentElement !== null && template.parentElement !== undefined && template.parentElement !== container
+            ? template.parentElement
+            : template;
           var clone;
           try {
-            clone = template.cloneNode(true);
+            clone = rowSource.cloneNode(true);
           } catch (error) {
             return;
           }
@@ -954,6 +959,16 @@
           if (typeof clone.querySelector === "function") {
             var labelTemplate = clone.querySelector("span");
             if (labelTemplate !== null && typeof labelTemplate.className === "string") labelClass = labelTemplate.className;
+          }
+          /* The wrapper may rely on inline styles from React rather than classes. */
+          if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+            var metrics = ["display", "width", "min-width", "align-items", "justify-content", "gap", "padding", "font-size", "font-family", "font-weight", "line-height", "color"];
+            for (var mi = 0; mi < metrics.length; mi += 1) {
+              var value = "";
+              try { value = window.getComputedStyle(rowSource).getPropertyValue(metrics[mi]) || ""; } catch (error) { value = ""; }
+              if (value !== "" && value !== "auto") clone.style[metrics[mi]] = value;
+            }
+            clone.style.whiteSpace = "nowrap";
           }
           /* Keep the wrapper that holds the icon (it owns the size and baseline) and
              drop only the template's text. */
@@ -968,6 +983,9 @@
           var label = document.createElement("span");
           if (labelClass !== "") label.className = labelClass;
           label.textContent = t("trash.title");
+          label.style.whiteSpace = "nowrap";
+          label.style.overflow = "hidden";
+          label.style.textOverflow = "ellipsis";
           clone.appendChild(label);
           clone.setAttribute("data-wsr-clone", "true");
           clone.setAttribute("aria-label", t("trash.title"));
