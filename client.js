@@ -230,13 +230,27 @@
           "trash.failed": "Delete failed: ",
         };
 
-        var FALLBACK = { "fold.show": "Show history ({n})", "fold.hide": "Hide history" };
+        /* Resolved lazily: the dictionaries are declared further down this closure. */
+        var resolvedDictionary = null;
+
+        function fallbackDictionary() {
+          if (resolvedDictionary !== null) return resolvedDictionary;
+          var language = "";
+          /* The page's own lang wins: it is what the UI is actually rendered in. */
+          try { if (typeof document !== "undefined" && document.documentElement !== null && document.documentElement !== undefined) language = document.documentElement.lang || ""; } catch (error) { language = ""; }
+          try { if (language === "" && typeof navigator !== "undefined" && navigator.language) language = navigator.language; } catch (error) { /* keep empty */ }
+          resolvedDictionary = String(language).toLowerCase().indexOf("zh") === 0 ? ZH : EN;
+          return resolvedDictionary;
+        }
 
         function t(key, params) {
           if (typeof data.t === "function") {
-            try { return data.t(key, params); } catch (error) { /* fall back below */ }
+            var translated = null;
+            try { translated = data.t(key, params); } catch (error) { translated = null; }
+            if (typeof translated === "string" && translated !== key) return translated;
           }
-          var text = FALLBACK[key] || key;
+          var dictionary = fallbackDictionary();
+          var text = (dictionary && dictionary[key]) || key;
           if (params !== undefined && params.n !== undefined) text = text.replace("{n}", String(params.n));
           return text;
         }
@@ -799,12 +813,47 @@
           return typeof id === "string" && id !== "" ? id : null;
         }
 
+        /** The nearest horizontal flex row above the stats: the whole footer dock. */
+        function composerDockOf(row) {
+          var node = row;
+          for (var depth = 0; depth < 4; depth += 1) {
+            var parent = node.parentElement;
+            if (parent === null) break;
+            var style = null;
+            try {
+              style = typeof window !== "undefined" && typeof window.getComputedStyle === "function"
+                ? window.getComputedStyle(parent)
+                : null;
+            } catch (error) {
+              style = null;
+            }
+            if (style !== null && style.display === "flex" && (style.flexDirection === "row" || style.flexDirection === "")) return parent;
+            node = parent;
+          }
+          return row.parentElement === null ? row : row.parentElement;
+        }
+
+        /** The host's own pill in that row, used as the visual template. */
+        function pillTemplateOf(row) {
+          if (typeof row.querySelector !== "function") return null;
+          var button = row.querySelector('button[class*="_pill"]');
+          return button !== null ? button : row.querySelector('[class*="_pill"]');
+        }
+
+        function cloneIconOf(template) {
+          if (template === null || typeof template.querySelector !== "function") return null;
+          var icon = template.querySelector("svg");
+          if (icon === null || typeof icon.cloneNode !== "function") return null;
+          try { return icon.cloneNode(true); } catch (error) { return null; }
+        }
+
         /**
-         * Add one pill to the composer's statistics row ("turns / steps / tokens")
-         * that opens the same analysis panel as the session menu.
+         * Add one pill at the END of the composer footer that opens the analysis
+         * panel for the conversation on screen.
          *
-         * The row is host-rendered and re-renders often, so the pill is re-attached
-         * on every pass and dropped as soon as the row or the session goes away.
+         * It reuses the host pill's own class names and icon so it reads as part of
+         * the same row, sits after the context ring rather than between the stats,
+         * is re-attached whenever the host re-renders, and disappears with the row.
          */
         function decorateComposerStats() {
           if (typeof document === "undefined") return;
@@ -818,12 +867,24 @@
           }
           var row = anchors[0].parentElement;
           if (row === null) return;
+          var dock = composerDockOf(row);
+
           if (existing === null) {
+            var template = pillTemplateOf(row);
             var button = document.createElement("button");
             button.type = "button";
-            button.className = "wsr-pill";
             button.setAttribute("data-wsr-composer-analysis", "true");
-            button.textContent = t("composer.analysis");
+            var base = template !== null && typeof template.className === "string" ? template.className : "";
+            button.className = base === "" ? "wsr-pill" : base + " wsr-pill";
+            var icon = cloneIconOf(template);
+            if (icon !== null) button.appendChild(icon);
+            var label = document.createElement("span");
+            var labelTemplate = template === null || typeof template.querySelector !== "function" ? null : template.querySelector('[class*="_label"]');
+            label.className = labelTemplate !== null && typeof labelTemplate.className === "string" && labelTemplate.className !== ""
+              ? labelTemplate.className
+              : "wsr-pill-label";
+            label.textContent = t("composer.analysis");
+            button.appendChild(label);
             button.addEventListener("click", function () {
               var id = currentConversationId();
               if (id !== null) openStatsPanel(id);
@@ -832,7 +893,10 @@
           } else {
             composerPill = existing;
           }
-          if (composerPill.parentElement !== row) row.appendChild(composerPill);
+          var children = dock.children || [];
+          if (composerPill.parentElement !== dock || children[children.length - 1] !== composerPill) {
+            dock.appendChild(composerPill);
+          }
         }
 
         function apply() {
@@ -903,7 +967,7 @@
           return h(Item, {
             icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
             onSelect: function () { props.actions.toggleFollowUp(props.sessionId); },
-          }, props.t(flagged ? "menu.unflag" : "menu.flag"));
+          }, t(flagged ? "menu.unflag" : "menu.flag"));
         }
 
         /**
@@ -967,7 +1031,7 @@
                   if (typeof window.alert === "function") window.alert(t("trash.failed") + (error && error.message ? error.message : error));
                 });
             },
-          }, props.t("menu.trash"));
+          }, t("menu.trash"));
         }
 
         /* ------------------------- token statistics ------------------------- */
@@ -1175,7 +1239,7 @@
           return h(Item, {
             icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
             onSelect: function () { openStatsPanel(props.sessionId); },
-          }, props.t("menu.stats"));
+          }, t("menu.stats"));
         }
 
         /** Settings -> General row: how old a session must be before it is folded. */
@@ -1184,11 +1248,11 @@
           var days = Number(settings.foldDays);
           if (!Number.isFinite(days)) days = DEFAULT_DAYS;
           var keep = settings.keepActive !== false;
-          var text = props.t("settings.title");
+          var text = t("settings.title");
           return h("div", { className: "wsr-setRow" },
             h("div", { className: "wsr-setText" },
               h("div", { className: "wsr-setTitle" }, text),
-              h("div", { className: "wsr-setDesc" }, props.t("settings.description")),
+              h("div", { className: "wsr-setDesc" }, t("settings.description")),
             ),
             h("div", { className: "wsr-controls" },
               h("button", {
@@ -1218,7 +1282,7 @@
                   checked: keep,
                   onChange: function (event) { props.actions.setKeepActive(event.target.checked); },
                 }),
-                props.t("settings.exempt")),
+                t("settings.exempt")),
             ),
           );
         }
@@ -1227,11 +1291,11 @@
         function ColorsRow(props) {
           var settings = props.useStore(function (state) { return state; });
           var enabled = settings.colors !== false;
-          var text = props.t("color.title");
+          var text = t("color.title");
           return h("div", { className: "wsr-setRow" },
             h("div", { className: "wsr-setText" },
               h("div", { className: "wsr-setTitle" }, text),
-              h("div", { className: "wsr-setDesc" }, props.t("color.description")),
+              h("div", { className: "wsr-setDesc" }, t("color.description")),
             ),
             h("div", { className: "wsr-controls" },
               h("label", { className: "wsr-exempt" },
@@ -1240,7 +1304,7 @@
                   checked: enabled,
                   onChange: function (event) { props.actions.setColors(event.target.checked); },
                 }),
-                props.t("color.enabled")),
+                t("color.enabled")),
             ),
           );
         }
@@ -1249,11 +1313,11 @@
         function PinSectionRow(props) {
           var settings = props.useStore(function (state) { return state; });
           var enabled = settings.pinnedSection !== false;
-          var text = props.t("pin.title");
+          var text = t("pin.title");
           return h("div", { className: "wsr-setRow" },
             h("div", { className: "wsr-setText" },
               h("div", { className: "wsr-setTitle" }, text),
-              h("div", { className: "wsr-setDesc" }, props.t("pin.description")),
+              h("div", { className: "wsr-setDesc" }, t("pin.description")),
             ),
             h("div", { className: "wsr-controls" },
               h("label", { className: "wsr-exempt" },
@@ -1262,7 +1326,7 @@
                   checked: enabled,
                   onChange: function (event) { props.actions.setPinnedSection(event.target.checked); },
                 }),
-                props.t("pin.enabled")),
+                t("pin.enabled")),
             ),
           );
         }

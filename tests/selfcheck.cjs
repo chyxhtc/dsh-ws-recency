@@ -119,7 +119,12 @@ composerSeat.append(composerRow);
 const conversationNode = el("div", "conv");
 conversationNode.attrs["data-conversation-session"] = "A-fresh-1";
 
+/* Keep the fallback dictionary deterministic in this test. */
+global.navigator = { language: "en-US" };
+global.documentElement = null;
+
 global.document = {
+  documentElement: { lang: "en-US" },
   body: overlayRoot,
   head: { appendChild() {} },
   querySelector(selector) {
@@ -455,7 +460,7 @@ function textOf(node) {
 
   const item = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
   assert.ok(item !== null, "the stats row renders");
-  assert.strictEqual(item.children[0], "menu.stats");
+  assert.strictEqual(item.children[0], "Token statistics");
   assert.ok(item.props.icon !== undefined, "the row carries an icon");
 
   item.props.onSelect();
@@ -472,9 +477,9 @@ function textOf(node) {
   const panel = backdrop.children[0];
   const body = panel.querySelector(".wsr-modal-body");
   const text = textOf(body);
-  assert.ok(text.indexOf("stats.loading") === -1, "the loading text is replaced by the statistics");
+  assert.ok(text.indexOf("Counting") === -1, "the loading text is replaced by the statistics");
   assert.ok(text.indexOf("pwsh") !== -1, "the tool table lists the tool");
-  assert.ok(text.indexOf("stats.agent") !== -1, "the agent row is present");
+  assert.ok(text.indexOf("main agent") !== -1, "the agent row is present");
   assert.ok(text.indexOf("60.0%") !== -1, "shares are shown as percentages");
   assert.ok(text.indexOf("10.5K") !== -1, "token totals are compact");
   assert.strictEqual(body.querySelectorAll(".wsr-stats-card").length, 5, "five exact totals are shown");
@@ -483,9 +488,11 @@ function textOf(node) {
   assert.strictEqual(overlayRoot.children.indexOf(backdrop), -1, "closing removes the modal");
 
   /* ---------- composer pill ---------------------------------------- */
-  const pill = composerRow.querySelector("[data-wsr-composer-analysis]");
+  const pill = composerSeat.querySelector("[data-wsr-composer-analysis]");
   assert.ok(pill !== null, "the composer statistics row gains an analysis pill");
-  assert.strictEqual(pill.textContent, "composer.analysis");
+  const pillLabel = pill.children[pill.children.length - 1];
+  assert.strictEqual(pillLabel.textContent, "Usage analysis");
+  assert.strictEqual(composerSeat.children[composerSeat.children.length - 1], pill, "it sits at the end of the footer");
   const before = global.fetch.calls.length;
   pill.click();
   assert.strictEqual(global.fetch.calls.length, before + 1, "clicking the pill asks for statistics");
@@ -493,7 +500,7 @@ function textOf(node) {
 
   conversationNode.attrs["data-conversation-session"] = "";
   render();
-  assert.strictEqual(composerRow.querySelector("[data-wsr-composer-analysis]"), null, "the pill goes away with the conversation");
+  assert.strictEqual(composerSeat.querySelector("[data-wsr-composer-analysis]"), null, "the pill goes away with the conversation");
 })().then(() => {
   console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel");
 }).catch((error) => {
