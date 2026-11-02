@@ -85,6 +85,7 @@
         var pinHidden = new Set();
         var pinHost = null;
         var expandClicks = new Map();
+        var composerPill = null;
         var expandedSections = new Set();
         var headerMarked = new WeakSet();
         var disposed = false;
@@ -104,6 +105,8 @@
           ".wsr-pin-unpin{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px;visibility:hidden}",
           ".wsr-pin-row:hover .wsr-pin-unpin{visibility:visible}",
           ".wsr-pin-unpin:hover{color:var(--dsw-alias-label-primary)}",
+          ".wsr-pill{box-sizing:border-box;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-variant-numeric:tabular-nums;line-height:inherit;white-space:nowrap;border-radius:var(--dsw-radius-sm,6px);display:inline-flex;align-items:center;gap:6px;padding:1px 8px;cursor:pointer}",
+          ".wsr-pill:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-secondary,#cfd3d8)}",
           ".wsr-modal-backdrop{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)}",
           ".wsr-modal{width:min(720px,92vw);max-height:84vh;display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1,#1f2226);color:var(--dsw-alias-label-primary,#e8e8e8);border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);overflow:hidden}",
           ".wsr-modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.1))}",
@@ -181,6 +184,7 @@
           "stats.agentDetail": "主 agent 构成：思考 {reasoning} · 回复 {text} · 用户消息 {user} · 系统提示 {system}",
           "stats.diagnose.unmounted": "\n\n（宿主半已加载，但统计路由没挂上——重启应用再试）",
           "stats.diagnose.noHost": "\n\n（宿主半未加载：需要重启应用加载新版本）",
+          "composer.analysis": "用量分析",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
         };
@@ -221,6 +225,7 @@
           "stats.agentDetail": "Agent composition: reasoning {reasoning} \u00b7 reply {text} \u00b7 user messages {user} \u00b7 system prompt {system}",
           "stats.diagnose.unmounted": "\n\n(the host half is loaded but the statistics route did not mount - restart the app and retry)",
           "stats.diagnose.noHost": "\n\n(the host half is not loaded: restart the app to pick up the new version)",
+          "composer.analysis": "Usage analysis",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
         };
@@ -785,20 +790,72 @@
           }
         }
 
+        /** The session the conversation view is showing, from its own DOM hook. */
+        function currentConversationId() {
+          if (typeof document === "undefined") return null;
+          var element = document.querySelector("[data-conversation-session]");
+          if (element === null || typeof element.getAttribute !== "function") return null;
+          var id = element.getAttribute("data-conversation-session");
+          return typeof id === "string" && id !== "" ? id : null;
+        }
+
+        /**
+         * Add one pill to the composer's statistics row ("turns / steps / tokens")
+         * that opens the same analysis panel as the session menu.
+         *
+         * The row is host-rendered and re-renders often, so the pill is re-attached
+         * on every pass and dropped as soon as the row or the session goes away.
+         */
+        function decorateComposerStats() {
+          if (typeof document === "undefined") return;
+          var existing = document.querySelector("[data-wsr-composer-analysis]");
+          var seat = document.querySelector("[data-composer-seat]");
+          var anchors = seat === null || typeof seat.querySelectorAll !== "function" ? [] : seat.querySelectorAll("[data-composer-stat]");
+          if (anchors.length === 0 || currentConversationId() === null) {
+            if (existing !== null) existing.remove();
+            composerPill = null;
+            return;
+          }
+          var row = anchors[0].parentElement;
+          if (row === null) return;
+          if (existing === null) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "wsr-pill";
+            button.setAttribute("data-wsr-composer-analysis", "true");
+            button.textContent = t("composer.analysis");
+            button.addEventListener("click", function () {
+              var id = currentConversationId();
+              if (id !== null) openStatsPanel(id);
+            });
+            composerPill = button;
+          } else {
+            composerPill = existing;
+          }
+          if (composerPill.parentElement !== row) row.appendChild(composerPill);
+        }
+
         function apply() {
           if (disposed) return;
           var sessions = data.sessions;
           var workspaces = data.workspaces;
-          if (!ready(sessions) || !ready(workspaces)) return;
-
           var settings = settingsOf();
+          if (!ready(sessions) || !ready(workspaces)) {
+            decorateComposerStats();
+            return;
+          }
+
           var entries = collect();
-          if (entries.length === 0) return;
+          if (entries.length === 0) {
+            decorateComposerStats();
+            return;
+          }
 
           orderGroups(entries, latestByWorkspace(sessions, workspaces));
           foldRows(entries, settings, sessions, Date.now());
           renderPinned(entries, sessions, workspaces, settings);
           if (settings.colors) decorateRows(entries, sessions, data.statuses, settings);
+          decorateComposerStats();
         }
 
         function schedule() {
@@ -1236,6 +1293,8 @@
           });
           pinHidden.clear();
           if (pinHost !== null && pinHost.parentElement !== null) pinHost.remove();
+          if (composerPill !== null && typeof composerPill.remove === "function") composerPill.remove();
+          composerPill = null;
           pinHost = null;
           expandClicks.clear();
           roots.forEach(function (root) { root.removeAttribute(ROOT_ATTR); });

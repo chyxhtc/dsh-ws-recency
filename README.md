@@ -65,7 +65,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 ## 六、Token 消耗统计
 
-会话「…」菜单 →「Token 消耗统计」：
+会话下方统计条上的「用量分析」，或会话「…」菜单 →「Token 消耗统计」：
 
 - **真实账单**（每步记录的 usage）：步数、输入（未缓存）、缓存命中、输出、合计；
 - **结构占比**（按内容估算）：主 agent 自己（思考 / 回复 / 用户消息 / 系统提示）vs 每个工具，一条占比条 + 图例；
@@ -110,7 +110,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.10.1/dsh-ws-recency-0.10.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.10.2/dsh-ws-recency-0.10.2.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

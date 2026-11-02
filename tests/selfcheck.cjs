@@ -16,6 +16,8 @@ const DAY = 24 * 60 * 60 * 1000;
 
 function matchOne(elm, part) {
   if (part.startsWith(".")) return String(elm.className).split(/\s+/).indexOf(part.slice(1)) !== -1;
+  const presence = /^\[([a-zA-Z-]+)\]$/.exec(part);
+  if (presence !== null) return elm.attrs[presence[1]] !== undefined;
   const attr = /^([a-zA-Z]+)?\[([a-zA-Z-]+)([\^*$]?)=["']?([^"'\]]*)["']?\]$/.exec(part);
   if (attr === null) {
     if (/^[a-zA-Z]+$/.test(part)) return elm.tagName === part.toUpperCase();
@@ -105,10 +107,26 @@ const flush = () => {
 };
 
 const overlayRoot = el("div", "overlay-root");
+
+/* The composer's statistics row and the conversation's own session hook. */
+const composerSeat = el("div", "seat");
+const composerRow = el("div", "row");
+const turnsPill = el("div", "K-8v-a_anchor");
+turnsPill.attrs["data-composer-stat"] = "turns";
+turnsPill.append(el("span", "K-8v-a_pill"));
+composerRow.append(turnsPill);
+composerSeat.append(composerRow);
+const conversationNode = el("div", "conv");
+conversationNode.attrs["data-conversation-session"] = "A-fresh-1";
+
 global.document = {
   body: overlayRoot,
   head: { appendChild() {} },
-  querySelector: () => null,
+  querySelector(selector) {
+    if (selector === "[data-composer-seat]") return composerSeat;
+    if (selector === "[data-conversation-session]") return conversationNode;
+    return composerSeat.querySelector(selector);
+  },
   createElement: (tag) => el(tag),
   addEventListener() {},
   removeEventListener() {},
@@ -463,6 +481,19 @@ function textOf(node) {
 
   panel.querySelector(".wsr-modal-close").click();
   assert.strictEqual(overlayRoot.children.indexOf(backdrop), -1, "closing removes the modal");
+
+  /* ---------- composer pill ---------------------------------------- */
+  const pill = composerRow.querySelector("[data-wsr-composer-analysis]");
+  assert.ok(pill !== null, "the composer statistics row gains an analysis pill");
+  assert.strictEqual(pill.textContent, "composer.analysis");
+  const before = global.fetch.calls.length;
+  pill.click();
+  assert.strictEqual(global.fetch.calls.length, before + 1, "clicking the pill asks for statistics");
+  assert.ok(String(global.fetch.calls[before].url).indexOf("sessionId=A-fresh-1") !== -1, "it analyses the conversation it sits in");
+
+  conversationNode.attrs["data-conversation-session"] = "";
+  render();
+  assert.strictEqual(composerRow.querySelector("[data-wsr-composer-analysis]"), null, "the pill goes away with the conversation");
 })().then(() => {
   console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel");
 }).catch((error) => {
