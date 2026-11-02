@@ -136,6 +136,18 @@
           ".wsr-trash-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
           ".wsr-footer-action{display:flex;box-sizing:border-box;flex:none;align-items:center;justify-content:flex-start;gap:8px;width:calc(100% + 4px);min-width:0;height:42px;margin:4px -2px;padding:0 10px 0 8px;border:0;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}",
           ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover)}",
+".wsr-page{display:flex;flex-direction:column;gap:10px;padding:16px 18px;min-width:0;box-sizing:border-box;height:100%;overflow:auto}",
+".wsr-page-head{display:flex;align-items:center;gap:8px}",
+".wsr-page-heading{flex:1;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+".wsr-page-list{display:flex;flex-direction:column;gap:6px}",
+".wsr-page-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+".wsr-page-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
+".wsr-page-title{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+".wsr-page-meta{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+".wsr-page-path{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+".wsr-page-actions{display:flex;gap:6px;flex:none;align-items:center;white-space:nowrap}",
+".wsr-page-note{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.6}",
+".wsr-page-error{color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-footer-action:active{background:var(--dsw-alias-interactive-bg-active)}",
           ".wsr-footer-action:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:3px}",
           '.wsr-footer-action[data-wide="false"]{width:36px;height:36px;margin:8px 0 10px;padding:0;gap:0;border-radius:50%;justify-content:center}',
@@ -237,6 +249,7 @@
           "adopt.cleaned": "清理了 {n} 处重复/失效的工作区归属。",
           "adopt.failed": "扫描失败：",
           "ui.reload": "刷新界面",
+          "ui.refresh": "刷新列表",
           "trash.title": "回收站",
           "trash.description": "被删除的会话会移到这里（日志目录），可以恢复，也可以彻底删除。",
           "trash.open": "打开",
@@ -316,6 +329,7 @@
           "adopt.cleaned": " Cleared {n} stale membership(s).",
           "adopt.failed": "Scan failed: ",
           "ui.reload": "Reload UI",
+          "ui.refresh": "Refresh",
           "trash.title": "Trash",
           "trash.description": "Deleted sessions land here (their log directory). Restore them, or delete them for good.",
           "trash.open": "Open",
@@ -1805,6 +1819,115 @@
           load("");
         }
 
+        /* --------------------------- trash panel page ------------------------ */
+
+        function trashPost(payload) {
+          return fetch("/ws-recency/trash", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          }).then(function (response) {
+            return response.text().then(function (text) {
+              var parsed = null;
+              try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+              return { status: response.status, text: text, json: parsed };
+            });
+          });
+        }
+
+        /** The sidebar's trash entry glyph. */
+        function TrashPanelIcon(props) {
+          var Icon = ui.IconTrashOutlineRegular;
+          if (typeof Icon !== "function") return null;
+          var size = props !== undefined && props !== null && typeof props.size === "number" ? props.size : 16;
+          return h(Icon, { size: size });
+        }
+
+        /** The trash page itself: same data as the dialog, rendered in the main region. */
+        function TrashPanelPage() {
+          var state = react.useState({ loaded: false, entries: [], note: "", failed: "" });
+          var view = state[0];
+          var setView = state[1];
+
+          var load = function (note) {
+            trashPost({ action: "list" }).then(function (answer) {
+              if (answer.json === null || answer.json.ok !== true) {
+                setView({ loaded: true, entries: [], note: "", failed: t("trash.failed") + "HTTP " + answer.status + " \u00b7 " + (answer.text || "").slice(0, 120) });
+                return;
+              }
+              setView({ loaded: true, entries: Array.isArray(answer.json.entries) ? answer.json.entries : [], note: note === undefined ? "" : note, failed: "" });
+            }).catch(function (error) {
+              setView({ loaded: true, entries: [], note: "", failed: t("trash.failed") + (error && error.message ? error.message : error) });
+            });
+          };
+
+          react.useEffect(function () { load(""); }, []);
+
+          var act = function (entry, action) {
+            var question = action === "restore" ? t("trash.confirmRestore") : t("trash.confirmPurge");
+            if (typeof window.confirm === "function" && !window.confirm(question)) return;
+            load(t("trash.working"));
+            trashPost({ action: action, name: entry.name }).then(function (result) {
+              var ok = result.json !== null && result.json.ok === true;
+              load(ok ? (action === "restore" ? t("trash.restored") : t("trash.purged")) : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
+            }).catch(function (error) {
+              load(t("trash.failed") + (error && error.message ? error.message : error));
+            });
+          };
+
+          var rows = [];
+          for (var i = 0; i < view.entries.length; i += 1) {
+            (function (entry) {
+              var meta = [];
+              if (entry.reason === "delete") meta.push(t("trash.reason.delete"));
+              else if (entry.reason === "move") meta.push(t("trash.reason.move"));
+              meta.push(formatBytes(entry.sizeBytes));
+              var when = formatWhen(entry.at);
+              if (when !== "") meta.push(when);
+              var actions = [h("button", {
+                type: "button",
+                className: "wsr-btn",
+                onClick: function () { act(entry, "restore"); },
+              }, t("trash.restore"))].filter(function () { return entry.restorable === true; });
+              actions.push(h("button", {
+                type: "button",
+                className: "wsr-btn wsr-btn-danger",
+                onClick: function () { act(entry, "purge"); },
+              }, t("trash.purge")));
+              rows.push(h("div", { className: "wsr-page-row", key: entry.name },
+                h("div", { className: "wsr-page-text" },
+                  h("div", { className: "wsr-page-title" }, entry.sessionId === null ? entry.name : entry.sessionId),
+                  h("div", { className: "wsr-page-meta" }, meta.join(" \u00b7 ")),
+                  typeof entry.cwd === "string" && entry.cwd !== "" ? h("div", { className: "wsr-page-path" }, entry.cwd) : null,
+                ),
+                h("div", { className: "wsr-page-actions" }, actions),
+              ));
+            })(view.entries[i]);
+          }
+
+          return h("div", { className: "wsr-page" },
+            h("div", { className: "wsr-page-head" },
+              h("div", { className: "wsr-page-heading" }, t("trash.title")),
+              h("button", {
+                type: "button",
+                className: "wsr-btn",
+                onClick: function () { load(""); },
+              }, t("ui.refresh")),
+              h("button", {
+                type: "button",
+                className: "wsr-btn",
+                onClick: function () { reloadButton().click(); },
+              }, t("ui.reload")),
+            ),
+            view.note !== "" ? h("div", { className: "wsr-page-note" }, view.note) : null,
+            view.failed !== "" ? h("div", { className: "wsr-page-note wsr-page-error" }, view.failed) : null,
+            !view.loaded ? h("div", { className: "wsr-page-note" }, t("trash.loading"))
+              : view.entries.length === 0 ? h("div", { className: "wsr-page-note" }, t("trash.empty"))
+                : h("div", { className: "wsr-page-list" }, rows),
+            h("div", { className: "wsr-page-note" }, t("trash.note")),
+          );
+        }
+
         /**
          * Sidebar footer action: the trash, one click away from the account area.
          *
@@ -2021,13 +2144,22 @@
             }, ColorsRow);
           });
 
-          ctx.slots.inject("sidebar.footer.action", function () {
+          ctx.slots.inject("sidebar.panellist", function () {
             return ctx.slots.register({
-              name: "sidebar.footer.action",
-              id: "ws-recency-trash-footer",
-              order: 30,
+              name: "sidebar.panellist",
+              id: "ws-recency-trash",
+              order: 20,
               locale: NS,
-            }, TrashFooterAction);
+              label: function () { return t("trash.title"); },
+            }, TrashPanelIcon);
+          });
+
+          ctx.slots.inject("main", function () {
+            return ctx.slots.register({
+              name: "main",
+              key: "ws-recency-trash",
+              locale: NS,
+            }, TrashPanelPage);
           });
 
           ctx.slots.inject("settings.general.item", function () {

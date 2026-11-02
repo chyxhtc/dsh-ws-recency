@@ -218,6 +218,8 @@ A.button.addEventListener("click", () => { hostClicks += 1; });
 
 const react = {
   useEffect(fn) { fn(); },
+  useState(initial) { return [initial, function () {}]; },
+  useMemo(fn) { return fn(); },
   createElement(type, props, ...children) { return { type, props: props || {}, children }; },
 };
 const mod = spec.factory((name) => {
@@ -240,7 +242,8 @@ let SettingsRow = null;
 let FollowUpDot = null;
 let StatsMenuItem = null;
 let MoveMenuItem = null;
-let TrashAction = null;
+let TrashIcon = null;
+let TrashPage = null;
 let TrashMenuItem = null;
 const service = {
   opened: [],
@@ -261,7 +264,8 @@ const ctx = {
       if (spec2.name === "sidebar.session.row.leading") FollowUpDot = component;
       if (spec2.id === "ws-recency-stats") StatsMenuItem = component;
       if (spec2.id === "ws-recency-move") MoveMenuItem = component;
-      if (spec2.id === "ws-recency-trash-footer") TrashAction = component;
+      if (spec2.name === "sidebar.panellist") TrashIcon = component;
+      if (spec2.name === "main") TrashPage = component;
       if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
     },
@@ -526,16 +530,15 @@ function textOf(node) {
   assert.strictEqual(global.fetch.calls.length, before + 1, "clicking the pill asks for statistics");
   assert.ok(String(global.fetch.calls[before].url).indexOf("sessionId=A-fresh-1") !== -1, "it analyses the conversation it sits in");
 
-  /* ---------- footer trash action ----------------------------------- */
-  assert.ok(TrashAction !== null, "the footer trash action was registered");
+  /* ---------- trash panel ------------------------------------------- */
+  assert.ok(TrashIcon !== null, "the sidebar panel glyph was registered");
+  assert.ok(TrashPage !== null, "the main-region trash page was registered");
   global.fetch.answer = { ok: true, entries: [] };
-  const action = TrashAction({ wide: true });
-  assert.strictEqual(action.type, "button");
-  assert.strictEqual(action.props.title, "Trash");
-  const beforeTrash = global.fetch.calls.length;
-  action.props.onClick();
-  assert.strictEqual(global.fetch.calls.length, beforeTrash + 1, "clicking opens the trash panel");
-  assert.ok(String(global.fetch.calls[beforeTrash].url).indexOf("/ws-recency/trash") !== -1);
+  const iconElement = TrashIcon({ size: 16 });
+  assert.ok(iconElement !== null, "the glyph renders");
+  const page = TrashPage({});
+  assert.strictEqual(page.props.className, "wsr-page");
+  assert.ok(page.children.length > 0);
 
   /* ---------- move to workspace ------------------------------------- */
   global.window.confirm = () => true;
