@@ -212,6 +212,7 @@
           "move.current": "当前",
           "move.working": "移动中…（会先停止会话）",
           "move.done": "已移动到「{workspace}」。若列表没刷新，切换一下工作区或重启应用。",
+          "move.doneLive": "\n\n这个会话刚才是打开状态：建议重启应用后再继续对话，避免它沿用旧的目录。",
           "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
           "stats.details.show": "显示明细 ▾",
@@ -265,6 +266,7 @@
           "move.current": "current",
           "move.working": "Moving\u2026 (the session is stopped first)",
           "move.done": "Moved to \"{workspace}\". If the list has not refreshed, switch workspaces or restart the app.",
+          "move.doneLive": "\n\nThe session was open: restart the app before continuing it so it does not keep using the old directory.",
           "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
           "stats.details.show": "Show details",
@@ -1447,6 +1449,7 @@
                     .then(function (result) {
                       if (result.json !== null && result.json.ok === true) {
                         body.textContent = t("move.done", { workspace: label });
+                        if (result.json.live === true) body.textContent += t("move.doneLive");
                         return;
                       }
                       var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 160) || "(empty response)";

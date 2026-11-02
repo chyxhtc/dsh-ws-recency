@@ -88,7 +88,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 3. 把旧日志目录移进 `.trash/ws-recency/<id>-move-<时间戳>`（既是备份，也腾出这个 id）；
 4. 用新 `cwd`、原 id 重建日志，再回放全部事件；
 5. 校验新 header 的 cwd；
-6. 先 attach 到目标工作区（失败就回滚原目录），再 detach 旧工作区；
+6. 把新 cwd 同步到工作区的 header 索引和这个会话的内存对象（否则宿主会用旧目录拒绝 attach），再 attach 到目标（失败就回滚原目录），最后 detach 旧工作区；
 7. 删投影缓存，让它按新路径重建。
 
 **只移动会话**：对话框里明确提示——它在旧工作区里创建/修改的文件不会跟着走，仍留在原目录（附件与 rewind 快照按会话 id 存，不受影响）。
@@ -130,7 +130,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.11.1/dsh-ws-recency-0.11.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.11.2/dsh-ws-recency-0.11.2.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

@@ -72,9 +72,15 @@ function fixture(root) {
     },
   ];
 
+  const live = { header: { ...state.header } };
   const ctx = {
     sessionPersistence: persistence,
-    workspaceRegistry: { list: () => workspaces },
+    sessions: { get: (id) => (id === "sid" ? live : undefined) },
+    workspaceRegistry: {
+      list: () => workspaces,
+      indexHeader: async (header) => { live.header = header; },
+      readSessionHeader: async () => live.header,
+    },
     parallel: async () => { state.stopped = true; },
     get: (name) => (name === "storageDomain"
       ? { get: () => ({ table: () => ({ delete: async () => { state.projcacheDeleted = true; } }) }) }
@@ -82,7 +88,7 @@ function fixture(root) {
     emit() {},
   };
 
-  return { ctx, state, oldCwd, targetCwd, sourceDir, root };
+  return { ctx, state, live, oldCwd, targetCwd, sourceDir, root };
 }
 
 (async () => {
@@ -114,6 +120,36 @@ function fixture(root) {
     assert.strictEqual(fs.existsSync(f.sourceDir), false, "the old log directory is parked");
     assert.ok(fs.existsSync(result.backup), "the backup exists in the trash");
     assert.strictEqual(result.path, f.targetCwd);
+  }
+
+  /* ---------- an open session's header follows the move ---------------- */
+  {
+    const f = fixture(path.join(root, "live"));
+    f.ctx.sessionPersistence.create = async (header) => {
+      f.state.header = header;
+      fs.mkdirSync(f.state.newDir, { recursive: true });
+      return { append: async () => {}, flush: async () => {}, close: async () => {} };
+    };
+    const result = await mod.moveSessionToWorkspace(f.ctx, "sid", "w-target");
+    assert.strictEqual(result.ok, true, result.error);
+    assert.strictEqual(f.live.header.cwd, f.targetCwd, "the live session object carries the new cwd");
+    assert.deepStrictEqual(f.state.attached, ["sid"]);
+  }
+
+  /* ---------- a stale in-memory header asks for a restart -------------- */
+  {
+    const f = fixture(path.join(root, "stale"));
+    f.ctx.sessionPersistence.create = async (header) => {
+      f.state.header = header;
+      fs.mkdirSync(f.state.newDir, { recursive: true });
+      return { append: async () => {}, flush: async () => {}, close: async () => {} };
+    };
+    f.ctx.workspaceRegistry.readSessionHeader = async () => ({ cwd: f.oldCwd });
+    f.ctx.workspaceRegistry.indexHeader = async () => {};
+    const result = await mod.moveSessionToWorkspace(f.ctx, "sid", "w-target");
+    assert.strictEqual(result.ok, false);
+    assert.ok(String(result.error).indexOf("restart") !== -1, result.error);
+    assert.strictEqual(fs.existsSync(f.sourceDir), true, "nothing is left half moved");
   }
 
   /* ---------- a refused attach rolls the log back ---------------------- */

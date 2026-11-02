@@ -545,6 +545,39 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 
+  /* The moved cwd lives in three places: the log (just rewritten), the Workspace
+     registry's header index, and the live Session object when this process still
+     has the session open. The registry validates against its own view, so both the
+     cached header and the live one have to follow - otherwise an open session is
+     refused with its old directory. */
+  const movedHeader = { ...header, cwd: targetPath };
+  const wasLive = typeof ctx.sessions?.get === "function" && ctx.sessions.get(sessionId) !== undefined;
+  try {
+    if (typeof ctx.workspaceRegistry.indexHeader === "function") await ctx.workspaceRegistry.indexHeader(movedHeader);
+  } catch {
+    /* the index rebuilds from disk on its own */
+  }
+  try {
+    const live = typeof ctx.sessions?.get === "function" ? ctx.sessions.get(sessionId) : undefined;
+    if (live !== undefined && live !== null && live.header !== undefined) live.header = movedHeader;
+  } catch {
+    /* an immutable live header: the attach below reports it */
+  }
+
+  let seenCwd = targetPath;
+  try {
+    if (typeof ctx.workspaceRegistry.readSessionHeader === "function") {
+      const seen = await ctx.workspaceRegistry.readSessionHeader(sessionId);
+      if (seen !== undefined && seen !== null && typeof seen.cwd === "string") seenCwd = seen.cwd;
+    }
+  } catch {
+    seenCwd = targetPath;
+  }
+  if (seenCwd !== targetPath) {
+    await rollback();
+    return { ok: false, error: `the app still holds this session's old directory (${seenCwd}); restart the app and move it again` };
+  }
+
   /* Attach first, detach second: a refused attach must not orphan the session. */
   try {
     await target.attachSession(sessionId);
@@ -573,7 +606,7 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
     /* the cache is derived data */
   }
 
-  return { ok: true, workspace: target.id, path: targetPath, detached, backup };
+  return { ok: true, workspace: target.id, path: targetPath, detached, backup, live: wasLive };
 }
 
 /** POST { sessionId, workspaceId } -> move that session to another workspace. */
