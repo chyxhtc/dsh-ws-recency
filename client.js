@@ -113,6 +113,7 @@
           ".wsr-modal-title{font-size:14px;font-weight:600}",
           ".wsr-modal-close{border:none;background:transparent;color:var(--dsw-alias-label-tertiary,#9aa0a6);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:4px}",
           ".wsr-modal-close:hover{color:var(--dsw-alias-label-primary,#e8e8e8)}",
+          ".wsr-modal-tools{display:flex;align-items:center;gap:8px;flex:none}",
           ".wsr-modal-body{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px;font-size:12px}",
           ".wsr-stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}",
           ".wsr-stats-card{background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));border-radius:8px;padding:8px 10px}",
@@ -133,9 +134,14 @@
           ".wsr-move-path{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-move-badge{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-trash-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
-          ".wsr-footer-action{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;border:none;background:0 0;color:var(--dsw-alias-label-primary,#e6e6e6);font:inherit;cursor:pointer;padding:6px 8px;border-radius:8px;text-align:left}",
-          ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
-          ".wsr-footer-label{font-size:inherit;line-height:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-footer-action{display:flex;box-sizing:border-box;flex:none;align-items:center;justify-content:flex-start;gap:8px;width:calc(100% + 4px);min-width:0;height:42px;margin:4px -2px;padding:0 10px 0 8px;border:0;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}",
+          ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover)}",
+          ".wsr-footer-action:active{background:var(--dsw-alias-interactive-bg-active)}",
+          ".wsr-footer-action:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:3px}",
+          '.wsr-footer-action[data-wide="false"]{width:36px;height:36px;margin:8px 0 10px;padding:0;gap:0;border-radius:50%;justify-content:center}',
+          ".wsr-footer-glyph{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px}",
+          '.wsr-footer-action[data-wide="false"] .wsr-footer-glyph{width:18px;height:18px}',
+          ".wsr-footer-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-trash-actions{display:flex;gap:6px;flex:none;align-items:center;white-space:nowrap}",
           ".wsr-btn{border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:0 0;color:var(--dsw-alias-label-primary,#e6e6e6);font:inherit;font-size:12px;line-height:1.6;padding:3px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;flex:none}",
           ".wsr-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08))}",
@@ -242,7 +248,7 @@
           "trash.purge": "彻底删除",
           "trash.confirmRestore": "恢复到原来的工作区？",
           "trash.confirmPurge": "彻底删除这份日志？不可恢复。",
-          "trash.restored": "已恢复，并重新挂回原工作区。若侧栏还没出现，点下面的「刷新界面」（或去「补登记游离会话」点「扫描并刷新」）。",
+          "trash.restored": "已恢复，并重新挂回原工作区。若侧栏还没出现，点下面的「刷新界面」，或在本页右上角点「扫描并刷新」。",
           "trash.purged": "已彻底删除。",
           "trash.working": "处理中…",
           "trash.failed": "操作失败：",
@@ -321,7 +327,7 @@
           "trash.purge": "Delete for good",
           "trash.confirmRestore": "Restore it to its original workspace?",
           "trash.confirmPurge": "Delete this log for good? This cannot be undone.",
-          "trash.restored": "Restored and re-attached to its workspace. If the sidebar has not picked it up, press \"Reload UI\" below (or run \"Scan and reload\").",
+          "trash.restored": "Restored and re-attached to its workspace. If the sidebar has not picked it up, press \"Reload UI\" below, or use \"Scan and reload\" at the top right of this panel.",
           "trash.purged": "Deleted for good.",
           "trash.working": "Working\u2026",
           "trash.failed": "Action failed: ",
@@ -918,39 +924,6 @@
           return typeof id === "string" && id !== "" ? id : null;
         }
 
-        /**
-         * Match the footer action to its neighbours.
-         *
-         * The footer slot stacks actions, but each shell entry carries its own
-         * sizing; copying the metrics of the first real sibling keeps our row on
-         * the same baseline, font size and width instead of centring a smaller one.
-         */
-        function decorateFooterAction() {
-          if (typeof document === "undefined") return;
-          var mine = document.querySelector('[data-wsr-footer="true"]');
-          if (mine === null || typeof mine.getAttribute !== "function") return;
-          var container = mine.parentElement;
-          if (container === null || typeof container.querySelectorAll !== "function") return;
-          if (typeof window === "undefined" || typeof window.getComputedStyle !== "function") return;
-          var candidates = container.querySelectorAll("button");
-          var template = null;
-          for (var i = 0; i < candidates.length; i += 1) {
-            var candidate = candidates[i];
-            if (candidate === mine) continue;
-            if (typeof candidate.getAttribute === "function" && candidate.getAttribute("data-wsr-footer") !== null) continue;
-            template = candidate;
-            break;
-          }
-          if (template === null) return;
-          var metrics = ["font-size", "font-family", "font-weight", "line-height", "padding", "gap", "width", "height", "justify-content", "color", "border-radius", "margin"];
-          for (var k = 0; k < metrics.length; k += 1) {
-            var value = "";
-            try { value = window.getComputedStyle(template).getPropertyValue(metrics[k]) || ""; } catch (error) { value = ""; }
-            if (value === "" || value === "auto") continue;
-            mine.style[metrics[k]] = value;
-          }
-        }
-
         /** The nearest horizontal flex row above the stats: the whole footer dock. */
         function composerDockOf(row) {
           var node = row;
@@ -1079,14 +1052,12 @@
           var settings = settingsOf();
           if (!ready(sessions) || !ready(workspaces)) {
             decorateComposerStats();
-            decorateFooterAction();
             return;
           }
 
           var entries = collect();
           if (entries.length === 0) {
             decorateComposerStats();
-            decorateFooterAction();
             return;
           }
 
@@ -1095,7 +1066,6 @@
           renderPinned(entries, sessions, workspaces, settings);
           if (settings.colors) decorateRows(entries, sessions, data.statuses, settings);
           decorateComposerStats();
-          decorateFooterAction();
         }
 
         function schedule() {
@@ -1703,12 +1673,20 @@
           backdrop.appendChild(panel);
           var head = statsDiv("wsr-modal-head");
           head.appendChild(statsDiv("wsr-modal-title", t("trash.title")));
+          var tools = statsDiv("wsr-modal-tools");
+          var adopt = document.createElement("button");
+          adopt.type = "button";
+          adopt.className = "wsr-btn";
+          adopt.title = t("adopt.description");
+          adopt.textContent = t("adopt.action");
+          tools.appendChild(adopt);
           var close = document.createElement("button");
           close.type = "button";
           close.className = "wsr-modal-close";
           close.textContent = "\u00d7";
           close.addEventListener("click", closeStatsPanel);
-          head.appendChild(close);
+          tools.appendChild(close);
+          head.appendChild(tools);
           panel.appendChild(head);
           var body = statsDiv("wsr-modal-body");
           panel.appendChild(body);
@@ -1815,10 +1793,26 @@
               body.textContent = t("trash.failed") + (error && error.message ? error.message : error);
             });
           };
+          adopt.addEventListener("click", function () {
+            adopt.disabled = true;
+            adopt.textContent = t("adopt.working");
+            adoptUnlistedSessions(function (message) {
+              adopt.disabled = false;
+              adopt.textContent = t("adopt.action");
+              load(message);
+            });
+          });
           load("");
         }
 
-        /** Sidebar footer action: the trash, one click away from the account area. */
+        /**
+         * Sidebar footer action: the trash, one click away from the account area.
+         *
+         * Geometry is the same house rule the official launchers follow
+         * (`dshUpdateLauncher` / `dshMarketLauncher`): full-width seat bled 2px
+         * per side, 42px tall, 12px radius. `wide` comes from the slot, so the
+         * narrow rail keeps its 36px circle instead of a stretched row.
+         */
         function TrashFooterAction(props) {
           var wide = props === undefined || props === null || props.wide !== false;
           var label = t("trash.title");
@@ -1826,64 +1820,47 @@
           return h("button", {
             type: "button",
             className: "wsr-footer-action",
-            "data-wsr-footer": "true",
+            "data-wide": wide ? "true" : "false",
             title: label,
             "aria-label": label,
+            "aria-haspopup": "dialog",
             onClick: function () { openTrashPanel(); },
           },
-            typeof Icon === "function" ? h(Icon, {}) : null,
+            typeof Icon === "function"
+              ? h("span", { className: "wsr-footer-glyph", "aria-hidden": "true" }, h(Icon, { size: wide ? 16 : 18 }))
+              : null,
             wide ? h("span", { className: "wsr-footer-label" }, label) : null);
         }
 
-        /** Settings -> General: re-attach sessions that belong to no workspace. */
-        function AdoptRow() {
-          var result = react.useState("");
-          var message = result[0];
-          var setMessage = result[1];
-          var run = function () {
-            setMessage(t("adopt.working"));
-            fetch("/ws-recency/session-adopt", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
-              .then(function (response) {
-                return response.text().then(function (text) {
-                  var parsed = null;
-                  try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
-                  return { status: response.status, text: text, json: parsed };
-                });
-              })
-              .then(function (answer) {
-                if (answer.json !== null && answer.json.ok === true) {
-                  var count = Array.isArray(answer.json.adopted) ? answer.json.adopted.length : 0;
-                  var cleaned = typeof answer.json.cleaned === "number" ? answer.json.cleaned : 0;
-                  var text = t("adopt.done", { n: count });
-                  if (cleaned > 0) text += t("adopt.cleaned", { n: cleaned });
-                  setMessage(text);
-                  /* The scan is the refresh: reload once it has changed something. */
-                  if (count > 0 || cleaned > 0) {
-                    window.setTimeout(function () {
-                      try {
-                        if (window.location !== undefined && typeof window.location.reload === "function") window.location.reload();
-                      } catch (error) {
-                        /* nothing to do */
-                      }
-                    }, 900);
-                  }
-                  return;
-                }
-                setMessage(t("adopt.failed") + (answer.json && answer.json.error ? answer.json.error : answer.text.slice(0, 120)));
-              })
-              .catch(function (error) {
-                setMessage(t("adopt.failed") + (error && error.message ? error.message : error));
+        /**
+         * Re-attach sessions that belong to no workspace.
+         *
+         * General Settings is the host's own page, so this repair action lives in
+         * our trash panel instead of posing as a shell preference there.
+         */
+        function adoptUnlistedSessions(done) {
+          fetch("/ws-recency/session-adopt", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+            .then(function (response) {
+              return response.text().then(function (text) {
+                var parsed = null;
+                try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+                return { status: response.status, text: text, json: parsed };
               });
-          };
-          return h("div", { className: "wsr-setRow" },
-            h("div", { className: "wsr-setText" },
-              h("div", { className: "wsr-setTitle" }, t("adopt.title")),
-              h("div", { className: "wsr-setDesc" }, message === "" ? t("adopt.description") : message),
-            ),
-            h("div", { className: "wsr-controls" },
-              h("button", { type: "button", className: "wsr-btn", onClick: run }, t("adopt.action")),
-            ),
-          );
+            })
+            .then(function (answer) {
+              if (answer.json !== null && answer.json.ok === true) {
+                var count = Array.isArray(answer.json.adopted) ? answer.json.adopted.length : 0;
+                var cleaned = typeof answer.json.cleaned === "number" ? answer.json.cleaned : 0;
+                var text = t("adopt.done", { n: count });
+                if (cleaned > 0) text += t("adopt.cleaned", { n: cleaned });
+                done(text);
+                return;
+              }
+              done(t("adopt.failed") + (answer.json && answer.json.error ? answer.json.error : answer.text.slice(0, 120)));
+            })
+            .catch(function (error) {
+              done(t("adopt.failed") + (error && error.message ? error.message : error));
+            });
         }
 
         /** Settings -> General row: the global pinned section on/off. */
@@ -2031,16 +2008,6 @@
               order: 30,
               locale: NS,
             }, TrashFooterAction);
-          });
-
-          ctx.slots.inject("settings.general.item", function () {
-            return ctx.slots.register({
-              name: "settings.general.item",
-              id: "ws-recency-adopt",
-              order: 49,
-              store: prefs,
-              locale: NS,
-            }, AdoptRow);
           });
 
           ctx.slots.inject("settings.general.item", function () {
