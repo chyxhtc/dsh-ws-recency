@@ -846,6 +846,21 @@ export async function restoreTrashEntry(ctx, name) {
       /* an old header may be refused; the files are back either way */
     }
   }
+  /* A restore must not resurrect the stale membership the delete left behind. */
+  const raw = await rawWorkspaceMembership();
+  for (const workspace of workspaces) {
+    if (owner !== undefined && workspace.id === owner.id) continue;
+    const record = raw === null ? undefined : raw.get(workspace.id);
+    const listed = record !== undefined
+      ? record.sessionIds.includes(sidecar.sessionId)
+      : Array.isArray(workspace.sessionIds) && workspace.sessionIds.includes(sidecar.sessionId);
+    if (!listed) continue;
+    try {
+      await workspace.detachSession(sidecar.sessionId);
+    } catch {
+      /* leave it; the scan can clean it later */
+    }
+  }
   try {
     await rm(directory, { recursive: true, force: true });
   } catch {
