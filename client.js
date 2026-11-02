@@ -179,6 +179,8 @@
           "stats.col.share": "\u5360\u6bd4",
           "stats.note": "\u5408\u8ba1\u6765\u81ea\u6bcf\u6b65\u8bb0\u5f55\u7684\u771f\u5b9e usage\uff08\u7f13\u5b58\u547d\u4e2d + \u8f93\u5165 + \u8f93\u51fa\uff09\uff1b\u672c\u8868\u6309\u6765\u6e90\u7684\u62c6\u5206\u662f\u6309\u5185\u5bb9\u957f\u5ea6\u4f30\u7b97\uff08\u4e2d\u6587\u7ea6 1 token/\u5b57\uff0c\u82f1\u6587\u7ea6 4 \u5b57\u7b26/token\uff09\uff0c\u7528\u4e8e\u6bd4\u8f83\u5360\u6bd4\uff0c\u4e0d\u662f\u8ba1\u8d39\u53e3\u5f84\u3002",
           "stats.agentDetail": "主 agent 构成：思考 {reasoning} · 回复 {text} · 用户消息 {user} · 系统提示 {system}",
+          "stats.diagnose.unmounted": "\n\n（宿主半已加载，但统计路由没挂上——重启应用再试）",
+          "stats.diagnose.noHost": "\n\n（宿主半未加载：需要重启应用加载新版本）",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
         };
@@ -217,6 +219,8 @@
           "stats.col.share": "share",
           "stats.note": "Totals come from the recorded per-step usage (cache read + input + output). The per-source split is estimated from content length (about 1 token per CJK character, 4 characters per token otherwise) so the shares are comparable, not billable.",
           "stats.agentDetail": "Agent composition: reasoning {reasoning} \u00b7 reply {text} \u00b7 user messages {user} \u00b7 system prompt {system}",
+          "stats.diagnose.unmounted": "\n\n(the host half is loaded but the statistics route did not mount - restart the app and retry)",
+          "stats.diagnose.noHost": "\n\n(the host half is not loaded: restart the app to pick up the new version)",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
         };
@@ -885,16 +889,22 @@
               var question = t("trash.confirm");
               var confirmed = typeof window.confirm === "function" ? window.confirm(question) : false;
               if (!confirmed) return;
-              fetch("/ws-recency/session-trash", {
+              fetch("/ws-recency/session-trash?sessionId=" + encodeURIComponent(props.sessionId), {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ sessionId: props.sessionId }),
               })
-                .then(function (response) { return response.json(); })
+                .then(function (response) {
+                  return response.text().then(function (text) {
+                    var parsed = null;
+                    try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+                    return { status: response.status, text: text, json: parsed };
+                  });
+                })
                 .then(function (result) {
-                  if (result !== null && result.ok !== true && typeof window.alert === "function") {
-                    window.alert(t("trash.failed") + (result.error || "unknown"));
-                  }
+                  if (result.json !== null && result.json.ok === true) return;
+                  var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 120) || "(empty response)";
+                  if (typeof window.alert === "function") window.alert(t("trash.failed") + "HTTP " + result.status + " \u00b7 " + reason);
                 })
                 .catch(function (error) {
                   if (typeof window.alert === "function") window.alert(t("trash.failed") + (error && error.message ? error.message : error));
@@ -1054,22 +1064,50 @@
           statsModal = backdrop;
           document.addEventListener("keydown", onStatsKey);
 
-          fetch("/ws-recency/session-stats", {
+          var controller = typeof AbortController === "function" ? new AbortController() : null;
+          var timer = controller === null ? null : window.setTimeout(function () { controller.abort(); }, 180000);
+          var request = fetch("/ws-recency/session-stats?sessionId=" + encodeURIComponent(sessionId), {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ sessionId: sessionId }),
-          })
-            .then(function (response) { return response.json(); })
-            .then(function (result) {
-              if (result === null || result.ok !== true) {
-                body.textContent = t("stats.failed") + (result && result.error ? result.error : "unknown");
-                return;
-              }
-              renderStats(body, result.stats);
-            })
-            .catch(function (error) {
-              body.textContent = t("stats.failed") + (error && error.message ? error.message : error);
+            signal: controller === null ? undefined : controller.signal,
+          }).then(function (response) {
+            if (timer !== null) window.clearTimeout(timer);
+            return response.text().then(function (text) {
+              var parsed = null;
+              try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+              return { status: response.status, text: text, json: parsed };
             });
+          }, function (error) {
+            if (timer !== null) window.clearTimeout(timer);
+            throw error;
+          });
+
+          request.then(function (result) {
+            if (result.status === 200 && result.json !== null && result.json.ok === true) {
+              renderStats(body, result.json.stats);
+              return;
+            }
+            var reason = (result.json !== null && result.json.error)
+              || (result.text || "").trim().slice(0, 120)
+              || "(empty response)";
+            body.textContent = t("stats.failed") + "HTTP " + result.status + " \u00b7 " + reason;
+            /* A 405 here is the SPA fallback answering an unknown POST: the host
+               half never mounted. Ask the health route which part is missing. */
+            return fetch("/ws-recency/health").then(function (response) {
+              return response.text();
+            }).then(function (text) {
+              var health = null;
+              try { health = JSON.parse(text); } catch (error) { health = null; }
+              body.textContent += health !== null && health.ok === true
+                ? t("stats.diagnose.unmounted")
+                : t("stats.diagnose.noHost");
+            }).catch(function () {
+              body.textContent += t("stats.diagnose.noHost");
+            });
+          }).catch(function (error) {
+            body.textContent = t("stats.failed") + (error && error.message ? error.message : error);
+          });
         }
 
         /** Session "..." menu row: token statistics of that session. */

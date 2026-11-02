@@ -73,30 +73,30 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   ]);
   assert.strictEqual(orphan.estimate.tools[0].name, "read");
 
-  /* ---------- real log smoke test -------------------------------------- */
-  const home = path.join(os.homedir(), ".hypers-work", "sessions");
-  if (fs.existsSync(home)) {
-    const logs = [];
-    for (const project of fs.readdirSync(home, { withFileTypes: true })) {
-      if (!project.isDirectory()) continue;
-      const projectDir = path.join(home, project.name);
-      for (const session of fs.readdirSync(projectDir, { withFileTypes: true })) {
-        if (!session.isDirectory()) continue;
-        const file = path.join(projectDir, session.name, "session.v4.jsonl.zstd");
-        if (!fs.existsSync(file)) continue;
-        logs.push({ file, size: fs.statSync(file).size });
-      }
-    }
-    logs.sort((a, b) => a.size - b.size);
-    if (logs.length > 0) {
-      const real = await mod.readSessionEvents(logs[0].file);
-      assert.ok(real.length > 0, "a real session log decodes to events");
-      assert.strictEqual(real[0].type, "session");
-      const realStats = mod.aggregateSession(real);
-      assert.strictEqual(realStats.session.id, real[0].id);
-      console.log("real log:", path.basename(path.dirname(logs[0].file)), "events", real.length, "steps", realStats.steps);
-    }
-  }
+  /* ---------- reading through the persistence seam ---------------------- */
+  let opens = 0;
+  const fakeCtx = {
+    sessionPersistence: {
+      stat: async () => ({ header: { id: "s-1", cwd: "C:\\work", createdAt: 1000 }, sizeBytes: 42, revision: "r1" }),
+      open: async () => {
+        opens += 1;
+        return { read: async () => ({ events }), close: async () => {} };
+      },
+    },
+  };
+  const answer = await mod.sessionStatistics(fakeCtx, "s-1");
+  assert.strictEqual(answer.ok, true, "statistics come back through the seam");
+  assert.strictEqual(answer.stats.session.id, "s-1");
+  assert.strictEqual(answer.stats.session.cwd, "C:\\work");
+  assert.strictEqual(opens, 1);
 
-  console.log("stats ok: estimator, aggregation, shares, real-log decode");
+  const again = await mod.sessionStatistics(fakeCtx, "s-1");
+  assert.strictEqual(again.ok, true);
+  assert.strictEqual(opens, 1, "a repeat call inside the cache window does not re-read the log");
+
+  const missing = await mod.sessionStatistics({ sessionPersistence: { stat: async () => undefined } }, "nope");
+  assert.strictEqual(missing.ok, false);
+  assert.strictEqual(missing.error, "session not found");
+
+  console.log("stats ok: estimator, aggregation, shares, persistence seam, cache");
 })();

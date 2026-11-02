@@ -19,24 +19,41 @@
  *
  * @module dsh-ws-recency
  */
-import { access, mkdir, readFile, readdir, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { zstdDecompressSync } from "node:zlib";
 
 /** Cordis plugin name shown by the loader. */
 export const name = "ws-recency";
 
-/** Host services this module asks for; `webServer` is injected separately. */
-export const inject = ["sessionPersistence", "workspaceRegistry", "sessions"];
+/** Version marker reported by the health route. */
+export const HOST_VERSION = "0.10.1";
 
-/** Exact route the client half calls. */
+/**
+ * Exact routes the client half calls. Registered on the bare web server, so they
+ * win over the SPA's fallback (which answers unknown POSTs with an empty 405).
+ */
 export const TRASH_SESSION_PATH = "/ws-recency/session-trash";
+export const STATS_SESSION_PATH = "/ws-recency/session-stats";
+export const HEALTH_PATH = "/ws-recency/health";
 
 const STOP_SETTLE_MS = 500;
 const MAX_BODY_BYTES = 16 * 1024;
 const RENAME_RETRY = 4;
 const RENAME_GAP_MS = 150;
 
+/** `?sessionId=` first, then the JSON body: a middleware may have consumed the body. */
+function sessionIdFrom(req, body) {
+  try {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const fromQuery = url.searchParams.get("sessionId");
+    if (typeof fromQuery === "string" && fromQuery.trim() !== "") return fromQuery.trim();
+  } catch {
+    /* fall through to the body */
+  }
+  return body !== null && body !== undefined && typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+}
+
+/** Only the app itself may call these routes: a foreign origin is refused. */
 function loopbackOrigin(req) {
   const origin = req.headers.origin;
   if (origin === undefined) return true;
@@ -197,7 +214,7 @@ export async function handleTrashRequest(ctx, req, res) {
   }
   try {
     const body = await readJsonBody(req);
-    const sessionId = body !== null && typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+    const sessionId = sessionIdFrom(req, body);
     if (sessionId === "") {
       sendJson(res, 400, { ok: false, error: "sessionId required" });
       return;
@@ -224,9 +241,6 @@ export async function handleTrashRequest(ctx, req, res) {
  * decoding each frame is what makes the whole transcript readable.
  * ------------------------------------------------------------------------- */
 
-export const STATS_SESSION_PATH = "/ws-recency/session-stats";
-
-const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 const STATS_CACHE_MS = 10 * 1000;
 const statsCache = new Map();
 
@@ -362,86 +376,61 @@ export function aggregateSession(events) {
   return summary;
 }
 
-/** Decode every Zstandard frame of a session log and parse its JSONL records. */
-export async function readSessionEvents(path) {
-  const bytes = await readFile(path);
-  const offsets = [];
-  let at = bytes.indexOf(ZSTD_MAGIC, 0);
-  while (at !== -1) {
-    offsets.push(at);
-    at = bytes.indexOf(ZSTD_MAGIC, at + 4);
-  }
-  const parts = [];
-  for (let index = 0; index < offsets.length; index += 1) {
-    const end = index + 1 < offsets.length ? offsets[index + 1] : bytes.length;
-    try {
-      parts.push(zstdDecompressSync(bytes.subarray(offsets[index], end)));
-    } catch {
-      /* a torn tail: the rest of the log is still usable */
-    }
-  }
-  const events = [];
-  for (const line of Buffer.concat(parts).toString("utf8").split("\n")) {
-    if (line === "") continue;
-    try {
-      events.push(JSON.parse(line));
-    } catch {
-      /* a torn final record */
-    }
-  }
-  return events;
-}
-
-/** Absolute path of a session log, or undefined when it is gone. */
-async function sessionLogPath(ctx, sessionId) {
+/**
+ * Read a session's events through the host's own persistence seam.
+ *
+ * Decoding the log by hand looked simpler, but it is a chain of independent
+ * Zstandard frames, and the host's Node build is not guaranteed to ship a zstd
+ * decoder. The persistence service owns both concerns (it carries its own frame
+ * decoder), so ask it instead of touching the file.
+ */
+async function readSessionEvents(ctx, sessionId) {
+  const handle = await ctx.sessionPersistence.open(sessionId, "read");
+  const all = [];
   try {
-    const stat = await ctx.sessionPersistence.stat(sessionId);
-    const meta = stat !== undefined && stat !== null ? stat.header ?? stat : undefined;
-    if (meta !== undefined && typeof ctx.sessionPersistence.locate === "function") {
-      const located = ctx.sessionPersistence.locate(meta);
-      if (located !== undefined && located !== null && typeof located.path === "string") return located.path;
+    /* Page through in slices: one huge read holds the whole transcript plus its
+       parse alive at the same time, which is a lot for a months-old session. */
+    let offset = 0;
+    const page = 5000;
+    for (;;) {
+      const slice = await handle.read(offset, page);
+      const events = slice !== null && slice !== undefined && Array.isArray(slice.events) ? slice.events : [];
+      for (const event of events) all.push(event);
+      if (events.length < page) break;
+      offset += events.length;
+      if (offset >= 400000) break;
     }
-  } catch {
-    /* fall back to the scan */
-  }
-  const home = await dshHome();
-  const root = join(home, "sessions");
-  let projects;
-  try {
-    projects = await readdir(root, { withFileTypes: true });
-  } catch {
-    return undefined;
-  }
-  for (const project of projects) {
-    if (!project.isDirectory()) continue;
-    const candidate = join(root, project.name, sessionId, "session.v4.jsonl.zstd");
+  } finally {
     try {
-      await access(candidate);
-      return candidate;
+      if (typeof handle.close === "function") await handle.close();
     } catch {
-      /* keep scanning */
+      /* closing is best effort */
     }
   }
-  return undefined;
+  return all;
 }
 
 /** Statistics for one session, cached briefly so re-opening the panel is cheap. */
 export async function sessionStatistics(ctx, sessionId) {
-  const path = await sessionLogPath(ctx, sessionId);
-  if (path === undefined) return { ok: false, error: "session log not found" };
-  let info;
+  let stat;
   try {
-    info = await stat(path);
+    stat = await ctx.sessionPersistence.stat(sessionId);
   } catch {
-    return { ok: false, error: "session log not found" };
+    return { ok: false, error: "session not found" };
   }
-  const cacheKey = `${info.size}:${info.mtimeMs}`;
+  if (stat === undefined || stat === null) return { ok: false, error: "session not found" };
+  const cacheKey = `${stat.sizeBytes ?? 0}:${stat.revision ?? ""}`;
   const cached = statsCache.get(sessionId);
   if (cached !== undefined && cached.cacheKey === cacheKey && Date.now() - cached.at < STATS_CACHE_MS) return { ok: true, stats: cached.stats };
   try {
-    const events = await readSessionEvents(path);
+    const events = await readSessionEvents(ctx, sessionId);
     const stats = aggregateSession(events);
     if (stats.session.id === "") stats.session.id = sessionId;
+    const header = stat.header;
+    if (header !== undefined && header !== null) {
+      if (stats.session.createdAt === 0 && typeof header.createdAt === "number") stats.session.createdAt = header.createdAt;
+      if (stats.session.cwd === "" && typeof header.cwd === "string") stats.session.cwd = header.cwd;
+    }
     statsCache.set(sessionId, { cacheKey, stats, at: Date.now() });
     return { ok: true, stats };
   } catch (error) {
@@ -461,7 +450,7 @@ export async function handleStatsRequest(ctx, req, res) {
   }
   try {
     const body = await readJsonBody(req);
-    const sessionId = body !== null && typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+    const sessionId = sessionIdFrom(req, body);
     if (sessionId === "") {
       sendJson(res, 400, { ok: false, error: "sessionId required" });
       return;
@@ -473,24 +462,53 @@ export async function handleStatsRequest(ctx, req, res) {
   }
 }
 
-/** Cordis entry point: mount the routes when the host has a web server. */
+/**
+ * Cordis entry point.
+ *
+ * `apply` itself must not wait for services: the Client half is served from this
+ * same package, and a plugin whose row never applies still shows its sidebar
+ * menu while none of its routes exist. So every capability is injected in its
+ * own nested scope, and the health route reports what actually mounted - the
+ * panel calls it to say "host plugin not loaded" instead of an empty 405.
+ */
 export function apply(ctx) {
   try {
-    if (typeof ctx.inject === "function") {
-      ctx.inject(["webServer"], (webCtx) => {
-        webCtx.effect(() => webCtx.webServer.register({
-          kind: "exact",
-          path: TRASH_SESSION_PATH,
-          handler: (req, res) => handleTrashRequest(ctx, req, res),
-        }), "ws-recency: trash route");
-        webCtx.effect(() => webCtx.webServer.register({
+    if (typeof ctx.inject !== "function") return;
+    ctx.inject(["webServer"], (webCtx) => {
+      const server = webCtx.webServer;
+      if (server === undefined || server === null) return;
+      webCtx.effect(() => server.register({
+        kind: "exact",
+        path: HEALTH_PATH,
+        handler: (req, res) => sendJson(res, 200, {
+          ok: true,
+          version: HOST_VERSION,
+          routes: { stats: statsMounted, trash: trashMounted },
+        }),
+      }), "ws-recency: health route");
+
+      webCtx.inject(["sessionPersistence"], (statsCtx) => {
+        statsMounted = true;
+        webCtx.effect(() => server.register({
           kind: "exact",
           path: STATS_SESSION_PATH,
-          handler: (req, res) => handleStatsRequest(ctx, req, res),
+          handler: (req, res) => handleStatsRequest(statsCtx, req, res),
         }), "ws-recency: stats route");
       });
-    }
+
+      webCtx.inject(["sessionPersistence", "workspaceRegistry", "sessions"], (trashCtx) => {
+        trashMounted = true;
+        webCtx.effect(() => server.register({
+          kind: "exact",
+          path: TRASH_SESSION_PATH,
+          handler: (req, res) => handleTrashRequest(trashCtx, req, res),
+        }), "ws-recency: trash route");
+      });
+    });
   } catch {
     /* a headless profile simply gets no routes */
   }
 }
+
+let statsMounted = false;
+let trashMounted = false;

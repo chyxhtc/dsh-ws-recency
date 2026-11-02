@@ -73,6 +73,8 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 口径说明：prompt 的 token 是「整段上下文每一步都计费」，没法精确归属到某一条消息，所以「主 agent / 工具」的拆分是按内容长度估算（中文≈1 token/字，英文≈4 字符/token），用来比较占比；**总量是真的**。数据从会话日志算，跨重启也能看。大会话第一次打开约 1–2 秒（29MB 日志实测 1.2 秒），10 秒内重复打开走缓存。
 
+宿主半（`index.js`）把统计与删除的路由挂在 webServer 上；如果面板报“宿主半未加载”，说明应用还没重启加载新版本。0.10.1 起面板失败时会带上 HTTP 状态和 `/ws-recency/health` 的自检结果，便于定位。
+
 ## 设置
 
 **设置 → 通用**：
@@ -108,7 +110,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.10.0/dsh-ws-recency-0.10.0.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.10.1/dsh-ws-recency-0.10.1.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

@@ -120,7 +120,13 @@ global.document = {
 global.MutationObserver = class { observe() {} disconnect() {} };
 global.fetch = (url, options) => {
   global.fetch.calls.push({ url, options });
-  return Promise.resolve({ json: () => Promise.resolve(global.fetch.answer) });
+  const answer = global.fetch.answer;
+  const text = JSON.stringify(answer);
+  return Promise.resolve({
+    status: answer && answer.ok ? 200 : 500,
+    text: () => Promise.resolve(text),
+    json: () => Promise.resolve(answer),
+  });
 };
 global.fetch.calls = [];
 global.fetch.answer = { ok: false, error: "not configured" };
@@ -437,6 +443,7 @@ function textOf(node) {
   item.props.onSelect();
   assert.strictEqual(global.fetch.calls.length, 1, "selecting the row asks the host for statistics");
   assert.ok(String(global.fetch.calls[0].url).indexOf("/ws-recency/session-stats") !== -1);
+  assert.ok(String(global.fetch.calls[0].url).indexOf("sessionId=A-fresh-1") !== -1, "the id travels in the query too");
   assert.deepStrictEqual(JSON.parse(global.fetch.calls[0].options.body), { sessionId: "A-fresh-1" });
 
   const backdrop = overlayRoot.children[overlayRoot.children.length - 1];
