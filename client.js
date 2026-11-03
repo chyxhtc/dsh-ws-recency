@@ -140,6 +140,8 @@
           ".wsr-footer-action{display:flex;box-sizing:border-box;flex:none;align-items:center;justify-content:flex-start;gap:8px;width:calc(100% + 4px);min-width:0;height:42px;margin:4px -2px;padding:0 10px 0 8px;border:0;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}",
           ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover)}",
 ".wsr-page{display:flex;flex-direction:column;gap:10px;padding:16px 18px;min-width:0;box-sizing:border-box;height:100%;overflow:auto}",
+          ".wsr-header-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
+          ".wsr-header-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
           ".wsr-handoff-status{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.6}",
           ".wsr-handoff-text{width:100%;box-sizing:border-box;min-height:220px;max-height:46vh;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.6;padding:10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-1,#1b1b1b);color:var(--dsw-alias-label-primary,#e6e6e6)}",
 ".wsr-page-head{display:flex;align-items:center;gap:8px}",
@@ -2080,6 +2082,23 @@
           poll(1500);
         }
 
+        /** Conversation header: the same handoff, one click from the branch button. */
+        function HandoffHeaderButton(props) {
+          var Icon = ui.IconShareOutlineRegular;
+          var label = t("menu.handoff");
+          return h("button", {
+            type: "button",
+            className: "wsr-header-btn",
+            title: label,
+            "aria-label": label,
+            "data-wsr-handoff-header": "true",
+            onClick: function () {
+              var sessionId = props !== undefined && props !== null && typeof props.sessionId === "string" ? props.sessionId : null;
+              if (sessionId !== null) openHandoffPanel(sessionId);
+            },
+          }, typeof Icon === "function" ? h(Icon, { size: 16 }) : null);
+        }
+
         /** Session "..." menu row: hand the work over to a fresh Session. */
         function HandoffMenuItem(props) {
           var Item = ui.MenuItemButton;
@@ -2872,6 +2891,16 @@
               store: prefs,
               locale: NS,
             }, ArgModeRow);
+          });
+
+          ctx.slots.inject("conversation.session.header.utilities", function () {
+            return ctx.slots.register({
+              name: "conversation.session.header.utilities",
+              id: "ws-recency-handoff",
+              order: 10,
+              locale: NS,
+              inject: function (sessionId) { return { sessionId: sessionId }; },
+            }, HandoffHeaderButton);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
