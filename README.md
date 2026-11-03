@@ -122,7 +122,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 长期会话的上下文迟早会满，被动压缩往往比"换个新会话、带上交接"更差。交接做成两步：
 
-1. 会话「…」菜单 → **准备交接…**：插件把一段固定指令放进输入框（若放不进去就提供「复制指令」），你按回车发送；
+1. 会话「…」菜单或每轮回复底部的动作行 → **交接到新会话**：插件把一段固定指令放进输入框（若放不进去就提供「复制指令」），你按回车发送；
 2. 当前会话的 AI 按指令输出一个 ```handoff 代码块——**只写文档路径和要点，不粘贴文档内容**；
 3. 插件每 2 秒轮询最新回复，抓到代码块后弹出预览（可直接编辑）；
 4. 点 **确认交接，开新会话**：在当前工作区开一个新会话，把"开场要求 + 交接块"预填进输入框，你按回车就开始；点 **继续补充** 回到输入框继续打磨。
@@ -167,7 +167,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.19.2/dsh-ws-recency-0.19.2.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.19.3/dsh-ws-recency-0.19.3.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
