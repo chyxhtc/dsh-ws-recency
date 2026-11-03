@@ -25,13 +25,14 @@
  * @module dsh-ws-recency
  */
 import { mkdir, readFile, readdir, rename, rm, stat as statPath, writeFile } from "node:fs/promises";
+import zlib from "node:zlib";
 import { dirname, join } from "node:path";
 
 /** Cordis plugin name shown by the loader. */
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.16.0";
+export const HOST_VERSION = "0.17.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -212,7 +213,16 @@ export async function trashSession(ctx, sessionId) {
   try {
     moved = await trashSessionLog(ctx, meta, trashRoot);
     if (moved !== undefined) {
-      await writeTrashSidecar(moved, { sessionId: meta.id, cwd: typeof meta.cwd === "string" ? meta.cwd : null, reason: "delete", at: Date.now() });
+      /* Card facts are captured now, while the log is still on this machine:
+         the list only has to read the sidecar afterwards. */
+      const card = await trashEntryMetadata(moved);
+      await writeTrashSidecar(moved, {
+        sessionId: meta.id,
+        cwd: typeof meta.cwd === "string" ? meta.cwd : null,
+        reason: "delete",
+        at: Date.now(),
+        ...(card === null ? {} : { meta: card }),
+      });
     }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -826,6 +836,85 @@ async function readTrashSidecar(directory) {
   }
 }
 
+/** The one log file a session directory holds. */
+const SESSION_LOG = "session.v4.jsonl.zstd";
+
+/** zstd frame magic: every append is its own frame, so a log must be split on it. */
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+
+/**
+ * Read a session log that is no longer reachable through the persistence service.
+ *
+ * A trashed log sits outside `sessions/`, so the Host's own reader cannot open
+ * it; the frames are decompressed directly with the bundled zstd support (Node
+ * 22.15 and newer). Without it the caller keeps the id-only card.
+ */
+async function readLogEvents(file) {
+  if (typeof zlib.zstdDecompressSync !== "function") return null;
+  const buffer = await readFile(file);
+  const offsets = [];
+  let index = buffer.indexOf(ZSTD_MAGIC, 0);
+  while (index !== -1) {
+    offsets.push(index);
+    index = buffer.indexOf(ZSTD_MAGIC, index + ZSTD_MAGIC.length);
+  }
+  if (offsets.length === 0) return null;
+  const parts = [];
+  for (let frame = 0; frame < offsets.length; frame += 1) {
+    const end = frame + 1 < offsets.length ? offsets[frame + 1] : buffer.length;
+    try {
+      parts.push(zlib.zstdDecompressSync(buffer.subarray(offsets[frame], end)));
+    } catch {
+      /* a torn tail frame is normal after a crash */
+    }
+  }
+  const text = Buffer.concat(parts).toString("utf8");
+  const events = [];
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      /* skip a partial line */
+    }
+  }
+  return events;
+}
+
+/**
+ * The card facts for a trashed session: title, turns, steps and recorded tokens.
+ * @param directory - one entry of the trash root.
+ * @returns metadata, or null when the log cannot be read here.
+ */
+export async function trashEntryMetadata(directory) {
+  let events;
+  try {
+    events = await readLogEvents(join(directory, SESSION_LOG));
+  } catch {
+    return null;
+  }
+  if (events === null || events.length === 0) return null;
+  const summary = aggregateSession(events);
+  let turns = 0;
+  let messages = 0;
+  for (const event of events) {
+    if (event === null || typeof event !== "object") continue;
+    if (event.type === "turn/start") turns += 1;
+    if (event.type === "user/message") messages += 1;
+  }
+  if (turns === 0) turns = messages;
+  return {
+    title: typeof summary.session.title === "string" ? summary.session.title : "",
+    turns,
+    messages,
+    steps: summary.steps,
+    tokens: summary.totals.totalTokens,
+    inputTokens: summary.totals.inputTokens,
+    outputTokens: summary.totals.outputTokens,
+    lastAt: summary.session.lastAt,
+  };
+}
+
 /** Every entry in the plugin's trash, newest first. */
 export async function listTrash() {
   const root = await trashRoot();
@@ -853,9 +942,29 @@ export async function listTrash() {
     } catch {
       /* skip unreadable directories */
     }
+    let meta = sidecar !== null && sidecar.meta !== null && typeof sidecar.meta === "object" ? sidecar.meta : null;
+    if (meta === null) {
+      /* One decode per entry, then cached in its sidecar so the list stays cheap. */
+      const computed = await trashEntryMetadata(directory);
+      if (computed !== null) {
+        meta = computed;
+        await writeTrashSidecar(directory, {
+          sessionId: sidecar !== null && typeof sidecar.sessionId === "string" ? sidecar.sessionId : null,
+          cwd: sidecar !== null && typeof sidecar.cwd === "string" ? sidecar.cwd : null,
+          reason: sidecar !== null && typeof sidecar.reason === "string" ? sidecar.reason : "unknown",
+          at: sidecar !== null && typeof sidecar.at === "number" ? sidecar.at : 0,
+          meta: computed,
+        });
+      }
+    }
     results.push({
       name: entry.name,
       sizeBytes: size,
+      title: meta !== null && typeof meta.title === "string" ? meta.title : "",
+      turns: meta !== null && typeof meta.turns === "number" ? meta.turns : 0,
+      steps: meta !== null && typeof meta.steps === "number" ? meta.steps : 0,
+      tokens: meta !== null && typeof meta.tokens === "number" ? meta.tokens : 0,
+      lastAt: meta !== null && typeof meta.lastAt === "number" ? meta.lastAt : 0,
       sessionId: sidecar !== null && typeof sidecar.sessionId === "string" ? sidecar.sessionId : null,
       cwd: sidecar !== null && typeof sidecar.cwd === "string" ? sidecar.cwd : null,
       reason: sidecar !== null && typeof sidecar.reason === "string" ? sidecar.reason : "unknown",
@@ -1074,6 +1183,8 @@ export async function listArchivedSessions(ctx) {
     /* Last resort: the cache may have no record for this session at all. */
     if (title === "") title = await titleFromLog(ctx, sessionId);
 
+    const outlineTurns = checkpointValue(checkpoint, "turnOutline");
+    const turns = Array.isArray(outlineTurns?.turns) ? outlineTurns.turns.length : 0;
     const listMeta = checkpointValue(checkpoint, "sessionListMetadata");
     let lastAt = typeof listMeta?.lastPromptAt === "number" ? listMeta.lastPromptAt : 0;
     if (lastAt === 0 && typeof header?.updatedAt === "number") lastAt = header.updatedAt;
@@ -1086,6 +1197,7 @@ export async function listArchivedSessions(ctx) {
     entries.push({
       sessionId,
       title,
+      turns,
       cwd,
       createdAt: typeof header?.createdAt === "number" ? header.createdAt : 0,
       lastAt,

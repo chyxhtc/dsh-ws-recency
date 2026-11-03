@@ -144,6 +144,17 @@
 ".wsr-page-heading{flex:1;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary)}",
 ".wsr-page-list{display:flex;flex-direction:column;gap:6px}",
 ".wsr-page-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+".wsr-card{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:.5px solid var(--dsw-alias-border-l1,rgba(255,255,255,.08));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+".wsr-card-head{display:flex;align-items:center;gap:10px;min-width:0}",
+".wsr-card-badge{flex:none;font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;background:var(--dsw-alias-bg-layer-3,rgba(255,255,255,.08));color:var(--dsw-alias-label-secondary)}",
+".wsr-card-badge-danger{color:var(--dsw-alias-state-error-primary,#d9534f);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 14%,transparent)}",
+".wsr-card-badge-muted{color:var(--dsw-alias-label-tertiary)}",
+".wsr-card-title{flex:1;min-width:0;font-size:13px;font-weight:500;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+".wsr-card-title-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--dsw-alias-label-tertiary)}",
+".wsr-card-actions{flex:none;display:flex;gap:6px;align-items:center;white-space:nowrap}",
+".wsr-chips{display:flex;flex-wrap:wrap;gap:6px}",
+".wsr-chip{font-size:11px;line-height:18px;padding:0 7px;border-radius:9px;background:var(--dsw-alias-bg-layer-3,rgba(255,255,255,.06));color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
+".wsr-card-path{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 ".wsr-page-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}",
 ".wsr-page-title{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 ".wsr-page-meta{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
@@ -283,6 +294,8 @@
           "trash.working": "处理中…",
           "trash.failed": "操作失败：",
           "trash.note": "回收站里的都是完整日志目录；恢复会按记录的 cwd 放回 sessions/<项目> 并重新挂到对应工作区。",
+          "trash.turns": "轮次",
+          "trash.steps": "步骤",
           "trash.section.trash": "已删除的会话",
           "trash.section.archived": "已归档的会话",
           "archive.description": "归档是宿主的「视图选项 → 仅显示已归档」那一套：会话被隐藏，但日志仍在 sessions/ 里，原工作区的槽位也保留着。这里可以取消归档、移入回收站，或者彻底删除。",
@@ -298,6 +311,7 @@
           "archive.forgotten": "已彻底删除。",
           "archive.failed": "归档操作失败：",
           "archive.noWorkspace": "（它原来的目录现在没有对应的工作区，需要先建一个同名工作区才能看到它）",
+          "archive.badge": "已归档",
           "archive.blank": "空白草稿",
           "archive.workspace": "工作区",
           "move.failed": "移动失败：",
@@ -386,6 +400,8 @@
           "trash.working": "Working\u2026",
           "trash.failed": "Action failed: ",
           "trash.note": "Every entry is a complete log directory; restoring puts it back under sessions/<project> using the recorded cwd and re-attaches it.",
+          "trash.turns": "turns",
+          "trash.steps": "steps",
           "trash.section.trash": "Deleted sessions",
           "trash.section.archived": "Archived sessions",
           "archive.description": "Archiving is the Host's own view filter (\"Show archived only\"): the session is hidden, but its log stays under sessions/ and its workspace still holds its slot. Unarchive it here, move it into the trash, or delete it for good.",
@@ -2096,6 +2112,27 @@
          * Host's archive set (hidden sessions whose logs are still in place)
          * below. Both are "put away", so both are managed from here.
          */
+        /** One entry as a card: badge, title, the numbers that matter, and actions. */
+        function entryCard(options) {
+          return h("div", { className: "wsr-card", key: options.key, title: options.titleAttr || "" },
+            h("div", { className: "wsr-card-head" },
+              options.badge !== null && options.badge !== undefined
+                ? h("span", { className: "wsr-card-badge " + (options.badgeClass || "") }, options.badge)
+                : null,
+              h("div", { className: options.titleClass || "wsr-card-title" }, options.title),
+              h("div", { className: "wsr-card-actions" }, options.actions),
+            ),
+            options.chips.length > 0
+              ? h("div", { className: "wsr-chips" }, options.chips.map(function (text, index) {
+                return h("span", { className: "wsr-chip", key: String(index) }, text);
+              }))
+              : null,
+            typeof options.path === "string" && options.path !== ""
+              ? h("div", { className: "wsr-card-path" }, options.path)
+              : null,
+          );
+        }
+
         function TrashPanelPage() {
           var state = react.useState({ loaded: false, entries: [], archived: [], note: "", failed: "" });
           var view = state[0];
@@ -2171,30 +2208,38 @@
           var rows = [];
           for (var i = 0; i < view.entries.length; i += 1) {
             (function (entry) {
-              var meta = [];
-              if (entry.reason === "delete") meta.push(t("trash.reason.delete"));
-              else if (entry.reason === "move") meta.push(t("trash.reason.move"));
-              meta.push(formatBytes(entry.sizeBytes));
+              var chips = [];
+              if (entry.turns > 0) chips.push(t("trash.turns") + " " + entry.turns);
+              if (entry.steps > 0) chips.push(t("trash.steps") + " " + entry.steps);
+              if (entry.tokens > 0) chips.push(formatTokens(entry.tokens) + " tokens");
+              chips.push(formatBytes(entry.sizeBytes));
               var when = formatWhen(entry.at);
-              if (when !== "") meta.push(when);
-              var actions = [h("button", {
-                type: "button",
-                className: "wsr-btn",
-                onClick: function () { act(entry, "restore"); },
-              }, t("trash.restore"))].filter(function () { return entry.restorable === true; });
+              if (when !== "") chips.push(when);
+              var actions = [];
+              if (entry.restorable === true) {
+                actions.push(h("button", {
+                  type: "button",
+                  className: "wsr-btn",
+                  onClick: function () { act(entry, "restore"); },
+                }, t("trash.restore")));
+              }
               actions.push(h("button", {
                 type: "button",
                 className: "wsr-btn wsr-btn-danger",
                 onClick: function () { act(entry, "purge"); },
               }, t("trash.purge")));
-              rows.push(h("div", { className: "wsr-page-row", key: entry.name },
-                h("div", { className: "wsr-page-text" },
-                  h("div", { className: "wsr-page-title" }, entry.sessionId === null ? entry.name : entry.sessionId),
-                  h("div", { className: "wsr-page-meta" }, meta.join(" \u00b7 ")),
-                  typeof entry.cwd === "string" && entry.cwd !== "" ? h("div", { className: "wsr-page-path" }, entry.cwd) : null,
-                ),
-                h("div", { className: "wsr-page-actions" }, actions),
-              ));
+              var hasTitle = typeof entry.title === "string" && entry.title !== "";
+              rows.push(entryCard({
+                key: entry.name,
+                badge: entry.reason === "move" ? t("trash.reason.move") : t("trash.reason.delete"),
+                badgeClass: entry.reason === "move" ? "wsr-card-badge-muted" : "wsr-card-badge-danger",
+                titleClass: hasTitle ? "wsr-card-title" : "wsr-card-title wsr-card-title-id",
+                title: hasTitle ? entry.title : (entry.sessionId === null ? entry.name : entry.sessionId),
+                titleAttr: entry.sessionId === null ? entry.name : entry.sessionId,
+                chips: chips,
+                path: entry.cwd,
+                actions: actions,
+              }));
             })(view.entries[i]);
           }
 
@@ -2202,39 +2247,28 @@
           var archivedList = Array.isArray(view.archived) ? view.archived : [];
           for (var j = 0; j < archivedList.length; j += 1) {
             (function (entry) {
-              var meta = [];
-              if (entry.blank === true) meta.push(t("archive.blank"));
-              if (typeof entry.workspacePath === "string" && entry.workspacePath !== "") meta.push(entry.workspacePath);
-              meta.push(formatBytes(entry.sizeBytes));
+              var chips = [];
+              if (entry.turns > 0) chips.push(t("trash.turns") + " " + entry.turns);
+              chips.push(formatBytes(entry.sizeBytes));
               var when = formatWhen(entry.lastAt !== 0 ? entry.lastAt : entry.createdAt);
-              if (when !== "") meta.push(when);
-              var label = typeof entry.title === "string" && entry.title !== "" ? entry.title : entry.sessionId;
-              archivedRows.push(h("div", { className: "wsr-page-row", key: entry.sessionId },
-                h("div", { className: "wsr-page-text" },
-                  h("div", {
-                    className: typeof entry.title === "string" && entry.title !== "" ? "wsr-page-title" : "wsr-page-title wsr-page-title-blank",
-                  }, label),
-                  h("div", { className: "wsr-page-meta" }, meta.join(" \u00b7 ")),
-                  typeof entry.cwd === "string" && entry.cwd !== "" ? h("div", { className: "wsr-page-path" }, entry.cwd) : null,
-                ),
-                h("div", { className: "wsr-page-actions" },
-                  h("button", {
-                    type: "button",
-                    className: "wsr-btn",
-                    onClick: function () { actArchived(entry, "unarchive"); },
-                  }, t("archive.unarchive")),
-                  h("button", {
-                    type: "button",
-                    className: "wsr-btn",
-                    onClick: function () { actArchived(entry, "delete"); },
-                  }, t("archive.delete")),
-                  h("button", {
-                    type: "button",
-                    className: "wsr-btn wsr-btn-danger",
-                    onClick: function () { actArchived(entry, "forget"); },
-                  }, t("archive.forget")),
-                ),
-              ));
+              if (when !== "") chips.push(when);
+              if (entry.blank === true) chips.push(t("archive.blank"));
+              var hasTitle = typeof entry.title === "string" && entry.title !== "";
+              archivedRows.push(entryCard({
+                key: entry.sessionId,
+                badge: t("archive.badge"),
+                badgeClass: "wsr-card-badge-muted",
+                titleClass: hasTitle ? "wsr-card-title" : "wsr-card-title wsr-card-title-id",
+                title: hasTitle ? entry.title : entry.sessionId,
+                titleAttr: entry.sessionId,
+                chips: chips,
+                path: typeof entry.workspacePath === "string" && entry.workspacePath !== "" ? entry.workspacePath : entry.cwd,
+                actions: [
+                  h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "unarchive"); } }, t("archive.unarchive")),
+                  h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "delete"); } }, t("archive.delete")),
+                  h("button", { type: "button", className: "wsr-btn wsr-btn-danger", onClick: function () { actArchived(entry, "forget"); } }, t("archive.forget")),
+                ],
+              }));
             })(archivedList[j]);
           }
 

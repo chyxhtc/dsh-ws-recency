@@ -65,6 +65,37 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   const refused = await mod.restoreTrashEntry(ctx, "legacy-entry");
   assert.strictEqual(refused.ok, false);
 
+  /* ---------- card facts come from the parked log ----------------------- */
+  const zlib = require("node:zlib");
+  if (typeof zlib.zstdCompressSync === "function") {
+    const cardDir = path.join(root, "session-c-2026-11-02T07-00-00-000Z");
+    fs.mkdirSync(cardDir, { recursive: true });
+    const events = [
+      { type: "session", id: "session-c", cwd: "D:\\proj", createdAt: 1000 },
+      { type: "session/title", data: { title: "回收站卡片测试" } },
+      { type: "turn/start", data: {} },
+      { type: "user/message", data: { message: { content: [{ type: "text", text: "hi" }] } } },
+      { type: "assistant/message", data: { usage: { inputTokens: 100, cacheReadTokens: 200, outputTokens: 50, totalTokens: 350 }, message: { content: [{ type: "text", text: "hello" }] } } },
+      { type: "turn/start", data: {} },
+      { type: "user/message", data: { message: { content: [{ type: "text", text: "again" }] } } },
+      { type: "assistant/message", data: { usage: { inputTokens: 10, cacheReadTokens: 20, outputTokens: 5, totalTokens: 35 }, message: { content: [{ type: "text", text: "ok" }] } } },
+    ];
+    const encode = (list) => zlib.zstdCompressSync(Buffer.from(list.map((event) => JSON.stringify(event)).join("\n") + "\n", "utf8"));
+    const split = Math.ceil(events.length / 2);
+    fs.writeFileSync(path.join(cardDir, "session.v4.jsonl.zstd"), Buffer.concat([encode(events.slice(0, split)), encode(events.slice(split))]));
+    fs.writeFileSync(path.join(cardDir, ".wsr-trash.json"), JSON.stringify({ sessionId: "session-c", cwd: "D:\\proj", reason: "delete", at: 3000 }));
+    const withCard = await mod.listTrash();
+    const card = withCard.entries.find((entry) => entry.name === "session-c-2026-11-02T07-00-00-000Z");
+    assert.strictEqual(card.title, "回收站卡片测试", "the title comes out of the parked log");
+    assert.strictEqual(card.turns, 2);
+    assert.strictEqual(card.steps, 2);
+    assert.strictEqual(card.tokens, 385);
+    const cached = JSON.parse(fs.readFileSync(path.join(cardDir, ".wsr-trash.json"), "utf8"));
+    assert.ok(cached.meta !== undefined && cached.meta.title === "回收站卡片测试", "card facts are cached in the sidecar");
+  } else {
+    console.log("(zstd unavailable: card facts skipped)");
+  }
+
   fs.rmSync(home, { recursive: true, force: true });
   console.log("trash ok: projectKey, list, restore, purge, guards");
 })();
