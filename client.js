@@ -299,7 +299,7 @@
           "menu.handoff": "交接到新会话",
           "handoff.title": "会话交接",
           "handoff.note": "交接指令已经放进输入框（或点「复制指令」自己粘），发送后我在这里等 AI 写出交接块；抓到以后可以直接开到新会话。",
-          "handoff.instruction": "我要把这个会话交接给一个新会话继续推进。请按下面的要求输出一份交接说明，写进一个 ```handoff 代码块里，我会原样交给新会话：\n\n1. 只给文档路径和一句话说明「读它为什么」，不要粘贴文档内容；\n2. 文档按重要性排序，标注哪些必读、哪些按需；\n3. 包含：目标、当前进度、尚未完成与下一步、关键决策与约束、踩过的坑、验证方式；\n4. 交接正文控制在 400 字以内（文档引用除外）。",
+          "handoff.instruction": "我要把这个会话交接给一个新会话继续推进。请按下面的要求输出一份交接说明，写进一个 ~~~handoff 代码块里（三个波浪线 + 语言标记 handoff），我会原样交给新会话：\n\n1. 只给文档路径和一句话说明「读它为什么」，不要粘贴文档内容；\n2. 文档按重要性排序，标注哪些必读、哪些按需；\n3. 包含：目标、当前进度、尚未完成与下一步、关键决策与约束、踩过的坑、验证方式；\n4. 交接正文控制在 400 字以内（文档引用除外）。",
           "handoff.inserted": "交接指令已放进输入框，按回车发送；我会自动抓取回复。",
           "handoff.copyHint": "没能直接写入输入框，请点「复制指令」再粘贴到输入框发送。",
           "handoff.copy": "复制指令",
@@ -320,8 +320,8 @@
           "handoff.preview": "查看内容",
           "handoff.submit": "提交",
           "handoff.eyebrow": "需要你确认",
-          "handoff.regeneratePrompt": "这份交接说明需要重写。请按最初同样的要求再输出一份，同样写进 ```handoff 代码块，路径与要点保持精炼。",
-          "handoff.adjustPrompt": "请按下面的补充要求重写交接说明，保持 ```handoff 代码块格式：",
+          "handoff.regeneratePrompt": "这份交接说明需要重写。请按最初同样的要求再输出一份，同样写进 ~~~handoff 代码块，路径与要点保持精炼。",
+          "handoff.adjustPrompt": "请按下面的补充要求重写交接说明，保持 ~~~handoff 代码块格式：",
           "move.title": "移动到工作区",
           "move.warning": "只移动会话本身：它在旧工作区里创建或修改的文件不会跟着走，仍留在原目录。",
           "move.note": "会话属于哪个工作区，由它创建时的目录决定；移动会改写会话记录的 cwd，把日志搬到新工作区目录，旧日志备份在 .trash/ws-recency。",
@@ -431,7 +431,7 @@
           "menu.handoff": "Hand off to a new session",
           "handoff.title": "Session handoff",
           "handoff.note": "The instruction is in the composer (or copy it yourself). Once you send it I watch for the handoff block and can carry it into a fresh Session.",
-          "handoff.instruction": "I am handing this session over to a new one. Please answer with a handoff note inside a ```handoff code block, which I will pass on verbatim:\n\n1. Reference documents by path with one line on why to read them; never paste document contents.\n2. Order them by importance and mark which are required and which are optional.\n3. Cover: goal, current progress, remaining work and next step, key decisions and constraints, pitfalls, and how to verify.\n4. Keep the note under 400 words (references excluded).",
+          "handoff.instruction": "I am handing this session over to a new one. Please answer with a handoff note inside a ~~~handoff code block (three tildes, tagged handoff), which I will pass on verbatim:\n\n1. Reference documents by path with one line on why to read them; never paste document contents.\n2. Order them by importance and mark which are required and which are optional.\n3. Cover: goal, current progress, remaining work and next step, key decisions and constraints, pitfalls, and how to verify.\n4. Keep the note under 400 words (references excluded).",
           "handoff.inserted": "Instruction placed in the composer; press Enter and I will pick up the reply.",
           "handoff.copyHint": "Could not write into the composer; copy the instruction and paste it yourself.",
           "handoff.copy": "Copy instruction",
@@ -452,8 +452,8 @@
           "handoff.preview": "Show note",
           "handoff.submit": "Submit",
           "handoff.eyebrow": "Needs your decision",
-          "handoff.regeneratePrompt": "Rewrite the handoff note with the same rules as before, again inside a ```handoff block.",
-          "handoff.adjustPrompt": "Rewrite the handoff note following these adjustments, keeping the ```handoff block format:",
+          "handoff.regeneratePrompt": "Rewrite the handoff note with the same rules as before, again inside a ~~~handoff block.",
+          "handoff.adjustPrompt": "Rewrite the handoff note following these adjustments, keeping the ~~~handoff block format:",
           "move.title": "Move to workspace",
           "move.warning": "Only the session moves: files it created or changed in the old workspace stay where they are.",
           "move.note": "A session belongs to the workspace of the directory it was created in. Moving rewrites the stored cwd, relocates the log and keeps the old one as a backup in .trash/ws-recency.",
@@ -2134,35 +2134,33 @@
         }
 
         /**
-         * Pull the fenced block out of an assistant reply.
+         * Pull the handoff block out of an assistant reply.
          *
-         * Fences only count at the start of a line, and only a closed pair counts at
-         * all: a note often mentions a ```handoff block in prose (which cut the note
-         * in half before), and a reply that is still streaming has no closing fence
-         * yet (which would otherwise be captured half-written).
+         * Both fence kinds are read: the prompt asks for `~~~handoff` (three tildes
+         * rarely appear in prose), `' + '```handoff` stays supported for older replies.
+         * A fence only counts when it owns its line and is closed by the same kind,
+         * so a note that mentions the marker in a sentence cannot cut itself short,
+         * and a reply that is still streaming is not captured half-written.
          */
         function handoffBlockOf(text) {
           if (typeof text !== "string") return "";
-          var tagged = /^[ \t]*```handoff[ \t]*$/m.exec(text);
-          if (tagged !== null) {
-            var from = tagged.index + tagged[0].length;
-            var rest = text.slice(from);
-            var close = /^[ \t]*```[ \t]*$/m.exec(rest);
-            if (close === null) return "";
-            return rest.slice(0, close.index).replace(/^\r?\n/, "").trim();
-          }
-          /* Older replies may use a plain fence: take the first one that reads like a
-             document, skipping unrelated code samples above it. */
-          var fence = /^[ \t]*```[ \t]*[a-zA-Z0-9_-]*[ \t]*$/gm;
+          var bodyOf = function (openedAt, openedLength, mark) {
+            var closer = new RegExp("^[ \\t]*" + mark + "[ \\t]*$", "m");
+            var rest = text.slice(openedAt + openedLength);
+            var closed = closer.exec(rest);
+            if (closed === null) return "";
+            return rest.slice(0, closed.index).replace(/^\r?\n/, "").trim();
+          };
+          var tagged = /^[ \t]*(```|~~~)[ \t]*handoff[ \t]*$/m.exec(text);
+          if (tagged !== null) return bodyOf(tagged.index, tagged[0].length, tagged[1]);
+          var fence = /^[ \t]*(```|~~~)[ \t]*[a-zA-Z0-9_-]*[ \t]*$/gm;
           var opened;
           while ((opened = fence.exec(text)) !== null) {
-            var bodyFrom = opened.index + opened[0].length;
-            var tail = text.slice(bodyFrom);
-            var ending = /^[ \t]*```[ \t]*$/m.exec(tail);
-            if (ending === null) return "";
-            var body = tail.slice(0, ending.index).replace(/^\r?\n/, "").trim();
-            if (body.indexOf("#") !== -1) return body;
-            fence.lastIndex = bodyFrom + ending.index + ending[0].length;
+            var candidate = bodyOf(opened.index, opened[0].length, opened[1]);
+            if (candidate !== "" && candidate.indexOf("#") !== -1) return candidate;
+            var next = text.indexOf("\n", opened.index + opened[0].length);
+            if (next === -1) return "";
+            fence.lastIndex = next + 1;
           }
           return "";
         }

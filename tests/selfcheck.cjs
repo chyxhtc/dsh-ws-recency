@@ -631,6 +631,7 @@ function textOf(node) {
   assert.ok(handoffButton !== null, "the turn action renders");
 
   assert.ok(HandoffCard !== null, "the handoff card was registered");
+  const tilde = String.fromCharCode(126, 126, 126);
   /* a fence mentioned inside the note must not end it early */
   const fence = String.fromCharCode(96, 96, 96);
   const replyWithInlineFence = [
@@ -650,6 +651,20 @@ function textOf(node) {
   assert.strictEqual(parsed.indexOf("完。"), -1, "text after the closing fence is dropped");
   assert.strictEqual(mod.__handoff.blockOf("没有代码块"), "");
   assert.strictEqual(mod.__handoff.blockOf(fence + "\nnot a document\n" + fence), "", "a fence without a heading is not a handoff");
+
+  /* the tilde fence is the current instruction, and both kinds are read */
+  const tildeBlock = [
+    tilde + "handoff",
+    "# 交接",
+    "## 进度",
+    "写进 " + fence + "handoff 一类的正文不会截断。",
+    tilde,
+  ].join("\n");
+  assert.strictEqual(mod.__handoff.blockOf(tildeBlock).indexOf("## 进度") !== -1, true, "the tilde block is read");
+  const backtickBlock = [fence + "handoff", "# 交接", "内容", fence].join("\n");
+  assert.strictEqual(mod.__handoff.blockOf(backtickBlock), "# 交接\n内容", "the backtick block still parses");
+  const mixed = [tilde + "handoff", "# 交接", "内容", fence].join("\n");
+  assert.strictEqual(mod.__handoff.blockOf(mixed), "", "a mismatched closer does not count");
 
   const handoffState = mod.__handoff;
   assert.ok(handoffState !== undefined, "the handoff state hook exists");

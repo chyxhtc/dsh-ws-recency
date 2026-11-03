@@ -135,7 +135,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 交接块按 markdown 围栏解析：**只有独占一行的 ``` 才算结束**，正文里引用「```handoff 块」不会把内容截半（0.23.2 修）。
 
-交接块只认**行首且成对闭合**的围栏：正文里提到 ```handoff 不会把交接切断，写了一半的回复也不会被提前抓取。
+交接块用 `~~~handoff` 围栏（三个波浪线，CommonMark 与反引号等价，展示仍是代码块）：正文里提到标记不会切断内容，写了一半的回复也不会被提前抓取；旧的 ```handoff 回复仍兼容。
 
 两处发送都是模拟 Enter：当前会话里先写入、等 250ms 再按回车，并按需再补两次（共 3 次）；草稿会话在 14 秒内重试。始终送不出去时文本仍留在输入框，手动回车即可。
 
@@ -175,7 +175,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.23.3/dsh-ws-recency-0.23.3.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.24.0/dsh-ws-recency-0.24.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
