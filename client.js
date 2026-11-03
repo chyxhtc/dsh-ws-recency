@@ -140,8 +140,8 @@
           ".wsr-footer-action{display:flex;box-sizing:border-box;flex:none;align-items:center;justify-content:flex-start;gap:8px;width:calc(100% + 4px);min-width:0;height:42px;margin:4px -2px;padding:0 10px 0 8px;border:0;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}",
           ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover)}",
 ".wsr-page{display:flex;flex-direction:column;gap:10px;padding:16px 18px;min-width:0;box-sizing:border-box;height:100%;overflow:auto}",
-          ".wsr-header-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}",
-          ".wsr-header-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
+          ".wsr-msg-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}",
+          ".wsr-msg-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
           ".wsr-handoff-status{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.6}",
           ".wsr-handoff-text{width:100%;box-sizing:border-box;min-height:220px;max-height:46vh;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.6;padding:10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-1,#1b1b1b);color:var(--dsw-alias-label-primary,#e6e6e6)}",
 ".wsr-page-head{display:flex;align-items:center;gap:8px}",
@@ -2082,21 +2082,25 @@
           poll(1500);
         }
 
-        /** Conversation header: the same handoff, one click from the branch button. */
-        function HandoffHeaderButton(props) {
+        /**
+         * Turn actions: the handoff sits in the same row as copy / rate / branch,
+         * which the chat renders once at the end of a completed turn.
+         */
+        function HandoffTurnAction(props) {
           var Icon = ui.IconShareOutlineRegular;
+          var Tooltip = ui.Tooltip;
           var label = t("menu.handoff");
-          return h("button", {
+          var button = h("button", {
             type: "button",
-            className: "wsr-header-btn",
-            title: label,
+            className: "wsr-msg-btn",
             "aria-label": label,
-            "data-wsr-handoff-header": "true",
+            "data-wsr-handoff-action": "true",
             onClick: function () {
               var sessionId = props !== undefined && props !== null && typeof props.sessionId === "string" ? props.sessionId : null;
               if (sessionId !== null) openHandoffPanel(sessionId);
             },
           }, typeof Icon === "function" ? h(Icon, { size: 16 }) : null);
+          return typeof Tooltip === "function" ? h(Tooltip, { label: label, side: "bottom" }, button) : button;
         }
 
         /** Session "..." menu row: hand the work over to a fresh Session. */
@@ -2893,14 +2897,14 @@
             }, ArgModeRow);
           });
 
-          ctx.slots.inject("conversation.session.header.utilities", function () {
+          ctx.slots.inject("conversation.chat.assistant-actions", function () {
             return ctx.slots.register({
-              name: "conversation.session.header.utilities",
+              name: "conversation.chat.assistant-actions",
               id: "ws-recency-handoff",
-              order: 10,
+              order: 20,
               locale: NS,
               inject: function (sessionId) { return { sessionId: sessionId }; },
-            }, HandoffHeaderButton);
+            }, HandoffTurnAction);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {

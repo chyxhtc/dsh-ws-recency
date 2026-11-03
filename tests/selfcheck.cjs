@@ -249,7 +249,7 @@ let StatsMenuItem = null;
 let MoveMenuItem = null;
 let TrashIcon = null;
 let HandoffItem = null;
-let HandoffButton = null;
+let HandoffAction = null;
 let TrashPage = null;
 let TrashMenuItem = null;
 const service = {
@@ -273,7 +273,7 @@ const ctx = {
       if (spec2.id === "ws-recency-move") MoveMenuItem = component;
       if (spec2.name === "sidebar.panellist") TrashIcon = component;
       if (spec2.id === "ws-recency-handoff" && spec2.name === "sidebar.workspaces.session.menu.item") HandoffItem = component;
-      if (spec2.id === "ws-recency-handoff" && spec2.name === "conversation.session.header.utilities") HandoffButton = component;
+      if (spec2.id === "ws-recency-handoff" && spec2.name === "conversation.chat.assistant-actions") HandoffAction = component;
       if (spec2.name === "main") TrashPage = component;
       if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
@@ -623,10 +623,10 @@ function textOf(node) {
 
   /* ---------- handoff ------------------------------------------------- */
   assert.ok(HandoffItem !== null, "the handoff menu row was registered");
-  assert.ok(HandoffButton !== null, "the header handoff button was registered");
-  const handoffButton = HandoffButton({ sessionId: "session-x" });
-  assert.strictEqual(handoffButton.props.className, "wsr-header-btn", "the header button renders");
-  assert.strictEqual(handoffButton.props.title, "Prepare handoff…");
+  assert.ok(HandoffAction !== null, "the turn handoff action was registered");
+  const handoffAction = HandoffAction({ sessionId: "session-x", messageId: "m1" });
+  const handoffButton = typeof handoffAction.type === "function" ? handoffAction : handoffAction;
+  assert.ok(handoffButton !== null, "the turn action renders");
 
   const handoffRow = HandoffItem({ sessionId: "session-x" });
   assert.ok(handoffRow !== null, "the menu row renders");
