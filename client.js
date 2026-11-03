@@ -140,6 +140,14 @@
           ".wsr-footer-action{display:flex;box-sizing:border-box;flex:none;align-items:center;justify-content:flex-start;gap:8px;width:calc(100% + 4px);min-width:0;height:42px;margin:4px -2px;padding:0 10px 0 8px;border:0;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}",
           ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover)}",
 ".wsr-page{display:flex;flex-direction:column;gap:10px;padding:16px 18px;min-width:0;box-sizing:border-box;height:100%;overflow:auto}",
+          ".wsr-handoff-option{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer}",
+          ".wsr-handoff-option:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06))}",
+          ".wsr-handoff-option input{margin-top:2px}",
+          ".wsr-handoff-option-text{display:flex;flex-direction:column;gap:2px;min-width:0}",
+          ".wsr-handoff-option-title{font-size:13px;color:var(--dsw-alias-label-primary)}",
+          ".wsr-handoff-option-desc{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-handoff-extra{width:100%;box-sizing:border-box;min-height:56px;max-height:140px;resize:vertical;font:inherit;font-size:12px;line-height:1.6;padding:8px 10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-1,#1b1b1b);color:var(--dsw-alias-label-primary,#e6e6e6)}",
+          ".wsr-handoff-body{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.6;max-height:220px;overflow:auto;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#1b1b1b)}",
           ".wsr-handoff-card{display:flex;flex-direction:column;gap:8px;margin:8px 0;padding:12px 14px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
           ".wsr-handoff-head{font-size:12px;color:var(--dsw-alias-label-secondary)}",
           ".wsr-handoff-actions{display:flex;gap:6px;align-items:center;white-space:nowrap}",
@@ -282,6 +290,17 @@
           "handoff.noService": "没能自动开新会话，交接内容已复制到剪贴板，手动新建会话粘贴即可。",
           "handoff.preamble": "以下是一个会话交接说明，来自上一个会话。请先按「文档引用」逐份阅读文档，再结合要点接续工作；已经完成的部分不要重做。",
           "handoff.footnote": "交接内容会另存一份到 .wsr/handoff/，方便追溯。",
+          "handoff.preparing": "正在准备交接，等这一轮回复写完…",
+          "handoff.pressEnter": "指令已放进输入框，请按回车发送（自动发送没有生效）。",
+          "handoff.cancel": "放弃交接",
+          "handoff.confirmDesc": "带着这份内容在当前工作区开一个新会话",
+          "handoff.regen": "不满意，重新生成一版",
+          "handoff.regenDesc": "让当前会话按同样的要求再写一份",
+          "handoff.extraPlaceholder": "补充调整意见（填了就按这些要求重写，例如：多写接口约束、少写历史）",
+          "handoff.preview": "查看内容",
+          "handoff.submit": "提交",
+          "handoff.regeneratePrompt": "这份交接说明需要重写。请按最初同样的要求再输出一份，同样写进 ```handoff 代码块，路径与要点保持精炼。",
+          "handoff.adjustPrompt": "请按下面的补充要求重写交接说明，保持 ```handoff 代码块格式：",
           "move.title": "移动到工作区",
           "move.warning": "只移动会话本身：它在旧工作区里创建或修改的文件不会跟着走，仍留在原目录。",
           "move.note": "会话属于哪个工作区，由它创建时的目录决定；移动会改写会话记录的 cwd，把日志搬到新工作区目录，旧日志备份在 .trash/ws-recency。",
@@ -402,6 +421,17 @@
           "handoff.noService": "Could not open a Session automatically; the handoff was copied to the clipboard.",
           "handoff.preamble": "Below is a handoff note from the previous Session. Read the referenced documents first, then continue from the notes; do not redo what is already done.",
           "handoff.footnote": "A copy is saved under .wsr/handoff/ for later reference.",
+          "handoff.preparing": "Preparing the handoff; waiting for this turn to finish…",
+          "handoff.pressEnter": "The instruction is in the composer; press Enter to send it (automatic send did not take).",
+          "handoff.cancel": "Cancel handoff",
+          "handoff.confirmDesc": "Open a new Session in this workspace with this note",
+          "handoff.regen": "Not good enough, regenerate",
+          "handoff.regenDesc": "Ask the current Session to write it again with the same rules",
+          "handoff.extraPlaceholder": "Adjustments (if filled, the note is rewritten with them: more constraints, less history, …)",
+          "handoff.preview": "Show note",
+          "handoff.submit": "Submit",
+          "handoff.regeneratePrompt": "Rewrite the handoff note with the same rules as before, again inside a ```handoff block.",
+          "handoff.adjustPrompt": "Rewrite the handoff note following these adjustments, keeping the ```handoff block format:",
           "move.title": "Move to workspace",
           "move.warning": "Only the session moves: files it created or changed in the old workspace stay where they are.",
           "move.note": "A session belongs to the workspace of the directory it was created in. Moving rewrites the stored cwd, relocates the log and keeps the old one as a backup in .trash/ws-recency.",
@@ -1920,9 +1950,8 @@
         }
 
         /** Write text into the composer and send it, if the editor is reachable. */
-        function sendInstruction(sessionId) {
-          var text = handoffInstruction();
-          if (typeof document === "undefined") return false;
+        function sendToSession(text) {
+          if (typeof document === "undefined" || typeof text !== "string" || text === "") return false;
           var seat = typeof document.querySelector === "function" ? document.querySelector("[data-composer-seat]") : null;
           if (seat === null || seat === undefined) return false;
           var editor = null;
@@ -2040,7 +2069,7 @@
         /** The turn action: send the instruction and wait for the block. */
         function startHandoff(sessionId) {
           if (typeof sessionId !== "string" || sessionId === "") return;
-          var sent = sendInstruction(sessionId);
+          var sent = sendToSession(handoffInstruction());
           setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: sent !== true });
           watchHandoff(sessionId);
         }
@@ -2072,9 +2101,24 @@
           });
         }
 
+        /** Ask the current Session to rewrite the handoff with the user's adjustments. */
+        function rewriteHandoff(sessionId, extra) {
+          var text = extra.trim() === "" ? t("handoff.regeneratePrompt") : t("handoff.adjustPrompt") + "\n\n" + extra.trim();
+          var sent = sendToSession(text);
+          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: sent !== true });
+          handoffBaseline = 0;
+          handoffTries = 0;
+          handoffSession = sessionId;
+          watchHandoff(sessionId);
+        }
+
         /**
-         * The handoff card, rendered in the turn tail: it appears only for the
-         * Session that started the flow, and only once a block has been produced.
+         * The handoff question card.
+         *
+         * Two mutually exclusive choices and one free-text field, the same shape as a
+         * tool asking the user a question: confirm and carry over, regenerate, or say
+         * what to change. The note itself is read-only here - detail edits belong in
+         * the new Session's composer.
          */
         function HandoffTailCard(props) {
           var sessionId = props !== undefined && props !== null && typeof props.sessionId === "string" ? props.sessionId : "";
@@ -2084,44 +2128,88 @@
           react.useEffect(function () {
             return subscribeHandoff(function (next) { setLive(next); });
           }, []);
+          var choice = react.useState("confirm");
+          var picked = choice[0];
+          var setPicked = choice[1];
+          var extraPair = react.useState("");
+          var extra = extraPair[0];
+          var setExtra = extraPair[1];
+
           var state = live;
           if (state === null || state === undefined || state.sessionId !== sessionId) return null;
           if (state.phase === "running") {
             return h("div", { className: "wsr-handoff-live" }, state.needsEnter === true ? t("handoff.pressEnter") : t("handoff.preparing"));
           }
           if (state.phase !== "ready") return null;
-          var body = [
-            h("div", { className: "wsr-handoff-head" }, t("handoff.found")),
+
+          var rows = [
+            h("label", { className: "wsr-handoff-option", key: "opt-confirm" },
+              h("input", {
+                type: "radio",
+                name: "wsr-handoff-" + sessionId,
+                checked: picked === "confirm",
+                onChange: function () { setPicked("confirm"); },
+              }),
+              h("span", { className: "wsr-handoff-option-text" },
+                h("span", { className: "wsr-handoff-option-title" }, t("handoff.confirm")),
+                h("span", { className: "wsr-handoff-option-desc" }, t("handoff.confirmDesc")),
+              ),
+            ),
+            h("label", { className: "wsr-handoff-option", key: "opt-redo" },
+              h("input", {
+                type: "radio",
+                name: "wsr-handoff-" + sessionId,
+                checked: picked === "redo",
+                onChange: function () { setPicked("redo"); },
+              }),
+              h("span", { className: "wsr-handoff-option-text" },
+                h("span", { className: "wsr-handoff-option-title" }, t("handoff.regen")),
+                h("span", { className: "wsr-handoff-option-desc" }, t("handoff.regenDesc")),
+              ),
+            ),
             h("textarea", {
-              className: "wsr-handoff-text",
-              value: state.block,
-              onChange: function (event) { setHandoffState({ block: event.target.value }); },
+              className: "wsr-handoff-extra",
+              key: "extra",
+              placeholder: t("handoff.extraPlaceholder"),
+              value: extra,
+              onChange: function (event) { setExtra(event.target.value); },
             }),
-            h("div", { className: "wsr-handoff-actions" },
-              h("button", {
-                type: "button",
-                className: "wsr-btn",
-                onClick: function () { carryHandoff(sessionId, state.block); },
-              }, t("handoff.confirm")),
+            h("div", { className: "wsr-handoff-actions", key: "actions" },
               h("button", {
                 type: "button",
                 className: "wsr-btn",
                 onClick: function () {
-                  setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false });
-                  handoffBaseline = 0;
-                  handoffTries = 0;
-                  handoffSession = sessionId;
-                  watchHandoff(sessionId);
+                  if (extra.trim() !== "") { rewriteHandoff(sessionId, extra); return; }
+                  if (picked === "redo") { rewriteHandoff(sessionId, ""); return; }
+                  carryHandoff(sessionId, state.block);
                 },
-              }, t("handoff.more")),
+              }, t("handoff.submit")),
               h("button", {
                 type: "button",
                 className: "wsr-btn",
                 onClick: function () { resetHandoff(); },
               }, t("handoff.cancel")),
+              h("button", {
+                type: "button",
+                className: "wsr-btn",
+                onClick: function () {
+                  var preview = typeof document !== "undefined" ? document.querySelector('[data-wsr-handoff-preview="' + sessionId + '"]') : null;
+                  if (preview !== null && preview !== undefined && preview.style !== undefined) {
+                    preview.style.display = preview.style.display === "none" ? "" : "none";
+                  }
+                },
+              }, t("handoff.preview")),
             ),
           ];
-          return h.apply(null, ["div", { className: "wsr-handoff-card" }].concat(body));
+
+          return h("div", { className: "wsr-handoff-card" },
+            h("div", { className: "wsr-handoff-head" }, t("handoff.found")),
+            h("div", { "data-wsr-handoff-preview": sessionId, className: "wsr-handoff-body", style: { display: "none" } }, state.block),
+            rows[0],
+            rows[1],
+            rows[2],
+            rows[3],
+          );
         }
 
         /**

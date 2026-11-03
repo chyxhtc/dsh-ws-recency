@@ -641,7 +641,14 @@ function textOf(node) {
   handoffState.set({ sessionId: "session-x", phase: "ready", block: "# 交接" });
   const card = HandoffCard({ sessionId: "session-x" });
   assert.strictEqual(card.props.className, "wsr-handoff-card", "a ready handoff renders the card");
-  assert.ok(Array.isArray(card.children) && card.children.length === 3, "card has preview and actions");
+  assert.strictEqual(card.children.length, 6, "head, preview, two options, the free-text field and actions");
+  assert.strictEqual(card.children[2].props.className, "wsr-handoff-option", "the confirm row is a choice");
+  assert.strictEqual(card.children[3].props.className, "wsr-handoff-option", "the regenerate row is a choice");
+  assert.strictEqual(card.children[4].props.className, "wsr-handoff-extra", "the third row is free text");
+  const radios = [card.children[2], card.children[3]].map((row) => row.children[0]);
+  assert.strictEqual(radios[0].props.type, "radio");
+  assert.strictEqual(radios[0].props.checked, true, "confirm is the default");
+  assert.strictEqual(radios[1].props.checked, false);
   assert.strictEqual(HandoffCard({ sessionId: "other" }), null, "another session shows nothing");
   handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
 
