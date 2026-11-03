@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.19.3";
+export const HOST_VERSION = "0.20.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they

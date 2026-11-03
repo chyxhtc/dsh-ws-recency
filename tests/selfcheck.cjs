@@ -250,6 +250,7 @@ let MoveMenuItem = null;
 let TrashIcon = null;
 let HandoffItem = null;
 let HandoffAction = null;
+let HandoffCard = null;
 let TrashPage = null;
 let TrashMenuItem = null;
 const service = {
@@ -274,6 +275,7 @@ const ctx = {
       if (spec2.name === "sidebar.panellist") TrashIcon = component;
       if (spec2.id === "ws-recency-handoff" && spec2.name === "sidebar.workspaces.session.menu.item") HandoffItem = component;
       if (spec2.id === "ws-recency-handoff" && spec2.name === "conversation.chat.assistant-actions") HandoffAction = component;
+      if (spec2.id === "ws-recency-handoff-card") HandoffCard = component;
       if (spec2.name === "main") TrashPage = component;
       if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
@@ -627,6 +629,16 @@ function textOf(node) {
   const handoffAction = HandoffAction({ sessionId: "session-x", messageId: "m1" });
   const handoffButton = typeof handoffAction.type === "function" ? handoffAction : handoffAction;
   assert.ok(handoffButton !== null, "the turn action renders");
+
+  assert.ok(HandoffCard !== null, "the handoff card was registered");
+  const stateOf = (value) => ({ sessionId: "session-x", useStore: () => value, actions: { setBlock() {}, setRunning() {} } });
+  assert.strictEqual(HandoffCard(stateOf({ sessionId: "session-x", phase: "idle", block: "" })), null, "idle renders nothing");
+  const live = HandoffCard(stateOf({ sessionId: "session-x", phase: "running", block: "", needsEnter: false }));
+  assert.strictEqual(live.props.className, "wsr-handoff-live", "a running handoff shows progress");
+  const card = HandoffCard(stateOf({ sessionId: "session-x", phase: "ready", block: "# 交接" }));
+  assert.strictEqual(card.props.className, "wsr-handoff-card", "a ready handoff renders the card");
+  assert.ok(Array.isArray(card.children) && card.children.length === 3, "card has preview and actions");
+  assert.strictEqual(HandoffCard({ sessionId: "other", useStore: () => ({ sessionId: "session-x", phase: "ready", block: "x" }), actions: {} }), null, "another session shows nothing");
 
   const handoffRow = HandoffItem({ sessionId: "session-x" });
   assert.ok(handoffRow !== null, "the menu row renders");

@@ -140,6 +140,10 @@
           ".wsr-footer-action{display:flex;box-sizing:border-box;flex:none;align-items:center;justify-content:flex-start;gap:8px;width:calc(100% + 4px);min-width:0;height:42px;margin:4px -2px;padding:0 10px 0 8px;border:0;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}",
           ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover)}",
 ".wsr-page{display:flex;flex-direction:column;gap:10px;padding:16px 18px;min-width:0;box-sizing:border-box;height:100%;overflow:auto}",
+          ".wsr-handoff-card{display:flex;flex-direction:column;gap:8px;margin:8px 0;padding:12px 14px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+          ".wsr-handoff-head{font-size:12px;color:var(--dsw-alias-label-secondary)}",
+          ".wsr-handoff-actions{display:flex;gap:6px;align-items:center;white-space:nowrap}",
+          ".wsr-handoff-live{margin:8px 0;font-size:12px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-msg-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}",
           ".wsr-msg-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
           ".wsr-handoff-status{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.6}",
@@ -1870,17 +1874,31 @@
 
         /* ------------------------------ handoff ------------------------------ */
 
+        var handoffStore = null;
         var handoffTimer = null;
-        var handoffPanelSession = null;
+        var handoffBaseline = 0;
+        var handoffTries = 0;
+        var handoffSession = null;
 
         /** The instruction the user sends to the current Session. */
         function handoffInstruction() {
           return t("handoff.instruction");
         }
 
-        /** Write text into the composer; returns false when there is no editor. */
-        function insertIntoComposer(text) {
-          if (typeof document === "undefined" || typeof text !== "string") return false;
+        function handoffPost(payload) {
+          return fetch("/ws-recency/handoff", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          }).then(function (response) {
+            return response.json().catch(function () { return null; });
+          });
+        }
+
+        /** Write text into the composer and send it, if the editor is reachable. */
+        function sendInstruction(sessionId) {
+          var text = handoffInstruction();
+          if (typeof document === "undefined") return false;
           var seat = typeof document.querySelector === "function" ? document.querySelector("[data-composer-seat]") : null;
           if (seat === null || seat === undefined) return false;
           var editor = null;
@@ -1894,38 +1912,58 @@
             if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
               editor.value = text;
               editor.dispatchEvent(new window.Event("input", { bubbles: true }));
-              return true;
+            } else {
+              var selection = typeof window.getSelection === "function" ? window.getSelection() : null;
+              if (selection !== null && typeof document.createRange === "function") {
+                var range = document.createRange();
+                range.selectNodeContents(editor);
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
+              }
+              if (typeof document.execCommand !== "function" || !document.execCommand("insertText", false, text)) {
+                editor.textContent = text;
+                editor.dispatchEvent(new window.Event("input", { bubbles: true }));
+              }
             }
-            var selection = typeof window.getSelection === "function" ? window.getSelection() : null;
-            if (selection !== null && typeof document.createRange === "function") {
-              var range = document.createRange();
-              range.selectNodeContents(editor);
-              range.collapse(false);
-              selection.removeAllRanges();
-              selection.addRange(range);
+            /* Enter is the only submit path the composer exposes to a plugin. If it
+               does not take, the card says so and the user presses it themselves. */
+            var sent = false;
+            try {
+              var event = new window.KeyboardEvent("keydown", {
+                key: "Enter",
+                code: "Enter",
+                keyCode: 13,
+                which: 13,
+                bubbles: true,
+                cancelable: true,
+              });
+              editor.dispatchEvent(event);
+              sent = true;
+            } catch (error) {
+              sent = false;
             }
-            if (typeof document.execCommand === "function" && document.execCommand("insertText", false, text)) return true;
-            editor.textContent = text;
-            editor.dispatchEvent(new window.Event("input", { bubbles: true }));
-            return true;
+            return sent;
           } catch (error) {
             return false;
           }
         }
 
-        function copyText(text) {
-          try {
-            if (navigator !== undefined && navigator.clipboard !== undefined && typeof navigator.clipboard.writeText === "function") {
-              navigator.clipboard.writeText(text);
-              return true;
-            }
-          } catch (error) {
-            /* fall through */
-          }
-          return false;
+        function stopHandoffPolling() {
+          if (handoffTimer !== null && typeof window.clearTimeout === "function") window.clearTimeout(handoffTimer);
+          handoffTimer = null;
         }
 
-        /** Pull the fenced block out of an assistant reply. */
+        function resetHandoff() {
+          stopHandoffPolling();
+          handoffSession = null;
+          handoffBaseline = 0;
+          handoffTries = 0;
+          if (handoffStore !== null && handoffStore !== undefined) {
+            try { handoffStore.actions.setIdle(); } catch (error) { /* store gone */ }
+          }
+        }
+
         function handoffBlockOf(text) {
           if (typeof text !== "string") return "";
           var match = /```handoff[ \t]*\r?\n([\s\S]*?)```/i.exec(text);
@@ -1935,151 +1973,128 @@
           return "";
         }
 
-        function closeHandoffPanel() {
-          if (handoffTimer !== null && typeof window.clearTimeout === "function") window.clearTimeout(handoffTimer);
-          handoffTimer = null;
-          handoffPanelSession = null;
-          closeStatsPanel();
+        /** Start the watch: the next reply that carries a handoff block becomes the card. */
+        function watchHandoff(sessionId) {
+          handoffSession = sessionId;
+          handoffTries = 0;
+          stopHandoffPolling();
+          if (typeof window === "undefined") return;
+          function tick() {
+            if (handoffSession !== sessionId) return;
+            handoffTries += 1;
+            handoffPost({ action: "tail", sessionId: sessionId }).then(function (answer) {
+              if (handoffSession !== sessionId) return;
+              if (answer !== null && answer.ok === true) {
+                var replies = typeof answer.replies === "number" ? answer.replies : 0;
+                if (replies > handoffBaseline) {
+                  var found = handoffBlockOf(answer.text);
+                  if (found !== "") {
+                    handoffStore.actions.setReady(found);
+                    return;
+                  }
+                  handoffBaseline = replies;
+                }
+              }
+              if (handoffTries > 150) {
+                handoffStore.actions.setIdle();
+                handoffSession = null;
+                return;
+              }
+              handoffTimer = window.setTimeout(tick, 2000);
+            }).catch(function () {
+              handoffTimer = window.setTimeout(tick, 4000);
+            });
+          }
+          /* The baseline is the reply count before the instruction is answered. */
+          handoffPost({ action: "tail", sessionId: sessionId }).then(function (answer) {
+            if (handoffSession !== sessionId) return;
+            handoffBaseline = answer !== null && answer.ok === true && typeof answer.replies === "number" ? answer.replies : 0;
+            handoffTimer = window.setTimeout(tick, 1500);
+          }).catch(function () {
+            handoffTimer = window.setTimeout(tick, 3000);
+          });
+        }
+
+        /** The turn action: send the instruction and wait for the block. */
+        function startHandoff(sessionId) {
+          if (handoffStore === null || handoffStore === undefined) return;
+          if (typeof sessionId !== "string" || sessionId === "") return;
+          var sent = sendInstruction(sessionId);
+          handoffStore.actions.setRunning(sessionId, sent);
+          watchHandoff(sessionId);
+        }
+
+        /** The card carries it over: open a fresh Session in the same workspace. */
+        function carryHandoff(sessionId, block) {
+          var text = typeof block === "string" ? block.trim() : "";
+          if (text === "") return;
+          handoffPost({ action: "save", sessionId: sessionId, text: text }).catch(function () { return null; }).then(function () {
+            var owner = workspaceOfSession(sessionId);
+            var workspaceId = owner === null ? undefined : owner.workspaceId;
+            var service = data.service;
+            var prompt = t("handoff.preamble") + "\n\n" + text;
+            if (service !== null && service !== undefined && typeof service.startSession === "function") {
+              try {
+                service.startSession(workspaceId, { prompt: prompt, whenDraftExists: "replace" });
+                resetHandoff();
+                return;
+              } catch (error) {
+                /* fall through */
+              }
+            }
+            try {
+              if (navigator !== undefined && navigator.clipboard !== undefined) navigator.clipboard.writeText(prompt);
+            } catch (error) {
+              /* clipboard unavailable */
+            }
+            resetHandoff();
+          });
         }
 
         /**
-         * The handoff flow: seed the instruction, watch for the reply, then open a
-         * fresh Session in the same workspace with the handoff carried over.
+         * The handoff card, rendered in the turn tail: it appears only for the
+         * Session that started the flow, and only once a block has been produced.
          */
-        function openHandoffPanel(sessionId) {
-          if (typeof document === "undefined") return;
-          closeStatsPanel();
-          handoffPanelSession = sessionId;
-
-          var backdrop = statsDiv("wsr-modal-backdrop");
-          var panel = statsDiv("wsr-modal");
-          backdrop.appendChild(panel);
-          var head = statsDiv("wsr-modal-head");
-          head.appendChild(statsDiv("wsr-modal-title", t("handoff.title")));
-          var close = document.createElement("button");
-          close.type = "button";
-          close.className = "wsr-modal-close";
-          close.textContent = "\u00d7";
-          close.addEventListener("click", closeHandoffPanel);
-          head.appendChild(close);
-          panel.appendChild(head);
-
-          var body = statsDiv("wsr-modal-body");
-          panel.appendChild(body);
-          body.appendChild(statsDiv("wsr-stats-note", t("handoff.note")));
-
-          var status = statsDiv("wsr-handoff-status", t("handoff.waiting", { n: 0 }));
-          body.appendChild(status);
-
-          var preview = document.createElement("textarea");
-          preview.className = "wsr-handoff-text";
-          preview.setAttribute("data-wsr-handoff-text", "true");
-          preview.style.display = "none";
-          body.appendChild(preview);
-
-          var actions = statsDiv("wsr-trash-actions");
-          var copy = document.createElement("button");
-          copy.type = "button";
-          copy.className = "wsr-btn";
-          copy.textContent = t("handoff.copy");
-          copy.addEventListener("click", function () {
-            if (copyText(handoffInstruction())) status.textContent = t("handoff.inserted");
-          });
-          actions.appendChild(copy);
-
-          var more = document.createElement("button");
-          more.type = "button";
-          more.className = "wsr-btn";
-          more.textContent = t("handoff.more");
-          more.addEventListener("click", function () {
-            preview.style.display = "none";
-            baseline = replies;
-            status.textContent = t("handoff.waiting", { n: 0 });
-            insertIntoComposer(handoffInstruction());
-            poll(0);
-          });
-          actions.appendChild(more);
-
-          var confirm = document.createElement("button");
-          confirm.type = "button";
-          confirm.className = "wsr-btn";
-          confirm.disabled = true;
-          confirm.style.display = "none";
-          confirm.textContent = t("handoff.confirm");
-          confirm.addEventListener("click", function () {
-            var text = preview.value.trim();
-            if (text === "") return;
-            confirm.disabled = true;
-            fetch("/ws-recency/handoff", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ action: "save", sessionId: sessionId, text: text }),
-            }).catch(function () { return null; }).then(function () {
-              var owner = workspaceOfSession(sessionId);
-              var workspaceId = owner === null ? undefined : owner.workspaceId;
-              var service = data.service;
-              var prompt = t("handoff.preamble") + "\n\n" + text;
-              if (service !== null && service !== undefined && typeof service.startSession === "function") {
-                try {
-                  service.startSession(workspaceId, { prompt: prompt, whenDraftExists: "replace" });
-                  closeHandoffPanel();
-                  return;
-                } catch (error) {
-                  /* fall through to the clipboard */
-                }
-              }
-              copyText(prompt);
-              status.textContent = t("handoff.noService");
-            });
-          });
-          actions.appendChild(confirm);
-          body.appendChild(actions);
-
-          body.appendChild(statsDiv("wsr-stats-note", t("handoff.footnote")));
-          document.body.appendChild(backdrop);
-
-          /* Seed the instruction: the user only presses Enter. */
-          if (!insertIntoComposer(handoffInstruction())) {
-            status.textContent = t("handoff.copyHint");
-          } else {
-            status.textContent = t("handoff.inserted");
+        function HandoffTailCard(props) {
+          var sessionId = props !== undefined && props !== null && typeof props.sessionId === "string" ? props.sessionId : "";
+          var state = typeof props.useStore === "function" ? props.useStore(function (value) { return value; }) : null;
+          if (state === null || state === undefined || state.sessionId !== sessionId) return null;
+          if (state.phase === "running") {
+            return h("div", { className: "wsr-handoff-live" }, state.needsEnter === true ? t("handoff.pressEnter") : t("handoff.preparing"));
           }
-
-          var baseline = 0;
-          var replies = 0;
-          var tries = 0;
-          function poll(delay) {
-            if (typeof window === "undefined") return;
-            handoffTimer = window.setTimeout(function () {
-              if (handoffPanelSession !== sessionId) return;
-              fetch("/ws-recency/handoff", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ action: "tail", sessionId: sessionId }),
-              }).then(function (response) {
-                return response.json().catch(function () { return null; });
-              }).then(function (answer) {
-                if (answer === null || answer.ok !== true) return;
-                replies = typeof answer.replies === "number" ? answer.replies : 0;
-                if (baseline === 0) baseline = replies > 0 ? replies - 1 : 0;
-                tries += 1;
-                var block = replies > baseline ? handoffBlockOf(answer.text) : "";
-                if (block !== "") {
-                  preview.value = block;
-                  preview.style.display = "";
-                  confirm.style.display = "";
-                  confirm.disabled = false;
-                  status.textContent = t("handoff.found");
-                  return;
-                }
-                status.textContent = t("handoff.waiting", { n: tries * 2 });
-                poll(2000);
-              }).catch(function () {
-                poll(4000);
-              });
-            }, delay);
-          }
-          poll(1500);
+          if (state.phase !== "ready") return null;
+          var body = [
+            h("div", { className: "wsr-handoff-head" }, t("handoff.found")),
+            h("textarea", {
+              className: "wsr-handoff-text",
+              value: state.block,
+              onChange: function (event) { props.actions.setBlock(event.target.value); },
+            }),
+            h("div", { className: "wsr-handoff-actions" },
+              h("button", {
+                type: "button",
+                className: "wsr-btn",
+                onClick: function () { carryHandoff(sessionId, state.block); },
+              }, t("handoff.confirm")),
+              h("button", {
+                type: "button",
+                className: "wsr-btn",
+                onClick: function () {
+                  props.actions.setRunning(sessionId, false);
+                  handoffBaseline = 0;
+                  handoffTries = 0;
+                  handoffSession = sessionId;
+                  watchHandoff(sessionId);
+                },
+              }, t("handoff.more")),
+              h("button", {
+                type: "button",
+                className: "wsr-btn",
+                onClick: function () { resetHandoff(); },
+              }, t("handoff.cancel")),
+            ),
+          ];
+          return h.apply(null, ["div", { className: "wsr-handoff-card" }].concat(body));
         }
 
         /**
@@ -2097,7 +2112,7 @@
             "data-wsr-handoff-action": "true",
             onClick: function () {
               var sessionId = props !== undefined && props !== null && typeof props.sessionId === "string" ? props.sessionId : null;
-              if (sessionId !== null) openHandoffPanel(sessionId);
+              if (sessionId !== null) startHandoff(sessionId);
             },
           }, typeof Icon === "function" ? h(Icon, { size: 16 }) : null);
           return typeof Tooltip === "function" ? h(Tooltip, { label: label, side: "bottom" }, button) : button;
@@ -2817,6 +2832,35 @@
 
           /* The statistics renderer is plain DOM, not a slot component: keep the
              store handle so it can read the argument-mode preference live. */
+          /* Handoff progress lives in a store so the turn card re-renders with it. */
+          var handoff = clientStore.defineStore({
+            init: function () {
+              return { sessionId: "", phase: "idle", block: "", needsEnter: false };
+            },
+            actions: {
+              setRunning: function (draft, sessionId, needsEnter) {
+                draft.sessionId = sessionId;
+                draft.phase = "running";
+                draft.block = "";
+                draft.needsEnter = needsEnter === true;
+              },
+              setReady: function (draft, block) {
+                draft.phase = "ready";
+                draft.block = typeof block === "string" ? block : "";
+              },
+              setBlock: function (draft, block) {
+                draft.block = typeof block === "string" ? block : "";
+              },
+              setIdle: function (draft) {
+                draft.phase = "idle";
+                draft.block = "";
+                draft.sessionId = "";
+                draft.needsEnter = false;
+              },
+            },
+          });
+          handoffStore = handoff;
+
           prefsStore = prefs;
 
           if (typeof MutationObserver === "function" && top() !== null) {
@@ -2905,6 +2949,17 @@
               locale: NS,
               inject: function (sessionId) { return { sessionId: sessionId }; },
             }, HandoffTurnAction);
+          });
+
+          ctx.slots.inject("conversation.chat.turnTail", function () {
+            return ctx.slots.register({
+              name: "conversation.chat.turnTail",
+              id: "ws-recency-handoff-card",
+              order: 30,
+              store: handoff,
+              locale: NS,
+              inject: function (sessionId) { return { sessionId: sessionId }; },
+            }, HandoffTailCard);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
