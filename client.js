@@ -2133,15 +2133,36 @@
           return blocks;
         }
 
+        /**
+         * Pull the fenced block out of an assistant reply.
+         *
+         * Fences only count at the start of a line, and only a closed pair counts at
+         * all: a note often mentions a ```handoff block in prose (which cut the note
+         * in half before), and a reply that is still streaming has no closing fence
+         * yet (which would otherwise be captured half-written).
+         */
         function handoffBlockOf(text) {
           if (typeof text !== "string") return "";
-          var blocks = fencedBlocks(text);
-          for (var i = 0; i < blocks.length; i += 1) {
-            if (blocks[i].label === "handoff") return blocks[i].body;
+          var tagged = /^[ \t]*```handoff[ \t]*$/m.exec(text);
+          if (tagged !== null) {
+            var from = tagged.index + tagged[0].length;
+            var rest = text.slice(from);
+            var close = /^[ \t]*```[ \t]*$/m.exec(rest);
+            if (close === null) return "";
+            return rest.slice(0, close.index).replace(/^\r?\n/, "").trim();
           }
-          /* A reply that forgot the label still counts if it reads like the note. */
-          for (var j = 0; j < blocks.length; j += 1) {
-            if (blocks[j].body.indexOf("#") !== -1) return blocks[j].body;
+          /* Older replies may use a plain fence: take the first one that reads like a
+             document, skipping unrelated code samples above it. */
+          var fence = /^[ \t]*```[ \t]*[a-zA-Z0-9_-]*[ \t]*$/gm;
+          var opened;
+          while ((opened = fence.exec(text)) !== null) {
+            var bodyFrom = opened.index + opened[0].length;
+            var tail = text.slice(bodyFrom);
+            var ending = /^[ \t]*```[ \t]*$/m.exec(tail);
+            if (ending === null) return "";
+            var body = tail.slice(0, ending.index).replace(/^\r?\n/, "").trim();
+            if (body.indexOf("#") !== -1) return body;
+            fence.lastIndex = bodyFrom + ending.index + ending[0].length;
           }
           return "";
         }

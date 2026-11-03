@@ -631,6 +631,26 @@ function textOf(node) {
   assert.ok(handoffButton !== null, "the turn action renders");
 
   assert.ok(HandoffCard !== null, "the handoff card was registered");
+  /* a fence mentioned inside the note must not end it early */
+  const fence = String.fromCharCode(96, 96, 96);
+  const replyWithInlineFence = [
+    fence + "handoff",
+    "# 交接",
+    "## 当前进度",
+    "流程：指令自动发送 → 抓 " + fence + "handoff 块 → 出卡片。",
+    "",
+    "## 验证方式",
+    "六个套件全绿。",
+    fence,
+    "完。",
+  ].join("\n");
+  const parsed = mod.__handoff.blockOf(replyWithInlineFence);
+  assert.ok(parsed.indexOf("流程：指令自动发送") !== -1, "an inline fence inside the note is kept");
+  assert.ok(parsed.indexOf("六个套件全绿") !== -1, "the note is not cut at the inline fence");
+  assert.strictEqual(parsed.indexOf("完。"), -1, "text after the closing fence is dropped");
+  assert.strictEqual(mod.__handoff.blockOf("没有代码块"), "");
+  assert.strictEqual(mod.__handoff.blockOf(fence + "\nnot a document\n" + fence), "", "a fence without a heading is not a handoff");
+
   const handoffState = mod.__handoff;
   assert.ok(handoffState !== undefined, "the handoff state hook exists");
   handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
