@@ -1874,7 +1874,31 @@
 
         /* ------------------------------ handoff ------------------------------ */
 
-        var handoffStore = null;
+        /* A plain observable, not a slot store: the turn card and the turn action are
+           different slot instances, and a store handle would hand each its own copy. */
+        var handoffState = { sessionId: "", phase: "idle", block: "", needsEnter: false };
+        var handoffListeners = [];
+
+        function currentHandoffState() {
+          return handoffState;
+        }
+
+        function setHandoffState(patch) {
+          handoffState = Object.assign({}, handoffState, patch);
+          var listeners = handoffListeners.slice();
+          for (var i = 0; i < listeners.length; i += 1) {
+            try { listeners[i](handoffState); } catch (error) { /* a dead component */ }
+          }
+        }
+
+        function subscribeHandoff(listener) {
+          handoffListeners.push(listener);
+          return function () {
+            var at = handoffListeners.indexOf(listener);
+            if (at !== -1) handoffListeners.splice(at, 1);
+          };
+        }
+
         var handoffTimer = null;
         var handoffBaseline = 0;
         var handoffTries = 0;
@@ -1959,9 +1983,7 @@
           handoffSession = null;
           handoffBaseline = 0;
           handoffTries = 0;
-          if (handoffStore !== null && handoffStore !== undefined) {
-            try { handoffStore.actions.setIdle(); } catch (error) { /* store gone */ }
-          }
+          setHandoffState({ sessionId: "", phase: "idle", block: "", needsEnter: false });
         }
 
         function handoffBlockOf(text) {
@@ -1989,14 +2011,14 @@
                 if (replies > handoffBaseline) {
                   var found = handoffBlockOf(answer.text);
                   if (found !== "") {
-                    handoffStore.actions.setReady(found);
+                    setHandoffState({ sessionId: sessionId, phase: "ready", block: found, needsEnter: false });
                     return;
                   }
                   handoffBaseline = replies;
                 }
               }
               if (handoffTries > 150) {
-                handoffStore.actions.setIdle();
+                setHandoffState({ sessionId: "", phase: "idle", block: "", needsEnter: false });
                 handoffSession = null;
                 return;
               }
@@ -2017,10 +2039,9 @@
 
         /** The turn action: send the instruction and wait for the block. */
         function startHandoff(sessionId) {
-          if (handoffStore === null || handoffStore === undefined) return;
           if (typeof sessionId !== "string" || sessionId === "") return;
           var sent = sendInstruction(sessionId);
-          handoffStore.actions.setRunning(sessionId, sent);
+          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: sent !== true });
           watchHandoff(sessionId);
         }
 
@@ -2057,7 +2078,13 @@
          */
         function HandoffTailCard(props) {
           var sessionId = props !== undefined && props !== null && typeof props.sessionId === "string" ? props.sessionId : "";
-          var state = typeof props.useStore === "function" ? props.useStore(function (value) { return value; }) : null;
+          var pair = react.useState(currentHandoffState());
+          var live = pair[0];
+          var setLive = pair[1];
+          react.useEffect(function () {
+            return subscribeHandoff(function (next) { setLive(next); });
+          }, []);
+          var state = live;
           if (state === null || state === undefined || state.sessionId !== sessionId) return null;
           if (state.phase === "running") {
             return h("div", { className: "wsr-handoff-live" }, state.needsEnter === true ? t("handoff.pressEnter") : t("handoff.preparing"));
@@ -2068,7 +2095,7 @@
             h("textarea", {
               className: "wsr-handoff-text",
               value: state.block,
-              onChange: function (event) { props.actions.setBlock(event.target.value); },
+              onChange: function (event) { setHandoffState({ block: event.target.value }); },
             }),
             h("div", { className: "wsr-handoff-actions" },
               h("button", {
@@ -2080,7 +2107,7 @@
                 type: "button",
                 className: "wsr-btn",
                 onClick: function () {
-                  props.actions.setRunning(sessionId, false);
+                  setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false });
                   handoffBaseline = 0;
                   handoffTries = 0;
                   handoffSession = sessionId;
@@ -2832,34 +2859,6 @@
 
           /* The statistics renderer is plain DOM, not a slot component: keep the
              store handle so it can read the argument-mode preference live. */
-          /* Handoff progress lives in a store so the turn card re-renders with it. */
-          var handoff = clientStore.defineStore({
-            init: function () {
-              return { sessionId: "", phase: "idle", block: "", needsEnter: false };
-            },
-            actions: {
-              setRunning: function (draft, sessionId, needsEnter) {
-                draft.sessionId = sessionId;
-                draft.phase = "running";
-                draft.block = "";
-                draft.needsEnter = needsEnter === true;
-              },
-              setReady: function (draft, block) {
-                draft.phase = "ready";
-                draft.block = typeof block === "string" ? block : "";
-              },
-              setBlock: function (draft, block) {
-                draft.block = typeof block === "string" ? block : "";
-              },
-              setIdle: function (draft) {
-                draft.phase = "idle";
-                draft.block = "";
-                draft.sessionId = "";
-                draft.needsEnter = false;
-              },
-            },
-          });
-          handoffStore = handoff;
 
           prefsStore = prefs;
 
@@ -2956,7 +2955,6 @@
               name: "conversation.chat.turnTail",
               id: "ws-recency-handoff-card",
               order: 30,
-              store: handoff,
               locale: NS,
               inject: function (sessionId) { return { sessionId: sessionId }; },
             }, HandoffTailCard);
@@ -3029,6 +3027,9 @@
           if (typeof window.setInterval === "function") ticker = window.setInterval(schedule, TICK_MS);
           schedule();
         }
+
+        /* Test hook: the card state is a module observable, invisible from outside. */
+        exports.__handoff = { current: currentHandoffState, set: setHandoffState };
 
         exports.name = "dsh-ws-recency";
         exports.inject = inject;

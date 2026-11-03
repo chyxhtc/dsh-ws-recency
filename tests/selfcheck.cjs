@@ -631,14 +631,19 @@ function textOf(node) {
   assert.ok(handoffButton !== null, "the turn action renders");
 
   assert.ok(HandoffCard !== null, "the handoff card was registered");
-  const stateOf = (value) => ({ sessionId: "session-x", useStore: () => value, actions: { setBlock() {}, setRunning() {} } });
-  assert.strictEqual(HandoffCard(stateOf({ sessionId: "session-x", phase: "idle", block: "" })), null, "idle renders nothing");
-  const live = HandoffCard(stateOf({ sessionId: "session-x", phase: "running", block: "", needsEnter: false }));
+  const handoffState = mod.__handoff;
+  assert.ok(handoffState !== undefined, "the handoff state hook exists");
+  handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
+  assert.strictEqual(HandoffCard({ sessionId: "session-x" }), null, "idle renders nothing");
+  handoffState.set({ sessionId: "session-x", phase: "running", block: "", needsEnter: false });
+  const live = HandoffCard({ sessionId: "session-x" });
   assert.strictEqual(live.props.className, "wsr-handoff-live", "a running handoff shows progress");
-  const card = HandoffCard(stateOf({ sessionId: "session-x", phase: "ready", block: "# 交接" }));
+  handoffState.set({ sessionId: "session-x", phase: "ready", block: "# 交接" });
+  const card = HandoffCard({ sessionId: "session-x" });
   assert.strictEqual(card.props.className, "wsr-handoff-card", "a ready handoff renders the card");
   assert.ok(Array.isArray(card.children) && card.children.length === 3, "card has preview and actions");
-  assert.strictEqual(HandoffCard({ sessionId: "other", useStore: () => ({ sessionId: "session-x", phase: "ready", block: "x" }), actions: {} }), null, "another session shows nothing");
+  assert.strictEqual(HandoffCard({ sessionId: "other" }), null, "another session shows nothing");
+  handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
 
   const handoffRow = HandoffItem({ sessionId: "session-x" });
   assert.ok(handoffRow !== null, "the menu row renders");
