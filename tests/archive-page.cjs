@@ -136,10 +136,10 @@ function buttons(root) {
   return collect(root, []).filter((node) => node.type === "button");
 }
 
-/** Buttons inside the one row whose text starts with `rowText` (labels repeat across rows). */
+/** Buttons inside the one card whose text contains `rowText` (labels repeat across cards). */
 function buttonInRow(root, rowText, label) {
-  const rows = collect(root, []).filter((node) => node.type === "div" && node.props.className === "wsr-page-row");
-  const row = rows.find((node) => textOf(node).indexOf(rowText) === 0);
+  const rows = collect(root, []).filter((node) => node.type === "div" && node.props.className === "wsr-card");
+  const row = rows.find((node) => textOf(node).indexOf(rowText) !== -1);
   if (row === undefined || row === null) return null;
   return buttons(row).find((node) => textOf(node) === label) || null;
 }

@@ -655,6 +655,38 @@ function textOf(node) {
   assert.ok(handoffRow !== null, "the menu row renders");
   assert.strictEqual(handoffRow.children[0], "Hand off to a new session", "the row is labelled");
 
+  /* ---------- handoff block extraction ------------------------------- */
+  assert.strictEqual(typeof handoffState.blockOf, "function", "the block parser is testable");
+  const fullReply = [
+    "已写好交接：",
+    "",
+    "```handoff",
+    "# 交接",
+    "链路：抓到 ```handoff 块 → 开新会话",
+    "## 结尾",
+    "最后一行",
+    "```",
+    "",
+    "完。",
+  ].join("\n");
+  assert.strictEqual(
+    handoffState.blockOf(fullReply),
+    "# 交接\n链路：抓到 ```handoff 块 → 开新会话\n## 结尾\n最后一行",
+    "a fence named inside the note does not close it",
+  );
+  assert.strictEqual(
+    handoffState.blockOf("```\n# 交接\n内容\n```"),
+    "# 交接\n内容",
+    "an unlabelled fence still counts when it reads like the note",
+  );
+  assert.strictEqual(handoffState.blockOf("这里没有代码块。"), "", "a reply without a fence yields nothing");
+  assert.strictEqual(handoffState.blockOf("```handoff\n# 交接"), "", "an unclosed fence is not taken as ready");
+  assert.strictEqual(
+    handoffState.blockOf("```js\nconst a = 1;\n```\n```\n# 交接\n内容\n```"),
+    "# 交接\n内容",
+    "a leading code sample does not win over the note",
+  );
+
   /* ---------- trash panel ------------------------------------------- */
   assert.ok(TrashIcon !== null, "the sidebar panel glyph was registered");
   assert.ok(TrashPage !== null, "the main-region trash page was registered");

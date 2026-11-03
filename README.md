@@ -133,6 +133,8 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 细节想改不用在这里改——新会话的输入框里直接调更顺手。轮询最多 5 分钟自动收起。
 
+交接块按 markdown 围栏解析：**只有独占一行的 ``` 才算结束**，正文里引用「```handoff 块」不会把内容截半（0.23.2 修）。
+
 两处发送都是模拟 Enter：当前会话里先写入、等 250ms 再按回车，并按需再补两次（共 3 次）；草稿会话在 14 秒内重试。始终送不出去时文本仍留在输入框，手动回车即可。
 
 ## 设置
@@ -171,7 +173,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.23.1/dsh-ws-recency-0.23.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.23.2/dsh-ws-recency-0.23.2.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
@@ -185,10 +187,11 @@ dsh plugin --profile desktop add "link:C:\Users\Konka\Hypers Work\workspace\dsh-
 自检（桩 DOM / 桩 Host，全部离线跑）：
 
 ```powershell
-node tests/selfcheck.cjs     # 排序、按天数折叠、分组控件、三色与跟进标记
+node tests/selfcheck.cjs     # 排序、按天数折叠、分组控件、三色与跟进标记、交接块切分
 node tests/stats.cjs         # token 估算、聚合、持久层读取
 node tests/move.cjs          # 移动：成功、回滚、守卫
 node tests/trash.cjs         # 回收站：列表、恢复、彻底删除、路径守卫
 node tests/archive.cjs       # 归档：列表/标题、取消归档、彻底删除、路由分发
-node tests/archive-page.cjs  # 回收站页面：两段列表、动作带的 sessionId
+node tests/archive-page.cjs  # 回收站页面：两段列表、卡片动作带的 sessionId
+node tests/handoff.cjs       # 交接：最新回复、markdown 存档、守卫
 ```

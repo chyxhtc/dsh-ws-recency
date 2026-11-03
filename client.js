@@ -2101,12 +2101,48 @@
           setHandoffState({ sessionId: "", phase: "idle", block: "", needsEnter: false });
         }
 
+        /**
+         * Every fenced block in a reply, in order: `{ label, body }`.
+         *
+         * A fence stops only on a line that is nothing but backticks. The handoff
+         * note names the fence it came in ("→ 抓到 ```handoff 块"), and matching the
+         * first three backticks used to close the block right there: the note was
+         * cut mid-sentence and that truncated text went into the new Session.
+         */
+        function fencedBlocks(text) {
+          var lines = String(text).split(/\r?\n/);
+          var opens = /^ {0,3}(`{3,})[ \t]*([A-Za-z0-9_+-]*)[ \t]*$/;
+          var closes = /^ {0,3}(`{3,})[ \t]*$/;
+          var blocks = [];
+          var at = -1;
+          var label = "";
+          for (var i = 0; i < lines.length; i += 1) {
+            if (at !== -1) {
+              if (closes.test(lines[i])) {
+                blocks.push({ label: label, body: lines.slice(at + 1, i).join("\n").trim() });
+                at = -1;
+                label = "";
+              }
+              continue;
+            }
+            var opened = opens.exec(lines[i]);
+            if (opened === null) continue;
+            at = i;
+            label = opened[2].toLowerCase();
+          }
+          return blocks;
+        }
+
         function handoffBlockOf(text) {
           if (typeof text !== "string") return "";
-          var match = /```handoff[ \t]*\r?\n([\s\S]*?)```/i.exec(text);
-          if (match !== null) return match[1].trim();
-          var loose = /```[ \t]*\r?\n([\s\S]*?)```/.exec(text);
-          if (loose !== null && loose[1].indexOf("#") !== -1) return loose[1].trim();
+          var blocks = fencedBlocks(text);
+          for (var i = 0; i < blocks.length; i += 1) {
+            if (blocks[i].label === "handoff") return blocks[i].body;
+          }
+          /* A reply that forgot the label still counts if it reads like the note. */
+          for (var j = 0; j < blocks.length; j += 1) {
+            if (blocks[j].body.indexOf("#") !== -1) return blocks[j].body;
+          }
           return "";
         }
 
@@ -3201,7 +3237,7 @@
         }
 
         /* Test hook: the card state is a module observable, invisible from outside. */
-        exports.__handoff = { current: currentHandoffState, set: setHandoffState };
+        exports.__handoff = { current: currentHandoffState, set: setHandoffState, blockOf: handoffBlockOf };
 
         exports.name = "dsh-ws-recency";
         exports.inject = inject;
