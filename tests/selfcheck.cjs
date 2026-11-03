@@ -374,6 +374,20 @@ toggleOf(B).click();
 flush();
 assert.strictEqual(hiddenCount(B), 0, "the group toggle reveals the folded rows");
 
+/* a session marked "needs follow-up" is exempt from folding, however stale */
+const staleRow = A.rows.find((row) => row.getAttribute("data-wsr-hidden") === "true");
+assert.ok(staleRow !== undefined, "a stale row to mark");
+const staleId = staleRow.getAttribute("data-row-key").slice("session:".length);
+const foldedBefore = hiddenCount(A);
+prefs.followUps[staleId] = NOW;
+render();
+assert.strictEqual(staleRow.getAttribute("data-wsr-hidden"), null, "a marked row is not folded");
+assert.strictEqual(hiddenCount(A), foldedBefore - 1, "the marked row leaves the folded set");
+assert.strictEqual(toggleOf(A).textContent, "Show history (" + (foldedBefore - 1 + 5) + ")");
+delete prefs.followUps[staleId];
+render();
+assert.strictEqual(hiddenCount(A), foldedBefore, "clearing the mark folds it again");
+
 /* ---------- colors + persistent follow-up ------------------------------ */
 
 const D = makeSection("D", ["D-run", "D-done"], null);

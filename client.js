@@ -222,7 +222,7 @@
         var ZH = {
           "settings.title": "\u5386\u53f2\u6298\u53e0\u5929\u6570",
           "settings.description": "\u4f1a\u8bdd\u8d85\u8fc7\u8fd9\u4e48\u591a\u5929\u6ca1\u6709\u66f4\u65b0\u5c31\u6298\u53e0\uff1b\u6574\u4e2a\u5de5\u4f5c\u533a\u90fd\u8fc7\u671f\u65f6\u53ea\u5269\u5de5\u4f5c\u533a\u6807\u9898\u3002",
-          "settings.exempt": "\u9009\u4e2d / \u8fd0\u884c\u4e2d / \u7b49\u5f85\u5904\u7406\u7684\u4f1a\u8bdd\u4e0d\u6298\u53e0",
+          "settings.exempt": "选中 / 运行中 / 等待处理 / 标记跟进的会话不折叠",
           "fold.show": "\u5c55\u5f00\u5386\u53f2 {n}",
           "fold.hide": "\u6536\u8d77\u5386\u53f2",
           "color.title": "\u989c\u8272\u4e0e\u8ddf\u8fdb\u6807\u8bb0",
@@ -328,7 +328,7 @@
         var EN = {
           "settings.title": "Fold history after (days)",
           "settings.description": "Sessions with no update for this many days are folded; a workspace older than that shows as a bare header.",
-          "settings.exempt": "Never fold the selected / running / waiting session",
+          "settings.exempt": "Never fold the selected, running, waiting or follow-up session",
           "fold.show": "Show history ({n})",
           "fold.hide": "Hide history",
           "color.title": "Colors and follow-up marks",
@@ -758,7 +758,13 @@
               var updated = updatedAtOf(row, sessions);
               var stale = updated !== null && updated < cutoff;
               var blank = isBlankRow(row, sessions);
-              var exempt = settings.keepActive && (isActiveRow(row) || isSelectedRow(row));
+              /* "Needs follow-up" means "I still owe this one an answer": hiding it
+                 behind a fold defeats the mark, so it is exempt like a running row. */
+              var marked = sessionIdOf(row);
+              var flagged = marked !== null && settings.followUps !== null
+                && typeof settings.followUps === "object"
+                && settings.followUps[marked] !== undefined;
+              var exempt = flagged || (settings.keepActive && (isActiveRow(row) || isSelectedRow(row)));
               var hide = !expanded && stale && !exempt && !blank;
               if (hide) {
                 if (row.getAttribute(HIDDEN_ATTR) !== "true") row.setAttribute(HIDDEN_ATTR, "true");
@@ -2249,6 +2255,8 @@
             (function (entry) {
               var chips = [];
               if (entry.turns > 0) chips.push(t("trash.turns") + " " + entry.turns);
+              if (entry.steps > 0) chips.push(t("trash.steps") + " " + entry.steps);
+              if (entry.tokens > 0) chips.push(formatTokens(entry.tokens) + " tokens");
               chips.push(formatBytes(entry.sizeBytes));
               var when = formatWhen(entry.lastAt !== 0 ? entry.lastAt : entry.createdAt);
               if (when !== "") chips.push(when);

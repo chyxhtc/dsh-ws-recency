@@ -63,6 +63,7 @@ function fakeResponse() {
       { type: "session", id: "session-titled", cwd: "D:\\proj" },
       { type: "session/title", data: { title: "named from the log" } },
       { type: "user/message", data: { content: "never used" } },
+      { type: "assistant/message", data: { usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 }, message: { content: [] } } },
     ],
     "session-untitled": [{ type: "session", id: "session-untitled", cwd: "D:\\proj" }],
   };
@@ -144,6 +145,8 @@ function fakeResponse() {
   const fresh = listing.entries.find((entry) => entry.sessionId === "session-new");
   assert.strictEqual(fresh.title, "a real title", "the cached title is used");
   assert.strictEqual(fresh.sizeBytes, 2048, "the log size comes from the listing");
+  assert.strictEqual(typeof fresh.steps, "number", "the card carries a step count");
+  assert.strictEqual(typeof fresh.tokens, "number", "the card carries a token total");
   assert.strictEqual(fresh.workspaceId, "w-proj", "the owning workspace comes from its slot");
   assert.strictEqual(fresh.listed, true, "the slot matches its cwd");
   const old = listing.entries.find((entry) => entry.sessionId === "session-old");
@@ -155,6 +158,8 @@ function fakeResponse() {
 
   const titled = listing.entries.find((entry) => entry.sessionId === "session-titled");
   assert.strictEqual(titled.title, "named from the log", "a session the cache never saw takes its title from the log");
+  assert.strictEqual(titled.steps, 1, "steps come from the recorded usage");
+  assert.strictEqual(titled.tokens, 15, "tokens come from the recorded usage");
   const untitled = listing.entries.find((entry) => entry.sessionId === "session-untitled");
   assert.strictEqual(untitled.title, "", "a session with neither a cache row nor a title event stays untitled");
 

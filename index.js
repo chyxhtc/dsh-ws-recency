@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.17.0";
+export const HOST_VERSION = "0.18.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -273,6 +273,9 @@ export async function handleTrashRequest(ctx, req, res) {
 
 const STATS_CACHE_MS = 10 * 1000;
 const statsCache = new Map();
+
+/** Archived sessions keep their log, so their card facts never change: key by size. */
+const archiveMetaCache = new Map();
 
 /** bytes/4 per Latin character, ~1 token per CJK character. */
 export function estimateTokens(text) {
@@ -1185,6 +1188,18 @@ export async function listArchivedSessions(ctx) {
 
     const outlineTurns = checkpointValue(checkpoint, "turnOutline");
     const turns = Array.isArray(outlineTurns?.turns) ? outlineTurns.turns.length : 0;
+    /* Same facts the trash cards show, so both sections read alike. */
+    const metaKey = `${sessionId}:${sizeBytes}`;
+    let archiveMeta = archiveMetaCache.get(metaKey);
+    if (archiveMeta === undefined) {
+      try {
+        const stats = await sessionStatistics(ctx, sessionId);
+        archiveMeta = stats.ok === true ? { steps: stats.stats.steps, tokens: stats.stats.totals.totalTokens } : { steps: 0, tokens: 0 };
+      } catch {
+        archiveMeta = { steps: 0, tokens: 0 };
+      }
+      archiveMetaCache.set(metaKey, archiveMeta);
+    }
     const listMeta = checkpointValue(checkpoint, "sessionListMetadata");
     let lastAt = typeof listMeta?.lastPromptAt === "number" ? listMeta.lastPromptAt : 0;
     if (lastAt === 0 && typeof header?.updatedAt === "number") lastAt = header.updatedAt;
@@ -1198,6 +1213,8 @@ export async function listArchivedSessions(ctx) {
       sessionId,
       title,
       turns,
+      steps: archiveMeta.steps,
+      tokens: archiveMeta.tokens,
       cwd,
       createdAt: typeof header?.createdAt === "number" ? header.createdAt : 0,
       lastAt,
