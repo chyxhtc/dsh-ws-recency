@@ -2034,40 +2034,58 @@
           window.setTimeout(step, 400);
         }
 
-        /** Write text into the composer and send it, if the editor is reachable. */
-        function sendToSession(text) {
-          if (typeof document === "undefined" || typeof text !== "string" || text === "") return false;
-          var seat = typeof document.querySelector === "function" ? document.querySelector("[data-composer-seat]") : null;
-          if (seat === null || seat === undefined) return false;
-          var editor = null;
-          try { editor = seat.querySelector('[contenteditable="true"]'); } catch (error) { editor = null; }
-          if (editor === null || editor === undefined) {
-            try { editor = seat.querySelector("textarea"); } catch (error) { editor = null; }
-          }
-          if (editor === null || editor === undefined) return false;
+        /** Put text into an editor without losing the framework's own input event. */
+        function writeIntoEditor(editor, text) {
           try {
             if (typeof editor.focus === "function") editor.focus();
             if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
               editor.value = text;
               editor.dispatchEvent(new window.Event("input", { bubbles: true }));
-            } else {
-              var selection = typeof window.getSelection === "function" ? window.getSelection() : null;
-              if (selection !== null && typeof document.createRange === "function") {
-                var range = document.createRange();
-                range.selectNodeContents(editor);
-                range.collapse(false);
-                selection.removeAllRanges();
-                selection.addRange(range);
-              }
-              if (typeof document.execCommand !== "function" || !document.execCommand("insertText", false, text)) {
-                editor.textContent = text;
-                editor.dispatchEvent(new window.Event("input", { bubbles: true }));
-              }
+              return true;
             }
-            return pressEnter(editor);
+            var selection = typeof window.getSelection === "function" ? window.getSelection() : null;
+            if (selection !== null && typeof document.createRange === "function") {
+              var range = document.createRange();
+              range.selectNodeContents(editor);
+              range.collapse(false);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            }
+            if (typeof document.execCommand === "function" && document.execCommand("insertText", false, text)) return true;
+            editor.textContent = text;
+            editor.dispatchEvent(new window.Event("input", { bubbles: true }));
+            return true;
           } catch (error) {
             return false;
           }
+        }
+
+        /**
+         * Press Enter until the text actually leaves the composer.
+         *
+         * The editor commits an inserted text and a synthetic Enter in different
+         * frames: pressing Enter in the same tick as the insert is swallowed, which
+         * is why the instruction used to sit in the box until the user pressed it.
+         * Wait a beat, then press again only while the text is still there.
+         */
+        function armEnter(editor, attempt) {
+          if (typeof window === "undefined") return;
+          window.setTimeout(function () {
+            if (composerEditor() !== editor) return;
+            if (editorText(editor).trim() === "") return;
+            pressEnter(editor);
+            if (attempt < 2) armEnter(editor, attempt + 1);
+          }, attempt === 0 ? 250 : 800);
+        }
+
+        /** Write text into the composer and send it, if the editor is reachable. */
+        function sendToSession(text) {
+          if (typeof document === "undefined" || typeof text !== "string" || text === "") return false;
+          var editor = composerEditor();
+          if (editor === null || editor === undefined) return false;
+          if (!writeIntoEditor(editor, text)) return false;
+          armEnter(editor, 0);
+          return true;
         }
 
         function stopHandoffPolling() {

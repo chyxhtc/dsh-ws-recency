@@ -133,7 +133,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 细节想改不用在这里改——新会话的输入框里直接调更顺手。轮询最多 5 分钟自动收起。
 
-自动发送是模拟 Enter：草稿面板渲染慢时会在 14 秒内重试；如果始终没送出去，文本仍留在输入框里，手动回车即可。
+两处发送都是模拟 Enter：当前会话里先写入、等 250ms 再按回车，并按需再补两次（共 3 次）；草稿会话在 14 秒内重试。始终送不出去时文本仍留在输入框，手动回车即可。
 
 ## 设置
 
@@ -171,7 +171,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.23.0/dsh-ws-recency-0.23.0.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.23.1/dsh-ws-recency-0.23.1.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。
