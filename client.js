@@ -1956,9 +1956,60 @@
         var handoffTries = 0;
         var handoffSession = null;
 
+        /** Retention-source tag the Host books this plugin's borrows under. */
+        var HANDOFF_SOURCE = "dsh-ws-recency";
+
         /** The instruction the user sends to the current Session. */
         function handoffInstruction() {
           return t("handoff.instruction");
+        }
+
+        /** The Host's session service, when this Client provides it. */
+        function sessionsService() {
+          var ctx = data.ctx;
+          if (ctx === null || ctx === undefined || typeof ctx.get !== "function") return null;
+          var sessions;
+          try { sessions = ctx.get("sessions"); } catch (error) { sessions = undefined; }
+          return sessions === undefined ? null : sessions;
+        }
+
+        /**
+         * Send one prompt through the Host's own Session controller.
+         *
+         * The composer path further down is a synthetic key event: it depends on
+         * the editor being mounted, focused, and on the insert and the key landing
+         * in different frames. The Session controller owns a real prompt call, so
+         * a plugin can retain the session, wait until it is open, and hand the text
+         * over - no DOM, no key events, and it works for a session that is not the
+         * one on screen (the "..." menu starts a handoff that way).
+         *
+         * @param sessionId - target Session.
+         * @param text - prompt text, sent as one text block.
+         * @param onUnsent - called when the prompt could not be dispatched.
+         * @returns true when a request was dispatched (its promise may still fail).
+         */
+        function promptSession(sessionId, text, onUnsent) {
+          var sessions = sessionsService();
+          if (sessions !== null && typeof sessions.using === "function") {
+            try {
+              sessions.using(sessionId, { source: HANDOFF_SOURCE }, function (reference) {
+                var binding = reference === null || reference === undefined ? undefined : reference.binding;
+                var session = binding === null || binding === undefined ? undefined : binding.session;
+                if (session === undefined || session === null || typeof session.prompt !== "function") throw new Error("session unavailable");
+                return Promise.resolve(session.prompt([{ type: "text", text: text }], "queue")).then(function (result) {
+                  if (result !== null && result !== undefined && result.ok === false) throw new Error("the session refused the prompt");
+                  return result;
+                });
+              }).catch(function () {
+                if (typeof onUnsent === "function") onUnsent();
+              });
+              return true;
+            } catch (error) {
+              /* fall through to the caller's own path */
+            }
+          }
+          if (typeof onUnsent === "function") onUnsent();
+          return false;
         }
 
         function handoffPost(payload) {
@@ -2078,14 +2129,35 @@
           }, attempt === 0 ? 250 : 800);
         }
 
-        /** Write text into the composer and send it, if the editor is reachable. */
-        function sendToSession(text) {
-          if (typeof document === "undefined" || typeof text !== "string" || text === "") return false;
+        /** Fallback: write into the open composer and press Enter until it leaves. */
+        function sendThroughComposer(sessionId, text) {
+          if (typeof document === "undefined") return false;
+          /* Never write into another conversation's composer: the open editor
+             belongs to the session on screen, not to the target id. */
+          if (currentConversationId() !== sessionId) return false;
           var editor = composerEditor();
           if (editor === null || editor === undefined) return false;
           if (!writeIntoEditor(editor, text)) return false;
           armEnter(editor, 0);
           return true;
+        }
+
+        /**
+         * Send one prompt to one Session.
+         *
+         * Preferred: the Host's Session controller (see promptSession). Only when
+         * that seam is unavailable does it fall back to writing into the composer
+         * of the session on screen and pressing Enter; a target that is not on
+         * screen then just reports "press Enter" on the card instead of sending
+         * the instruction into the wrong conversation.
+         */
+        function sendToSession(sessionId, text) {
+          if (typeof text !== "string" || text === "") return false;
+          var fallback = function () {
+            if (sendThroughComposer(sessionId, text)) return;
+            setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: true });
+          };
+          return promptSession(sessionId, text, fallback);
         }
 
         function stopHandoffPolling() {
@@ -2211,44 +2283,88 @@
         /** The turn action: send the instruction and wait for the block. */
         function startHandoff(sessionId) {
           if (typeof sessionId !== "string" || sessionId === "") return;
-          var sent = sendToSession(handoffInstruction());
-          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: sent !== true });
+          /* The card starts in its "working" state; if the Host refuses the send
+             the fallback flips needsEnter so the card tells the user to press
+             Enter instead of pretending the handoff is running. */
+          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false });
+          sendToSession(sessionId, handoffInstruction());
           watchHandoff(sessionId);
         }
 
-        /** The card carries it over: open a fresh Session in the same workspace. */
+        /**
+         * Fallback carry: the Host opened a blank session and keeps the note as an
+         * unsent draft (the pre-0.35 behaviour). Only used when the Session
+         * controller seam is missing or the workspace is unknown.
+         */
+        function startHandoffSession(workspaceId, prompt) {
+          var service = data.service;
+          if (service !== null && service !== undefined && typeof service.startSession === "function") {
+            try {
+              service.startSession(workspaceId, { prompt: prompt, whenDraftExists: "replace" });
+              resetHandoff();
+              autoSendDraft(t("handoff.preamble").slice(0, 12));
+              return true;
+            } catch (error) {
+              /* fall through to the clipboard */
+            }
+          }
+          try {
+            if (navigator !== undefined && navigator.clipboard !== undefined) navigator.clipboard.writeText(prompt);
+          } catch (error) {
+            /* clipboard unavailable */
+          }
+          resetHandoff();
+          return false;
+        }
+
+        /**
+         * The card carries it over: open a fresh Session in the same workspace and
+         * put the note in as its first prompt through the Host's own API.
+         *
+         * `connectWorkspace` creates (or reuses) the blank and returns its id
+         * without navigating; `sessions.using` retains that session until it is
+         * open, so the prompt is the session's real first message - nothing has to
+         * be typed into a composer and no Enter is synthesised.
+         */
         function carryHandoff(sessionId, block) {
           var text = typeof block === "string" ? block.trim() : "";
           if (text === "") return;
           handoffPost({ action: "save", sessionId: sessionId, text: text }).catch(function () { return null; }).then(function () {
             var owner = workspaceOfSession(sessionId);
-            var workspaceId = owner === null ? undefined : owner.workspaceId;
+            var workspaceId = owner === null || owner === undefined ? undefined : owner.workspaceId;
             var service = data.service;
+            var sessions = sessionsService();
             var prompt = t("handoff.preamble") + "\n\n" + text;
-            if (service !== null && service !== undefined && typeof service.startSession === "function") {
-              try {
-                service.startSession(workspaceId, { prompt: prompt, whenDraftExists: "replace" });
+            if (workspaceId !== undefined
+              && service !== null && service !== undefined
+              && typeof service.connectWorkspace === "function"
+              && typeof service.openSession === "function"
+              && sessions !== null && typeof sessions.using === "function") {
+              service.connectWorkspace(workspaceId).then(function (newSessionId) {
+                try { service.openSession(newSessionId); } catch (error) { /* the prompt still lands */ }
+                return sessions.using(newSessionId, { source: HANDOFF_SOURCE }, function (reference) {
+                  var binding = reference === null || reference === undefined ? undefined : reference.binding;
+                  var session = binding === null || binding === undefined ? undefined : binding.session;
+                  if (session === undefined || session === null || typeof session.prompt !== "function") throw new Error("session unavailable");
+                  return session.prompt([{ type: "text", text: prompt }], "queue");
+                });
+              }).then(function (result) {
+                if (result !== null && result !== undefined && result.ok === false) throw new Error("the session refused the prompt");
                 resetHandoff();
-                autoSendDraft(t("handoff.preamble").slice(0, 12));
-                return;
-              } catch (error) {
-                /* fall through */
-              }
+              }).catch(function () {
+                startHandoffSession(workspaceId, prompt);
+              });
+              return;
             }
-            try {
-              if (navigator !== undefined && navigator.clipboard !== undefined) navigator.clipboard.writeText(prompt);
-            } catch (error) {
-              /* clipboard unavailable */
-            }
-            resetHandoff();
+            startHandoffSession(workspaceId, prompt);
           });
         }
 
         /** Ask the current Session to rewrite the handoff with the user's adjustments. */
         function rewriteHandoff(sessionId, extra) {
           var text = extra.trim() === "" ? t("handoff.regeneratePrompt") : t("handoff.adjustPrompt") + "\n\n" + extra.trim();
-          var sent = sendToSession(text);
-          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: sent !== true });
+          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false });
+          sendToSession(sessionId, text);
           handoffBaseline = 0;
           handoffTries = 0;
           handoffSession = sessionId;
@@ -2380,7 +2496,15 @@
           var Icon = ui.IconDataOutlineRegular;
           return h(Item, {
             icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
-            onSelect: function () { openHandoffPanel(props.sessionId); },
+            onSelect: function () {
+              /* Open the conversation first so the running handoff (and later the
+                 card) is visible; the prompt itself does not need the composer. */
+              var service = data.service;
+              if (service !== null && service !== undefined && typeof service.openSession === "function") {
+                try { service.openSession(props.sessionId); } catch (error) { /* the send still lands */ }
+              }
+              startHandoff(props.sessionId);
+            },
           }, t("menu.handoff"));
         }
 
@@ -3257,7 +3381,15 @@
         }
 
         /* Test hook: the card state is a module observable, invisible from outside. */
-        exports.__handoff = { current: currentHandoffState, set: setHandoffState, blockOf: handoffBlockOf };
+        exports.__handoff = {
+          current: currentHandoffState,
+          set: setHandoffState,
+          blockOf: handoffBlockOf,
+          start: startHandoff,
+          rewrite: rewriteHandoff,
+          carry: carryHandoff,
+          send: sendToSession,
+        };
 
         exports.name = "dsh-ws-recency";
         exports.inject = inject;

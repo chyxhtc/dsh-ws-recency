@@ -256,13 +256,37 @@ let TrashMenuItem = null;
 const service = {
   opened: [],
   unpinned: [],
+  connected: [],
+  started: [],
   openSession(id) { this.opened.push(id); },
   unpinSession(id) { this.unpinned.push(id); },
   pinSession() {},
+  connectWorkspace(workspaceId) {
+    this.connected.push(workspaceId);
+    return Promise.resolve("handoff-new-1");
+  },
+  startSession(workspaceId, options) { this.started.push({ workspaceId, options }); },
+};
+/* The Host's Session controller surface the handoff now sends through. */
+const sessionService = {
+  prompts: [],
+  using(target, options, operation) {
+    const session = {
+      prompt(content, mode) {
+        sessionService.prompts.push({ target, content, mode, options });
+        return Promise.resolve({ ok: true });
+      },
+    };
+    return Promise.resolve(operation({ binding: { session } }));
+  },
 };
 const ctx = {
   effect(fn) { fn(); },
-  get(name) { return name === "uiWorkspace" ? service : undefined; },
+  get(name) {
+    if (name === "uiWorkspace") return service;
+    if (name === "sessions") return sessionService;
+    return undefined;
+  },
   locale: { register() { return () => {}; } },
   slots: {
     inject(_name, factory) { return factory(); },
@@ -630,6 +654,73 @@ function textOf(node) {
   const handoffButton = typeof handoffAction.type === "function" ? handoffAction : handoffAction;
   assert.ok(handoffButton !== null, "the turn action renders");
 
+  /* The instruction goes through the Session controller, not a synthetic Enter. */
+  const beforePrompts = sessionService.prompts.length;
+  handoffAction.props.onClick();
+  assert.strictEqual(sessionService.prompts.length, beforePrompts + 1, "the turn action prompts the session through the controller");
+  const turnPrompt = sessionService.prompts[beforePrompts];
+  assert.strictEqual(turnPrompt.target, "session-x", "it addresses the session it sits in");
+  assert.strictEqual(turnPrompt.mode, "queue", "a prompt uses the queue delivery mode");
+  assert.ok(String(turnPrompt.content[0].text).indexOf("~~~handoff") !== -1, "the instruction asks for the tilde fence");
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(turnPrompt.options)), { source: "dsh-ws-recency" }, "the borrow is tagged");
+
+  /* The "..." menu row starts the same handoff; before 0.24.1 it called a
+     function that no longer existed and threw on every click. */
+  const beforeMenuPrompts = sessionService.prompts.length;
+  const handoffRow = HandoffItem({ sessionId: "A-fresh-1" });
+  assert.ok(handoffRow !== null, "the menu row renders");
+  assert.strictEqual(handoffRow.children[0], "Hand off to a new session", "the row is labelled");
+  handoffRow.props.onSelect();
+  assert.ok(service.opened.indexOf("A-fresh-1") !== -1, "the menu row opens the conversation first");
+  assert.strictEqual(sessionService.prompts.length, beforeMenuPrompts + 1, "the menu row sends the instruction");
+  assert.strictEqual(sessionService.prompts[beforeMenuPrompts].target, "A-fresh-1");
+
+  /* Rewrite keeps the card's own wording and goes through the same seam. */
+  const beforeRewrite = sessionService.prompts.length;
+  mod.__handoff.rewrite("A-fresh-1", "多写接口约束");
+  assert.strictEqual(sessionService.prompts.length, beforeRewrite + 1, "a free-text rewrite prompts the session");
+  assert.ok(String(sessionService.prompts[beforeRewrite].content[0].text).indexOf("多写接口约束") !== -1, "the user's adjustment is carried");
+  const beforeRegen = sessionService.prompts.length;
+  mod.__handoff.rewrite("A-fresh-1", "");
+  assert.ok(String(sessionService.prompts[beforeRegen].content[0].text).indexOf("~~~handoff") !== -1, "a plain rewrite asks for the fence again");
+
+  /* Without the controller seam the card asks for a manual Enter instead of
+     pretending the handoff is running. */
+  const usingSeam = sessionService.using;
+  sessionService.using = undefined;
+  mod.__handoff.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
+  mod.__handoff.start("A-fresh-1");
+  assert.strictEqual(mod.__handoff.current().needsEnter, true, "a refused send flips the card to press-Enter");
+  sessionService.using = usingSeam;
+  mod.__handoff.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
+
+  /* Carry-over: a new blank through the Host's navigation service, prompted
+     through the controller - no draft left behind, no Enter. */
+  mod.__handoff.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
+  const beforeCarry = sessionService.prompts.length;
+  mod.__handoff.carry("A-fresh-1", "# 交接\n内容");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepStrictEqual(service.connected, ["A"], "the blank is created in the session's workspace");
+  assert.ok(service.opened.indexOf("handoff-new-1") !== -1, "the new session is opened");
+  assert.strictEqual(sessionService.prompts.length, beforeCarry + 1, "the note is the new session's first prompt");
+  const carried = sessionService.prompts[beforeCarry];
+  assert.strictEqual(carried.target, "handoff-new-1");
+  assert.ok(String(carried.content[0].text).indexOf("# 交接\n内容") !== -1, "the note travels verbatim");
+  assert.ok(String(carried.content[0].text).indexOf("from the previous Session") !== -1, "the preamble comes first");
+  assert.strictEqual(mod.__handoff.current().phase, "idle", "the card closes after the carry");
+
+  /* Without the controller seam the old draft path still runs. */
+  const using = sessionService.using;
+  sessionService.using = undefined;
+  service.started.length = 0;
+  mod.__handoff.carry("A-fresh-1", "# 交接\n兜底");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  sessionService.using = using;
+  assert.strictEqual(service.started.length, 1, "the fallback opens a draft session");
+  assert.ok(String(service.started[0].options.prompt).indexOf("# 交接\n兜底") !== -1, "the note is prefilled there");
+
   assert.ok(HandoffCard !== null, "the handoff card was registered");
   const tilde = String.fromCharCode(126, 126, 126);
   /* a fence mentioned inside the note must not end it early */
@@ -685,10 +776,6 @@ function textOf(node) {
   assert.strictEqual(card.children[2].children[0].props.className, "wsr-handoff-extra", "the third control is free text");
   assert.strictEqual(HandoffCard({ sessionId: "other" }), null, "another session shows nothing");
   handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
-
-  const handoffRow = HandoffItem({ sessionId: "session-x" });
-  assert.ok(handoffRow !== null, "the menu row renders");
-  assert.strictEqual(handoffRow.children[0], "Hand off to a new session", "the row is labelled");
 
   /* ---------- handoff block extraction ------------------------------- */
   assert.strictEqual(typeof handoffState.blockOf, "function", "the block parser is testable");

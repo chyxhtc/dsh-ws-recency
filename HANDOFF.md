@@ -1,4 +1,4 @@
-# dsh-ws-recency — 交接说明（截至 0.23.2）
+# dsh-ws-recency — 交接说明（截至 0.24.1）
 
 > 给下一个会话用的现状快照。先读这一页，再按需看代码。
 
@@ -12,8 +12,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，当前 `0.23.2` |
-| 最新已发布 tag / Release | `v0.23.2`（附件 `dsh-ws-recency-0.23.2.tgz`） |
+| npm | `dsh-ws-recency`，当前 `0.24.1` |
+| 最新已发布 tag / Release | `v0.24.1`（附件 `dsh-ws-recency-0.24.1.tgz`） |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已提 |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
@@ -30,7 +30,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 8. **回收站面板**：`sidebar.panellist` 注册「回收站」，`main` 区域渲染页面：两段——「已删除的会话」和「已归档的会话」（宿主的 `archivedSessionIds`：取消归档 / 移到回收站 / 彻底删除）；另有刷新列表 / 刷新界面 / 扫描并刷新。
 9. **归档集成**：归档仍是宿主动作，插件只接管管理界面。列表数据：`workspaceRegistry.archivedSessionIds` + `sessionPersistence.list()` + 投影缓存（标题→第一条 prompt→会话 id）；按 lastAt 倒序；取消归档走 `workspaceRegistry.unarchiveSession`，槽位不在就按 cwd 重新 attach。
 10. **卡片化条目（0.17）**：回收站与归档条目都是卡片——徽章（删除/移动副本/归档）、标题、chips（轮次/步骤/token/体积/时间）、原目录、右侧动作；统计在删除时写入或首次打开时按日志大小缓存。
-11. **交接到新会话（0.19–0.23）**：每轮动作行「交接到新会话」→ 把指令写进输入框并自动发送（写后 250ms 按回车，未清空再补两次，间隔 800ms）→ 轮询宿主 `/ws-recency/handoff` 的 `tail` 找最新回复里的 ```handoff 块 → 该轮下方出问询卡（确认 / 重新生成 / 填意见重写 / 只读预览 / 放弃）→ 确认后在新会话预填「前言 + 正文」并自动发送；同时存档到 `~/.hypers-work/.wsr/handoff/<sessionId>-<时间>.md`。
+11. **交接到新会话（0.19–0.24.1）**：每轮动作行或「…」菜单「交接到新会话」→ 把指令交给宿主 Session 控制器直接发送（`sessions.using(id, {source}) → session.prompt([{type:"text"}], "queue")`，不碰输入框、不模拟按键）→ 轮询宿主 `/ws-recency/handoff` 的 `tail` 找最新回复里的 `~~~handoff` 块 → 该轮下方出问询卡（确认 / 重新生成 / 填意见重写 / 只读预览 / 放弃）→ 确认后 `uiWorkspace.connectWorkspace(workspaceId)` 建/复用空白会话并 `openSession`，再用同一套 `sessions.using` 把「前言 + 正文」作为第一条 prompt 发出；同时存档到 `~/.hypers-work/.wsr/handoff/<sessionId>-<时间>.md`。仅在 Client 没有 `sessions` 服务时退回旧路（写输入框 + 合成 Enter / `startSession` 草稿）。
 12. **补登记游离会话 / 刷新机制**：`session-adopt` 扫回「cwd 属于某工作区却不在任何分组」的会话；恢复/扫描/移动后宿主发 `api-session/added`，另有「刷新界面」按钮。
 13. **设置（设置 → 通用）**：折叠天数、是否让选中/运行中/等待中豁免折叠、颜色标记总开关、全局置顶区开关、工具参数是否计入主 agent。偏好存 `dsh.ws-recency.prefs.v1`。
 
@@ -48,11 +48,20 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 
 全部只接受 POST + 回环 origin。
 
+## 客户端发送面（0.24.1 起）
+
+交接的两次发送都走宿主自己：
+
+- `ctx.sessions.using(id, { source: "dsh-ws-recency" }, ref => ref.binding.session.prompt([{ type: "text", text }], "queue"))` —— retain → 等 ready → prompt → release。优点：不依赖编辑器挂载/焦点，对不在前台的会话也能发（「…」菜单的交接项就靠它）。
+- 确认卡片：`uiWorkspace.connectWorkspace(workspaceId)` 建/复用空白会话并返回 id（不导航），`uiWorkspace.openSession(id)` 打开，再走同一条 `sessions.using` 发「前言 + 正文」。
+- 降级：没有 `sessions` 服务时，当前会话才写 composer + 合成 Enter（`sendThroughComposer` 用 `[data-conversation-session]` 比对目标，避免写进别的会话）；新会话退回复刻 `startSession({prompt})` 草稿 + `autoSendDraft`。
+- 注意：`ctx.get("sessions")` 不需要 inject（cordis 的 `get` 明确“without the inject requirement”），但属性访问需要。
+
 ## 代码结构
 
 - `index.js`（宿主半，~64KB）：路由、回收站、归档集合的列表/取消归档/彻底删除、移动、统计聚合、交接 tail/save、`announceSession`、`projectKey`、`rawWorkspaceMembership`、`cachedCheckpoint`。
-- `client.js`（客户端半，~174KB）：DOM pass（排序/折叠/标记/置顶）、菜单项、统计面板、移动面板、回收站页面（卡片）、设置行、交接（状态 observable + 轮询 + 问询卡）、`t()` 本地字典回退。
-- `tests/selfcheck.cjs`（客户端 DOM：排序/折叠/标记/置顶/统计/交接卡/交接块切分）、`tests/archive-page.cjs`（回收站页面渲染 + 动作）、`tests/handoff.cjs`（宿主 tail/save/守卫）、`tests/stats.cjs`、`tests/move.cjs`、`tests/trash.cjs`、`tests/archive.cjs`（宿主）。
+- `client.js`（客户端半，~184KB）：DOM pass（排序/折叠/标记/置顶）、菜单项、统计面板、移动面板、回收站页面（卡片）、设置行、交接（状态 observable + 官方 prompt 发送 + 轮询 + 问询卡）、`t()` 本地字典回退。
+- `tests/selfcheck.cjs`（客户端 DOM：排序/折叠/标记/置顶/统计/交接卡/交接块切分/官方发送与降级）、`tests/archive-page.cjs`（回收站页面渲染 + 动作）、`tests/handoff.cjs`（宿主 tail/save/守卫）、`tests/stats.cjs`、`tests/move.cjs`、`tests/trash.cjs`、`tests/archive.cjs`（宿主）。
 - `README.md`（用户文档）、`PUBLISHING.md`（发布流程）、`awesome-entry.yml`（市场条目模板）。
 
 ## 踩过的坑（重要，别重犯）
@@ -68,9 +77,10 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 9. **bar 两段别用 opacity**：`.wsr-chart-group` 不设 background，否则半透明参数段与同色底复合回单色；两段各给实色。
 10. **Windows 上别用 PowerShell 读写带中文的源码**：`Get-Content`/`Set-Content`（PS 5.1 默认 ANSI）会把中文变乱码且不可逆；改文本一律用编辑工具或用 Node 的 UTF-8 读写。**看清楚再动手**：`Get-Content` 读 UTF-8 文件显示乱码只是读法不对，文件本身没事（曾据此误判 `awesome-entry.yml` 坏了）。
 11. **交接块围栏必须“独占一行”才算闭合**：0.23.1 及以前用「第一个 ```」收尾，而交接正文里写着「→ 抓到 ```handoff 块」，于是交接文被截到「→ 抓」，新会话只拿到半截（0.23.2 修）。解析逻辑在 `client.js` 的 `fencedBlocks` / `handoffBlockOf`，靠 `__handoff.blockOf` 做断言。
-12. **合成 Enter 必须晚于写入**：同一帧里 `insertText` 后的 Enter 会被编辑器吞掉 → 写后 250ms 再按，之后每 800ms 补一次、最多 3 次，清空即停。
+12. **合成 Enter 必须晚于写入**：同一帧里 `insertText` 后的 Enter 会被编辑器吞掉 → 写后 250ms 再按，之后每 800ms 补一次、最多 3 次，清空即停。0.24.1 起它只是没有 `sessions` 服务时的降级路径。
 13. **跨组件状态用模块级 observable**：`defineStore` 返回的句柄没有 `actions`，不同插槽实例各拿各的副本；交接卡与动作行靠模块级 `handoffState` + 订阅函数通信。
 14. **浮层要登记统一关闭句柄**：统计/移动/回收站弹层的 backdrops 必须能统一关掉，否则关不掉。
+15. **菜单项的交接必须和动作行共用一条发送路径**：0.24.0 的「…」菜单项调用的是 0.20 删掉的 `openHandoffPanel`，点一次抛一次 `ReferenceError`，测试只断言了渲染没断言 onSelect。现在菜单项 = `openSession(id)` + `startHandoff(id)`，`selfcheck` 会真的点它并断言 `sessions.using` 收到 prompt。
 
 ## 测试与发布
 
@@ -100,10 +110,11 @@ node tests/handoff.cjs
 ## 已知遗留 / 可做
 
 - `client.js` 里还有无入口的死代码：旧弹窗 `openTrashPanel` + `TrashFooterAction`（改走 `sidebar.panellist` 后没再注册）——可清理。
-- 两处「自动发送」仍是合成 Enter；宿主若给正式发送 API 应替换。
-- 「填意见重写」链路目前只有单元断言，需要人工完整走一遍。
+- 交接的两次发送 0.24.1 起走宿主 Session 控制器；仍需在重启后的真实界面里完整走一遍（本会话只做了桩断言：指令发出、卡片确认建新会话并发 prompt、填意见重写、无 `sessions` 时的降级）。
 - 归档卡片的 token 首次读取较慢（已按日志大小缓存，第二次起快了）。
 - 市场目录（dshmarket）里仍显示 0.9.2，等目录重新生成；本地 `awesome-entry.yml` 已补上交接功能描述，随下一次条目 PR 生效。
 - 图表色相哈希可能有碰撞，少数工具同色。
 - 移动到工作区**不搬文件**（设计如此，界面上有提示）。
 - 折叠依赖宿主 `sessionOverflowButton` 类名；宿主改版会失效（失效只是少一个折叠控件）。
+- `connectWorkspace` 会复用工作区里已有的空白会话（与宿主「新建会话」一致）；若那个空白里正有用户没发出去的草稿，草稿仍留在输入框里，交接的 prompt 是另一条消息。
+- `~~~handoff` 围栏的渲染已从宿主源码确认：`@deepseek-ai/dsh-client-ui-primitives` 的增量 markdown 解析器把 `~{3,}` 当围栏（`lib/index.js:10540`），mdast/micromark 按 CommonMark 渲染成代码块；界面截图确认仍建议做一次。
