@@ -630,7 +630,7 @@ function textOf(node) {
 
   const handoffRow = HandoffItem({ sessionId: "session-x" });
   assert.ok(handoffRow !== null, "the menu row renders");
-  assert.strictEqual(handoffRow.children[0], "Prepare handoff…", "the row is labelled");
+  assert.strictEqual(handoffRow.children[0], "Hand off to a new session", "the row is labelled");
 
   /* ---------- trash panel ------------------------------------------- */
   assert.ok(TrashIcon !== null, "the sidebar panel glyph was registered");
