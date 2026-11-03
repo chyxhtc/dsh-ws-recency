@@ -2186,7 +2186,8 @@
                     setHandoffState({ sessionId: sessionId, phase: "ready", block: found, needsEnter: false });
                     return;
                   }
-                  handoffBaseline = replies;
+                  /* Keep looking at this same reply: it may still be streaming, and a
+                     reply without a block is not a reason to move past it. */
                 }
               }
               if (handoffTries > 150) {
