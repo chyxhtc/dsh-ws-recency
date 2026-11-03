@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.18.0";
+export const HOST_VERSION = "0.19.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -44,6 +44,8 @@ export const HEALTH_PATH = "/ws-recency/health";
 export const MOVE_SESSION_PATH = "/ws-recency/session-move";
 export const ADOPT_SESSION_PATH = "/ws-recency/session-adopt";
 export const TRASH_LIST_PATH = "/ws-recency/trash";
+
+export const HANDOFF_PATH = "/ws-recency/handoff";
 
 const TRASH_SIDECAR = ".wsr-trash.json";
 
@@ -1306,6 +1308,84 @@ export async function forgetArchivedSession(ctx, sessionId) {
  * `list`/`restore`/`purge` address trash entries by directory name; `archived`
  * lists the archive set, and `unarchive`/`forget`/`delete` address sessions by id.
  */
+/**
+ * Handoff support: the newest assistant reply, and a place to park the document.
+ *
+ * The Client cannot read a Session log, so it polls this route while the current
+ * Session writes its handoff. Saving is a plain markdown file under the DSH home,
+ * which keeps a record the next Session can be pointed at.
+ */
+export async function handleHandoffRequest(ctx, req, res) {
+  if ((req.method ?? "POST").toUpperCase() !== "POST") {
+    sendJson(res, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+  if (!loopbackOrigin(req)) {
+    sendJson(res, 403, { ok: false, error: "origin not trusted" });
+    return;
+  }
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    return;
+  }
+  const action = typeof body.action === "string" ? body.action : "tail";
+
+  if (action === "save") {
+    const text = typeof body.text === "string" ? body.text : "";
+    if (text.trim() === "") {
+      sendJson(res, 400, { ok: false, error: "nothing to save" });
+      return;
+    }
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "session";
+    const home = await dshHome();
+    const directory = join(home, ".wsr", "handoff");
+    try {
+      await mkdir(directory, { recursive: true });
+      const file = join(directory, `${sessionId}-${Date.now()}.md`);
+      await writeFile(file, text, "utf8");
+      sendJson(res, 200, { ok: true, path: file });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+    return;
+  }
+
+  const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+  if (sessionId === "") {
+    sendJson(res, 400, { ok: false, error: "sessionId is required" });
+    return;
+  }
+  let events;
+  try {
+    events = await readSessionEvents(ctx, sessionId);
+  } catch (error) {
+    sendJson(res, 200, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    return;
+  }
+  let text = "";
+  let at = 0;
+  let replies = 0;
+  for (const event of events) {
+    if (event === null || typeof event !== "object") continue;
+    if (event.type !== "assistant/message") continue;
+    replies += 1;
+    const content = event.data?.message?.content ?? event.data?.content;
+    const parts = [];
+    for (const block of Array.isArray(content) ? content : []) {
+      if (block !== null && typeof block === "object" && block.type === "text" && typeof block.text === "string") parts.push(block.text);
+    }
+    const joined = parts.join("\n").trim();
+    if (joined !== "") {
+      text = joined;
+      at = typeof event.time === "number" ? event.time : 0;
+    }
+  }
+  sendJson(res, 200, { ok: true, text, at, replies });
+}
+
 export async function handleTrashListRequest(ctx, req, res) {
   if ((req.method ?? "POST").toUpperCase() !== "POST") {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
@@ -1479,6 +1559,14 @@ export function apply(ctx) {
           path: ADOPT_SESSION_PATH,
           handler: (req, res) => handleAdoptRequest(moveCtx, req, res),
         }), "ws-recency: adopt route");
+      });
+
+      webCtx.inject(["sessionPersistence"], (handoffCtx) => {
+        webCtx.effect(() => server.register({
+          kind: "exact",
+          path: HANDOFF_PATH,
+          handler: (req, res) => handleHandoffRequest(handoffCtx, req, res),
+        }), "ws-recency: handoff route");
       });
 
       webCtx.inject(["sessionPersistence", "workspaceRegistry", "sessions"], (trashCtx) => {

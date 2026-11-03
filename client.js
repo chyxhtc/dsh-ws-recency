@@ -140,6 +140,8 @@
           ".wsr-footer-action{display:flex;box-sizing:border-box;flex:none;align-items:center;justify-content:flex-start;gap:8px;width:calc(100% + 4px);min-width:0;height:42px;margin:4px -2px;padding:0 10px 0 8px;border:0;border-radius:12px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}",
           ".wsr-footer-action:hover{background:var(--dsw-alias-interactive-bg-hover)}",
 ".wsr-page{display:flex;flex-direction:column;gap:10px;padding:16px 18px;min-width:0;box-sizing:border-box;height:100%;overflow:auto}",
+          ".wsr-handoff-status{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.6}",
+          ".wsr-handoff-text{width:100%;box-sizing:border-box;min-height:220px;max-height:46vh;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.6;padding:10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-1,#1b1b1b);color:var(--dsw-alias-label-primary,#e6e6e6)}",
 ".wsr-page-head{display:flex;align-items:center;gap:8px}",
 ".wsr-page-heading{flex:1;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary)}",
 ".wsr-page-list{display:flex;flex-direction:column;gap:6px}",
@@ -260,6 +262,20 @@
           "stats.diagnose.unmounted": "\n\n（宿主半已加载，但统计路由没挂上——重启应用再试）",
           "stats.diagnose.noHost": "\n\n（宿主半未加载：需要重启应用加载新版本）",
           "menu.move": "移动到工作区…",
+          "menu.handoff": "准备交接…",
+          "handoff.title": "会话交接",
+          "handoff.note": "交接指令已经放进输入框（或点「复制指令」自己粘），发送后我在这里等 AI 写出交接块；抓到以后可以直接开到新会话。",
+          "handoff.instruction": "我要把这个会话交接给一个新会话继续推进。请按下面的要求输出一份交接说明，写进一个 ```handoff 代码块里，我会原样交给新会话：\n\n1. 只给文档路径和一句话说明「读它为什么」，不要粘贴文档内容；\n2. 文档按重要性排序，标注哪些必读、哪些按需；\n3. 包含：目标、当前进度、尚未完成与下一步、关键决策与约束、踩过的坑、验证方式；\n4. 交接正文控制在 400 字以内（文档引用除外）。",
+          "handoff.inserted": "交接指令已放进输入框，按回车发送；我会自动抓取回复。",
+          "handoff.copyHint": "没能直接写入输入框，请点「复制指令」再粘贴到输入框发送。",
+          "handoff.copy": "复制指令",
+          "handoff.waiting": "等待 AI 写出交接块…（{n} 秒）",
+          "handoff.found": "已抓到交接块，确认后会在当前工作区开一个新会话并把它带过去。",
+          "handoff.confirm": "确认交接，开新会话",
+          "handoff.more": "继续补充",
+          "handoff.noService": "没能自动开新会话，交接内容已复制到剪贴板，手动新建会话粘贴即可。",
+          "handoff.preamble": "以下是一个会话交接说明，来自上一个会话。请先按「文档引用」逐份阅读文档，再结合要点接续工作；已经完成的部分不要重做。",
+          "handoff.footnote": "交接内容会另存一份到 .wsr/handoff/，方便追溯。",
           "move.title": "移动到工作区",
           "move.warning": "只移动会话本身：它在旧工作区里创建或修改的文件不会跟着走，仍留在原目录。",
           "move.note": "会话属于哪个工作区，由它创建时的目录决定；移动会改写会话记录的 cwd，把日志搬到新工作区目录，旧日志备份在 .trash/ws-recency。",
@@ -366,6 +382,20 @@
           "stats.diagnose.unmounted": "\n\n(the host half is loaded but the statistics route did not mount - restart the app and retry)",
           "stats.diagnose.noHost": "\n\n(the host half is not loaded: restart the app to pick up the new version)",
           "menu.move": "Move to workspace\u2026",
+          "menu.handoff": "Prepare handoff\u2026",
+          "handoff.title": "Session handoff",
+          "handoff.note": "The instruction is in the composer (or copy it yourself). Once you send it I watch for the handoff block and can carry it into a fresh Session.",
+          "handoff.instruction": "I am handing this session over to a new one. Please answer with a handoff note inside a ```handoff code block, which I will pass on verbatim:\n\n1. Reference documents by path with one line on why to read them; never paste document contents.\n2. Order them by importance and mark which are required and which are optional.\n3. Cover: goal, current progress, remaining work and next step, key decisions and constraints, pitfalls, and how to verify.\n4. Keep the note under 400 words (references excluded).",
+          "handoff.inserted": "Instruction placed in the composer; press Enter and I will pick up the reply.",
+          "handoff.copyHint": "Could not write into the composer; copy the instruction and paste it yourself.",
+          "handoff.copy": "Copy instruction",
+          "handoff.waiting": "Waiting for the handoff block… ({n}s)",
+          "handoff.found": "Handoff found. Confirming opens a new Session in this workspace with it carried over.",
+          "handoff.confirm": "Confirm and open new Session",
+          "handoff.more": "Keep refining",
+          "handoff.noService": "Could not open a Session automatically; the handoff was copied to the clipboard.",
+          "handoff.preamble": "Below is a handoff note from the previous Session. Read the referenced documents first, then continue from the notes; do not redo what is already done.",
+          "handoff.footnote": "A copy is saved under .wsr/handoff/ for later reference.",
           "move.title": "Move to workspace",
           "move.warning": "Only the session moves: files it created or changed in the old workspace stay where they are.",
           "move.note": "A session belongs to the workspace of the directory it was created in. Moving rewrites the stored cwd, relocates the log and keeps the old one as a backup in .trash/ws-recency.",
@@ -1836,6 +1866,231 @@
           }, t("menu.move"));
         }
 
+        /* ------------------------------ handoff ------------------------------ */
+
+        var handoffTimer = null;
+        var handoffPanelSession = null;
+
+        /** The instruction the user sends to the current Session. */
+        function handoffInstruction() {
+          return t("handoff.instruction");
+        }
+
+        /** Write text into the composer; returns false when there is no editor. */
+        function insertIntoComposer(text) {
+          if (typeof document === "undefined" || typeof text !== "string") return false;
+          var seat = typeof document.querySelector === "function" ? document.querySelector("[data-composer-seat]") : null;
+          if (seat === null || seat === undefined) return false;
+          var editor = null;
+          try { editor = seat.querySelector('[contenteditable="true"]'); } catch (error) { editor = null; }
+          if (editor === null || editor === undefined) {
+            try { editor = seat.querySelector("textarea"); } catch (error) { editor = null; }
+          }
+          if (editor === null || editor === undefined) return false;
+          try {
+            if (typeof editor.focus === "function") editor.focus();
+            if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
+              editor.value = text;
+              editor.dispatchEvent(new window.Event("input", { bubbles: true }));
+              return true;
+            }
+            var selection = typeof window.getSelection === "function" ? window.getSelection() : null;
+            if (selection !== null && typeof document.createRange === "function") {
+              var range = document.createRange();
+              range.selectNodeContents(editor);
+              range.collapse(false);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            }
+            if (typeof document.execCommand === "function" && document.execCommand("insertText", false, text)) return true;
+            editor.textContent = text;
+            editor.dispatchEvent(new window.Event("input", { bubbles: true }));
+            return true;
+          } catch (error) {
+            return false;
+          }
+        }
+
+        function copyText(text) {
+          try {
+            if (navigator !== undefined && navigator.clipboard !== undefined && typeof navigator.clipboard.writeText === "function") {
+              navigator.clipboard.writeText(text);
+              return true;
+            }
+          } catch (error) {
+            /* fall through */
+          }
+          return false;
+        }
+
+        /** Pull the fenced block out of an assistant reply. */
+        function handoffBlockOf(text) {
+          if (typeof text !== "string") return "";
+          var match = /```handoff[ \t]*\r?\n([\s\S]*?)```/i.exec(text);
+          if (match !== null) return match[1].trim();
+          var loose = /```[ \t]*\r?\n([\s\S]*?)```/.exec(text);
+          if (loose !== null && loose[1].indexOf("#") !== -1) return loose[1].trim();
+          return "";
+        }
+
+        function closeHandoffPanel() {
+          if (handoffTimer !== null && typeof window.clearTimeout === "function") window.clearTimeout(handoffTimer);
+          handoffTimer = null;
+          handoffPanelSession = null;
+          closeStatsPanel();
+        }
+
+        /**
+         * The handoff flow: seed the instruction, watch for the reply, then open a
+         * fresh Session in the same workspace with the handoff carried over.
+         */
+        function openHandoffPanel(sessionId) {
+          if (typeof document === "undefined") return;
+          closeStatsPanel();
+          handoffPanelSession = sessionId;
+
+          var backdrop = statsDiv("wsr-modal-backdrop");
+          var panel = statsDiv("wsr-modal");
+          backdrop.appendChild(panel);
+          var head = statsDiv("wsr-modal-head");
+          head.appendChild(statsDiv("wsr-modal-title", t("handoff.title")));
+          var close = document.createElement("button");
+          close.type = "button";
+          close.className = "wsr-modal-close";
+          close.textContent = "\u00d7";
+          close.addEventListener("click", closeHandoffPanel);
+          head.appendChild(close);
+          panel.appendChild(head);
+
+          var body = statsDiv("wsr-modal-body");
+          panel.appendChild(body);
+          body.appendChild(statsDiv("wsr-stats-note", t("handoff.note")));
+
+          var status = statsDiv("wsr-handoff-status", t("handoff.waiting", { n: 0 }));
+          body.appendChild(status);
+
+          var preview = document.createElement("textarea");
+          preview.className = "wsr-handoff-text";
+          preview.setAttribute("data-wsr-handoff-text", "true");
+          preview.style.display = "none";
+          body.appendChild(preview);
+
+          var actions = statsDiv("wsr-trash-actions");
+          var copy = document.createElement("button");
+          copy.type = "button";
+          copy.className = "wsr-btn";
+          copy.textContent = t("handoff.copy");
+          copy.addEventListener("click", function () {
+            if (copyText(handoffInstruction())) status.textContent = t("handoff.inserted");
+          });
+          actions.appendChild(copy);
+
+          var more = document.createElement("button");
+          more.type = "button";
+          more.className = "wsr-btn";
+          more.textContent = t("handoff.more");
+          more.addEventListener("click", function () {
+            preview.style.display = "none";
+            baseline = replies;
+            status.textContent = t("handoff.waiting", { n: 0 });
+            insertIntoComposer(handoffInstruction());
+            poll(0);
+          });
+          actions.appendChild(more);
+
+          var confirm = document.createElement("button");
+          confirm.type = "button";
+          confirm.className = "wsr-btn";
+          confirm.disabled = true;
+          confirm.style.display = "none";
+          confirm.textContent = t("handoff.confirm");
+          confirm.addEventListener("click", function () {
+            var text = preview.value.trim();
+            if (text === "") return;
+            confirm.disabled = true;
+            fetch("/ws-recency/handoff", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ action: "save", sessionId: sessionId, text: text }),
+            }).catch(function () { return null; }).then(function () {
+              var owner = workspaceOfSession(sessionId);
+              var workspaceId = owner === null ? undefined : owner.workspaceId;
+              var service = data.service;
+              var prompt = t("handoff.preamble") + "\n\n" + text;
+              if (service !== null && service !== undefined && typeof service.startSession === "function") {
+                try {
+                  service.startSession(workspaceId, { prompt: prompt, whenDraftExists: "replace" });
+                  closeHandoffPanel();
+                  return;
+                } catch (error) {
+                  /* fall through to the clipboard */
+                }
+              }
+              copyText(prompt);
+              status.textContent = t("handoff.noService");
+            });
+          });
+          actions.appendChild(confirm);
+          body.appendChild(actions);
+
+          body.appendChild(statsDiv("wsr-stats-note", t("handoff.footnote")));
+          document.body.appendChild(backdrop);
+
+          /* Seed the instruction: the user only presses Enter. */
+          if (!insertIntoComposer(handoffInstruction())) {
+            status.textContent = t("handoff.copyHint");
+          } else {
+            status.textContent = t("handoff.inserted");
+          }
+
+          var baseline = 0;
+          var replies = 0;
+          var tries = 0;
+          function poll(delay) {
+            if (typeof window === "undefined") return;
+            handoffTimer = window.setTimeout(function () {
+              if (handoffPanelSession !== sessionId) return;
+              fetch("/ws-recency/handoff", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ action: "tail", sessionId: sessionId }),
+              }).then(function (response) {
+                return response.json().catch(function () { return null; });
+              }).then(function (answer) {
+                if (answer === null || answer.ok !== true) return;
+                replies = typeof answer.replies === "number" ? answer.replies : 0;
+                if (baseline === 0) baseline = replies > 0 ? replies - 1 : 0;
+                tries += 1;
+                var block = replies > baseline ? handoffBlockOf(answer.text) : "";
+                if (block !== "") {
+                  preview.value = block;
+                  preview.style.display = "";
+                  confirm.style.display = "";
+                  confirm.disabled = false;
+                  status.textContent = t("handoff.found");
+                  return;
+                }
+                status.textContent = t("handoff.waiting", { n: tries * 2 });
+                poll(2000);
+              }).catch(function () {
+                poll(4000);
+              });
+            }, delay);
+          }
+          poll(1500);
+        }
+
+        /** Session "..." menu row: hand the work over to a fresh Session. */
+        function HandoffMenuItem(props) {
+          var Item = ui.MenuItemButton;
+          if (typeof Item !== "function") return null;
+          var Icon = ui.IconDataOutlineRegular;
+          return h(Item, {
+            icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
+            onSelect: function () { openHandoffPanel(props.sessionId); },
+          }, t("menu.handoff"));
+        }
+
         /** Session "..." menu row: token statistics of that session. */
         function StatsMenuItem(props) {
           var Item = ui.MenuItemButton;
@@ -2647,6 +2902,16 @@
               store: prefs,
               locale: NS,
             }, MoveMenuItem);
+          });
+
+          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
+            return ctx.slots.register({
+              name: "sidebar.workspaces.session.menu.item",
+              id: "ws-recency-handoff",
+              order: 685,
+              store: prefs,
+              locale: NS,
+            }, HandoffMenuItem);
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {

@@ -248,6 +248,7 @@ let FollowUpDot = null;
 let StatsMenuItem = null;
 let MoveMenuItem = null;
 let TrashIcon = null;
+let HandoffItem = null;
 let TrashPage = null;
 let TrashMenuItem = null;
 const service = {
@@ -270,6 +271,7 @@ const ctx = {
       if (spec2.id === "ws-recency-stats") StatsMenuItem = component;
       if (spec2.id === "ws-recency-move") MoveMenuItem = component;
       if (spec2.name === "sidebar.panellist") TrashIcon = component;
+      if (spec2.id === "ws-recency-handoff") HandoffItem = component;
       if (spec2.name === "main") TrashPage = component;
       if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
@@ -616,6 +618,12 @@ function textOf(node) {
   pillButton.click();
   assert.strictEqual(global.fetch.calls.length, before + 1, "clicking the pill asks for statistics");
   assert.ok(String(global.fetch.calls[before].url).indexOf("sessionId=A-fresh-1") !== -1, "it analyses the conversation it sits in");
+
+  /* ---------- handoff ------------------------------------------------- */
+  assert.ok(HandoffItem !== null, "the handoff menu row was registered");
+  const handoffRow = HandoffItem({ sessionId: "session-x" });
+  assert.ok(handoffRow !== null, "the menu row renders");
+  assert.strictEqual(handoffRow.children[0], "Prepare handoff…", "the row is labelled");
 
   /* ---------- trash panel ------------------------------------------- */
   assert.ok(TrashIcon !== null, "the sidebar panel glyph was registered");
