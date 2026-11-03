@@ -40,13 +40,18 @@ function fakeResponse() {
   process.env.DSH_HOME = home;
 
   const events = [
-    { type: "session", id: "session-h", cwd: "D:\\proj" },
-    { type: "assistant/message", time: 1000, data: { message: { content: [{ type: "text", text: "older reply" }] } } },
-    { type: "user/message", time: 2000, data: { message: { content: [{ type: "text", text: "now hand off" }] } } },
+    { type: "session", id: "session-h", cwd: "D:\\proj", seq: 1 },
+    { type: "turn/start", time: 900, seq: 2, data: { turn: 1 } },
+    { type: "assistant/message", time: 1000, seq: 3, data: { turn: 1, message: { content: [{ type: "text", text: "older reply" }] } } },
+    { type: "turn/end", time: 1500, seq: 4, data: { turn: 1, reason: { kind: "completed" } } },
+    { type: "turn/start", time: 2000, seq: 5, data: { turn: 2 } },
+    { type: "user/message", time: 2100, seq: 6, data: { message: { content: [{ type: "text", text: "now hand off" }] } } },
     {
       type: "assistant/message",
       time: 3000,
+      seq: 7,
       data: {
+        turn: 2,
         message: {
           content: [
             { type: "reasoning", text: "thinking" },
@@ -71,12 +76,36 @@ function fakeResponse() {
   let response = fakeResponse();
   await mod.handleHandoffRequest(ctx, fakeRequest({ action: "tail", sessionId: "session-h" }), response);
   assert.strictEqual(response.status, 200);
-  const tail = response.json();
+  let tail = response.json();
   assert.strictEqual(tail.ok, true, tail.error);
   assert.strictEqual(tail.replies, 2, "both replies are counted");
   assert.ok(tail.text.indexOf("```handoff") !== -1, "the newest reply is returned");
   assert.ok(tail.text.indexOf("older reply") === -1);
   assert.strictEqual(tail.at, 3000);
+  assert.strictEqual(tail.textSeq, 7, "the newest text carries its log sequence");
+  assert.strictEqual(tail.lastSeq, 7, "the newest event of any kind is reported");
+  assert.strictEqual(tail.turn, 2, "the turn of the text is reported");
+  assert.strictEqual(tail.turnOpen, true, "the turn is still running");
+
+  /* a turn that ends makes the same text acceptable */
+  events.push({ type: "turn/end", time: 3100, seq: 8, data: { turn: 2, reason: { kind: "completed" } } });
+  response = fakeResponse();
+  await mod.handleHandoffRequest(ctx, fakeRequest({ action: "tail", sessionId: "session-h" }), response);
+  tail = response.json();
+  assert.strictEqual(tail.turnOpen, false, "the closed turn is reported closed");
+  assert.strictEqual(tail.lastSeq, 8);
+
+  /* a new turn that has only logged tool steps must not look like a new text:
+     textSeq stays on the previous reply, lastSeq moves on. */
+  events.push({ type: "turn/start", time: 3200, seq: 9, data: { turn: 3 } });
+  events.push({ type: "assistant/message", time: 3300, seq: 10, data: { turn: 3, message: { content: [{ type: "reasoning", text: "..." }, { type: "tool-call", id: "c1", name: "pwsh" }] } } });
+  response = fakeResponse();
+  await mod.handleHandoffRequest(ctx, fakeRequest({ action: "tail", sessionId: "session-h" }), response);
+  tail = response.json();
+  assert.strictEqual(tail.lastSeq, 10, "a tool step advances the log sequence");
+  assert.strictEqual(tail.textSeq, 7, "the stale text keeps its own sequence");
+  assert.strictEqual(tail.turnOpen, true, "the new turn is open");
+  assert.strictEqual(tail.at, 3000, "the stale text keeps its timestamp");
 
   /* ---------- save: a markdown copy under the DSH home ------------------- */
   response = fakeResponse();

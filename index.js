@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.24.1";
+export const HOST_VERSION = "0.24.2";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -1368,8 +1368,24 @@ export async function handleHandoffRequest(ctx, req, res) {
   let text = "";
   let at = 0;
   let replies = 0;
+  /** `seq` of the newest assistant text; the Client compares it with its start. */
+  let textSeq = 0;
+  /** `seq` of the newest event of any kind (a turn can add tool steps). */
+  let lastSeq = 0;
+  /** Turn of the newest assistant text, so the card renders on that turn only. */
+  let turn;
+  let turnOpen = false;
   for (const event of events) {
     if (event === null || typeof event !== "object") continue;
+    if (typeof event.seq === "number" && event.seq > lastSeq) lastSeq = event.seq;
+    if (event.type === "turn/start") {
+      turnOpen = true;
+      continue;
+    }
+    if (event.type === "turn/end") {
+      turnOpen = false;
+      continue;
+    }
     if (event.type !== "assistant/message") continue;
     replies += 1;
     const content = event.data?.message?.content ?? event.data?.content;
@@ -1381,9 +1397,11 @@ export async function handleHandoffRequest(ctx, req, res) {
     if (joined !== "") {
       text = joined;
       at = typeof event.time === "number" ? event.time : 0;
+      if (typeof event.seq === "number") textSeq = event.seq;
+      if (typeof event.data?.turn === "number") turn = event.data.turn;
     }
   }
-  sendJson(res, 200, { ok: true, text, at, replies });
+  sendJson(res, 200, { ok: true, text, at, replies, textSeq, lastSeq, turn, turnOpen });
 }
 
 export async function handleTrashListRequest(ctx, req, res) {

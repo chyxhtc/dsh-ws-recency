@@ -82,7 +82,8 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 - 每条记录是一张**卡片**：标题、来源（已删除 / 移动前的旧副本 / 已归档）、轮次、步骤、token 总量、日志大小、时间、原目录（归档的统计按日志大小缓存，第一次读完后不再重算）；
   已删除会话的标题与统计在删除时就写进 `.wsr-trash.json`，旧条目则在第一次打开面板时从日志里补算并缓存；
 - 恢复/扫描/移动之后宿主会广播 `api-session/added`；面板与「扫描并刷新」都能重载页面（不重启应用）让侧栏立刻看到改动；
-- 移动操作留下的旧副本会标成「移动时的旧副本」，只允许彻底删除。
+- 移动操作留下的旧副本会标成「移动时的旧副本」，只允许彻底删除；
+- 所有确认（删除、恢复、彻底删除、移动、取消归档）都是**页面内弹层**，不调用系统 `confirm`/`alert`：系统对话框在 Windows 上关掉后会让渲染进程丢掉键盘焦点，表现为输入框点不进去、切换会话也没用，只能切走再切回来（0.24.2 修）。
 
 ## 六、Token 消耗统计
 
@@ -139,6 +140,9 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 发送走宿主 API（0.24.1 起）：`ctx.sessions.using(id, …)` 保持会话可寻址，再调 `session.prompt([{type:"text",…}], "queue")`；菜单项也能对不在前台的会话发起交接。只有在 Client 没有 `sessions` 服务时才退回旧路：写入当前会话的输入框、250ms 后按回车、必要时再补两次；目标会话不在屏幕上时不写错输入框，卡片会提示按回车。
 
+卡片只在**这一轮结束之后**才出现（0.24.2 修）：轮询会比对回复的日志序号与「本轮是否还在跑」，只认点击之后产生、且已经收尾的那条回复——之前它读的是「全日志最后一条非空回复」，只要新轮先落一条工具步骤，就会把上一轮里的旧交接块当成答案，交接刚开始还在处理就弹卡；卡片也只挂在产生它的那一轮下面，不再在每个旧轮下面重复出现。
+
+
 ## 设置
 
 **设置 → 通用**：
@@ -175,7 +179,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.24.1/dsh-ws-recency-0.24.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.24.2/dsh-ws-recency-0.24.2.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

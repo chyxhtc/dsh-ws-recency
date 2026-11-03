@@ -775,6 +775,21 @@ function textOf(node) {
   assert.strictEqual(options.children[1].props.className, "wsr-qoption", "the second option is not selected");
   assert.strictEqual(card.children[2].children[0].props.className, "wsr-handoff-extra", "the third control is free text");
   assert.strictEqual(HandoffCard({ sessionId: "other" }), null, "another session shows nothing");
+
+  /* The card lives in a slot that renders once per turn: it may only show on
+     the turn the note came from, or it pops under every earlier reply. */
+  handoffState.set({ sessionId: "session-x", phase: "ready", block: "# 交接", turn: 5 });
+  assert.strictEqual(HandoffCard({ sessionId: "session-x", turn: 4 }), null, "an older turn tail shows no card");
+  assert.ok(HandoffCard({ sessionId: "session-x", turn: 5 }) !== null, "the card renders on its own turn");
+
+  /* Waiting for the turn to finish: a tool step that lands first must not make
+     the previous reply's block look like the new answer. */
+  const readyOf = handoffState.readyOf;
+  assert.strictEqual(typeof readyOf, "function", "the readiness predicate is testable");
+  assert.strictEqual(readyOf({ ok: true, turnOpen: true, textSeq: 8, lastSeq: 10 }, 7), false, "a running turn is not answered");
+  assert.strictEqual(readyOf({ ok: true, turnOpen: false, textSeq: 7, lastSeq: 10 }, 7), false, "the previous reply's text is stale");
+  assert.strictEqual(readyOf({ ok: true, turnOpen: false, textSeq: 9, lastSeq: 9 }, 7), true, "a new finished text is accepted");
+  assert.strictEqual(readyOf({ ok: false }, 7), false, "a failed tail read is never accepted");
   handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
 
   /* ---------- handoff block extraction ------------------------------- */
@@ -819,8 +834,24 @@ function textOf(node) {
   assert.strictEqual(page.props.className, "wsr-page");
   assert.ok(page.children.length > 0);
 
+  /* ---------- delete asks in the page, not with a native dialog ------- */
+  /* A native window.confirm left the renderer without keyboard focus on
+     Windows: the composer then ignored clicks until the app was refocused. */
+  const deleteRow = TrashMenuItem({ sessionId: "A-fresh-1" });
+  assert.ok(deleteRow !== null, "the delete menu row renders");
+  const beforeDelete = global.fetch.calls.length;
+  deleteRow.props.onSelect();
+  assert.strictEqual(global.fetch.calls.length, beforeDelete, "nothing is deleted before the user confirms");
+  const deleteDialog = overlayRoot.children[overlayRoot.children.length - 1];
+  assert.strictEqual(deleteDialog.getAttribute("data-wsr-confirm"), "confirm", "the confirmation is an in-page dialog");
+  const deleteText = deleteDialog.querySelector(".wsr-confirm-text");
+  assert.ok(deleteText !== null && deleteText.textContent.indexOf("Delete this session") !== -1, "it asks the delete question");
+  deleteDialog.querySelector("[data-wsr-confirm-ok]").click();
+  assert.strictEqual(global.fetch.calls.length, beforeDelete + 1, "accepting deletes the session");
+  assert.ok(String(global.fetch.calls[beforeDelete].url).indexOf("/ws-recency/session-trash") !== -1, "it posts the trash route");
+  assert.strictEqual(overlayRoot.children.indexOf(deleteDialog), -1, "the dialog closes after accepting");
+
   /* ---------- move to workspace ------------------------------------- */
-  global.window.confirm = () => true;
   global.fetch.answer = { ok: true, workspace: "B" };
   assert.ok(MoveMenuItem !== null, "the move menu row was registered");
   const moveItem = MoveMenuItem({ sessionId: "A-fresh-1" });
@@ -838,6 +869,12 @@ function textOf(node) {
   assert.ok(warning.textContent.indexOf("Only the session moves") !== -1);
   const beforeMove = global.fetch.calls.length;
   targets[1].click();
+  assert.strictEqual(global.fetch.calls.length, beforeMove, "the move waits for the confirmation");
+  const moveConfirm = overlayRoot.children[overlayRoot.children.length - 1];
+  assert.strictEqual(moveConfirm.getAttribute("data-wsr-confirm"), "confirm");
+  const moveOk = moveConfirm.querySelector("[data-wsr-confirm-ok]");
+  assert.ok(moveOk !== null, "the move asks in-page");
+  moveOk.click();
   assert.strictEqual(global.fetch.calls.length, beforeMove + 1, "picking a workspace posts the move");
   assert.ok(String(global.fetch.calls[beforeMove].url).indexOf("/ws-recency/session-move") !== -1);
   assert.deepStrictEqual(JSON.parse(global.fetch.calls[beforeMove].options.body), { sessionId: "A-fresh-1", workspaceId: "B" });

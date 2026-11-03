@@ -212,6 +212,12 @@
           ".wsr-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08))}",
           ".wsr-btn-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-danger{border-color:var(--dsw-alias-state-error-primary,#d9534f);color:var(--dsw-alias-state-error-primary,#d9534f)}",
+          /* In-app confirmation: native window.confirm leaves the renderer
+             without keyboard focus on Windows (the composer then ignores
+             clicks until the app loses and regains focus). */
+          ".wsr-confirm{width:min(420px,88vw);display:flex;flex-direction:column;gap:14px;padding:16px;border-radius:12px;background:var(--dsw-alias-bg-layer-1,#1f2226);color:var(--dsw-alias-label-primary,#e8e8e8);border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));box-shadow:0 14px 44px rgba(0,0,0,.45);outline:none}",
+          ".wsr-confirm-text{white-space:pre-wrap;font-size:13px;line-height:1.65}",
+          ".wsr-confirm-actions{display:flex;justify-content:flex-end;gap:8px}",
           ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
           ".wsr-chart-head{display:flex;align-items:center;justify-content:space-between;gap:10px}",
           ".wsr-chart-title{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
@@ -386,6 +392,8 @@
           "stats.argModeNote": "当前把工具参数计入主 agent：每个工具只算返回结果，表格里「参数」列显示为淡色（那些 token 记在主 agent 那一行）。",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
+          "confirm.cancel": "\u53d6\u6d88",
+          "confirm.ok": "\u786e\u8ba4",
         };
         var EN = {
           "settings.title": "Fold history after (days)",
@@ -517,6 +525,8 @@
           "stats.argModeNote": "Tool arguments currently count towards the agent: each tool shows only its results, and the table's \"args\" column is faded because those tokens sit on the agent's row.",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
+          "confirm.cancel": "Cancel",
+          "confirm.ok": "Confirm",
         };
 
         /* Resolved lazily: the dictionaries are declared further down this closure. */
@@ -1186,6 +1196,34 @@
           return typeof id === "string" && id !== "" ? id : null;
         }
 
+        /**
+         * The highest turn number currently rendered in the conversation.
+         *
+         * The handoff card lives in the `turnTail` slot, which renders once per
+         * turn; without this the card would appear under every reply. A running
+         * handoff may only speak from the tail of the turn it just started.
+         */
+        function latestTurnNumber() {
+          if (typeof document === "undefined") return null;
+          var body = null;
+          try { body = document.querySelector("[data-conversation-content]"); } catch (error) { body = null; }
+          var elements;
+          try {
+            elements = body !== null && body !== undefined && typeof body.querySelectorAll === "function"
+              ? body.querySelectorAll("[data-turn-tail]")
+              : (typeof document.querySelectorAll === "function" ? document.querySelectorAll("[data-turn-tail]") : []);
+          } catch (error) {
+            return null;
+          }
+          var max = null;
+          for (var i = 0; i < elements.length; i += 1) {
+            var value = Number(elements[i].getAttribute("data-turn-tail"));
+            if (!isFinite(value)) continue;
+            if (max === null || value > max) max = value;
+          }
+          return max;
+        }
+
         /** The nearest horizontal flex row above the stats: the whole footer dock. */
         function composerDockOf(row) {
           var node = row;
@@ -1415,29 +1453,28 @@
           return h(Item, {
             icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
             onSelect: function () {
-              var question = t("trash.confirm");
-              var confirmed = typeof window.confirm === "function" ? window.confirm(question) : false;
-              if (!confirmed) return;
-              fetch("/ws-recency/session-trash?sessionId=" + encodeURIComponent(props.sessionId), {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ sessionId: props.sessionId }),
-              })
-                .then(function (response) {
-                  return response.text().then(function (text) {
-                    var parsed = null;
-                    try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
-                    return { status: response.status, text: text, json: parsed };
+              askConfirm(t("trash.confirm"), function () {
+                fetch("/ws-recency/session-trash?sessionId=" + encodeURIComponent(props.sessionId), {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ sessionId: props.sessionId }),
+                })
+                  .then(function (response) {
+                    return response.text().then(function (text) {
+                      var parsed = null;
+                      try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+                      return { status: response.status, text: text, json: parsed };
+                    });
+                  })
+                  .then(function (result) {
+                    if (result.json !== null && result.json.ok === true) return;
+                    var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 120) || "(empty response)";
+                    askNotice(t("trash.failed") + "HTTP " + result.status + " \u00b7 " + reason);
+                  })
+                  .catch(function (error) {
+                    askNotice(t("trash.failed") + (error && error.message ? error.message : error));
                   });
-                })
-                .then(function (result) {
-                  if (result.json !== null && result.json.ok === true) return;
-                  var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 120) || "(empty response)";
-                  if (typeof window.alert === "function") window.alert(t("trash.failed") + "HTTP " + result.status + " \u00b7 " + reason);
-                })
-                .catch(function (error) {
-                  if (typeof window.alert === "function") window.alert(t("trash.failed") + (error && error.message ? error.message : error));
-                });
+              });
             },
           }, t("menu.trash"));
         }
@@ -1460,6 +1497,8 @@
         }
 
         function closeStatsPanel() {
+          /* A confirmation may sit on top of the panel it was opened from. */
+          closeConfirm(null);
           if (statsModal !== null) {
             if (typeof statsModal.remove === "function") statsModal.remove();
             statsModal = null;
@@ -1478,6 +1517,113 @@
           node.className = className;
           if (text !== undefined) node.textContent = text;
           return node;
+        }
+
+        /* --------------------------- in-app dialogs ------------------------- *
+         * `window.confirm` / `window.alert` are native dialogs. On Windows the
+         * renderer comes back from one without keyboard focus: clicking the
+         * composer does nothing, switching sessions does not help, and only
+         * leaving the app and coming back fixes it. These stay in the page and
+         * never take the window's focus away.
+         * ------------------------------------------------------------------- */
+
+        var confirmBackdrop = null;
+        var confirmPrevious = null;
+        var confirmKey = null;
+
+        /** Close the current dialog; `onConfirm` runs only for an accept. */
+        function closeConfirm(onConfirm) {
+          var backdrop = confirmBackdrop;
+          confirmBackdrop = null;
+          if (backdrop !== null && typeof backdrop.remove === "function") backdrop.remove();
+          if (typeof document !== "undefined" && confirmKey !== null && typeof document.removeEventListener === "function") {
+            document.removeEventListener("keydown", confirmKey);
+          }
+          confirmKey = null;
+          var previous = confirmPrevious;
+          confirmPrevious = null;
+          if (previous !== null && previous !== undefined && previous.isConnected !== false && typeof previous.focus === "function") {
+            try { previous.focus(); } catch (error) { /* the element may be gone */ }
+          }
+          if (typeof onConfirm === "function") onConfirm();
+        }
+
+        /**
+         * Ask before acting, in the page.
+         *
+         * @param question - message shown in the dialog.
+         * @param onConfirm - runs when the user accepts; omitted for a notice.
+         * @param notice - render a single acknowledge button.
+         */
+        function askConfirm(question, onConfirm, notice) {
+          if (typeof document === "undefined") return;
+          closeConfirm();
+          var isNotice = notice === true;
+          confirmPrevious = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+
+          var backdrop = statsDiv("wsr-modal-backdrop");
+          backdrop.setAttribute("data-wsr-confirm", isNotice ? "notice" : "confirm");
+          var panel = statsDiv("wsr-confirm");
+          panel.setAttribute("role", "dialog");
+          panel.setAttribute("aria-modal", "true");
+          panel.setAttribute("tabindex", "-1");
+          panel.appendChild(statsDiv("wsr-confirm-text", question));
+
+          var actions = statsDiv("wsr-confirm-actions");
+          var cancel = document.createElement("button");
+          cancel.type = "button";
+          cancel.className = "wsr-qcancel";
+          cancel.textContent = t("confirm.cancel");
+          cancel.addEventListener("click", function (event) {
+            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+            closeConfirm(null);
+          });
+          var accept = document.createElement("button");
+          accept.type = "button";
+          accept.className = "wsr-qsubmit";
+          accept.setAttribute("data-wsr-confirm-ok", "true");
+          accept.textContent = t("confirm.ok");
+          accept.addEventListener("click", function (event) {
+            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+            closeConfirm(isNotice ? null : onConfirm);
+          });
+          if (!isNotice) actions.appendChild(cancel);
+          actions.appendChild(accept);
+          panel.appendChild(actions);
+
+          panel.addEventListener("click", function (event) {
+            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+          });
+          backdrop.addEventListener("click", function (event) {
+            if (event === undefined || event.target === backdrop) closeConfirm(null);
+          });
+          backdrop.appendChild(panel);
+          document.body.appendChild(backdrop);
+          confirmBackdrop = backdrop;
+
+          confirmKey = function (event) {
+            if (event === undefined) return;
+            if (event.key === "Escape") {
+              if (typeof event.preventDefault === "function") event.preventDefault();
+              closeConfirm(null);
+              return;
+            }
+            if (event.key === "Enter" && !isNotice) {
+              if (typeof event.preventDefault === "function") event.preventDefault();
+              closeConfirm(onConfirm);
+            }
+            if (event.key === "Enter" && isNotice) {
+              if (typeof event.preventDefault === "function") event.preventDefault();
+              closeConfirm(null);
+            }
+          };
+          if (typeof document.addEventListener === "function") document.addEventListener("keydown", confirmKey);
+          try { accept.focus(); } catch (error) { /* focus is best effort */ }
+        }
+
+        /** A one-button notice, used when a request fails. */
+        function askNotice(message) {
+          askConfirm(message, null, true);
         }
 
         /** One table row: source, calls, argument tokens, result tokens, total, share. */
@@ -1869,36 +2015,37 @@
               if (!isCurrent) {
                 row.addEventListener("click", function () {
                   var label = (item.title && String(item.title)) || baseName(item.path);
-                  if (typeof window.confirm !== "function" || !window.confirm(t("move.confirm", { workspace: label }))) return;
-                  body.textContent = t("move.working");
-                  fetch("/ws-recency/session-move?sessionId=" + encodeURIComponent(sessionId), {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ sessionId: sessionId, workspaceId: item.workspaceId }),
-                  })
-                    .then(function (response) {
-                      return response.text().then(function (text) {
-                        var parsed = null;
-                        try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
-                        return { status: response.status, text: text, json: parsed };
-                      });
+                  askConfirm(t("move.confirm", { workspace: label }), function () {
+                    body.textContent = t("move.working");
+                    fetch("/ws-recency/session-move?sessionId=" + encodeURIComponent(sessionId), {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ sessionId: sessionId, workspaceId: item.workspaceId }),
                     })
-                    .then(function (result) {
-                      if (result.json !== null && result.json.ok === true) {
-                        if (result.json.repaired === true) {
-                          body.textContent = t("move.repaired", { workspace: label });
+                      .then(function (response) {
+                        return response.text().then(function (text) {
+                          var parsed = null;
+                          try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+                          return { status: response.status, text: text, json: parsed };
+                        });
+                      })
+                      .then(function (result) {
+                        if (result.json !== null && result.json.ok === true) {
+                          if (result.json.repaired === true) {
+                            body.textContent = t("move.repaired", { workspace: label });
+                            return;
+                          }
+                          body.textContent = t("move.done", { workspace: label });
+                          if (result.json.live === true) body.textContent += t("move.doneLive");
                           return;
                         }
-                        body.textContent = t("move.done", { workspace: label });
-                        if (result.json.live === true) body.textContent += t("move.doneLive");
-                        return;
-                      }
-                      var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 160) || "(empty response)";
-                      body.textContent = t("move.failed") + "HTTP " + result.status + " \u00b7 " + reason;
-                    })
-                    .catch(function (error) {
-                      body.textContent = t("move.failed") + (error && error.message ? error.message : error);
-                    });
+                        var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 160) || "(empty response)";
+                        body.textContent = t("move.failed") + "HTTP " + result.status + " \u00b7 " + reason;
+                      })
+                      .catch(function (error) {
+                        body.textContent = t("move.failed") + (error && error.message ? error.message : error);
+                      });
+                  });
                 });
               }
               list.appendChild(row);
@@ -1955,6 +2102,8 @@
         var handoffBaseline = 0;
         var handoffTries = 0;
         var handoffSession = null;
+        /** Wall clock of the instruction/rewrite: older replies are never the answer. */
+        var handoffStartedAt = 0;
 
         /** Retention-source tag the Host books this plugin's borrows under. */
         var HANDOFF_SOURCE = "dsh-ws-recency";
@@ -2237,10 +2386,34 @@
           return "";
         }
 
-        /** Start the watch: the next reply that carries a handoff block becomes the card. */
+        /**
+         * Whether a tail answer is a *new, finished* reply worth reading.
+         *
+         * Three guards, because the tail always reports the newest assistant text
+         * in the whole log:
+         *   - the session must have no open turn: a freshly started turn logs
+         *     assistant messages with only reasoning/tool-call blocks, and if the
+         *     previous reply happened to be a handoff note the old text would be
+         *     read as the answer while the model is still working;
+         *   - the text must be newer than the moment the instruction went out;
+         *   - an older Host without `seq`/`turnOpen` falls back to the timestamp.
+         */
+        function handoffAnswerReady(answer, baseline) {
+          if (answer === null || answer === undefined || answer.ok !== true) return false;
+          if (answer.turnOpen === true) return false;
+          var seqFresh = typeof answer.textSeq === "number" && answer.textSeq !== 0 && typeof baseline === "number" && answer.textSeq > baseline;
+          var timeFresh = typeof answer.at === "number" && answer.at > 0 && handoffStartedAt > 0 && answer.at > handoffStartedAt;
+          if (seqFresh || timeFresh) return true;
+          /* A Host too old to report either marker: the caller's count is all we have. */
+          if ((typeof answer.textSeq !== "number" || answer.textSeq === 0) && (typeof answer.at !== "number" || answer.at === 0)) return true;
+          return false;
+        }
+
+        /** Start the watch: the next finished reply that carries a handoff block becomes the card. */
         function watchHandoff(sessionId) {
           handoffSession = sessionId;
           handoffTries = 0;
+          handoffStartedAt = Date.now();
           stopHandoffPolling();
           if (typeof window === "undefined") return;
           function tick() {
@@ -2249,16 +2422,24 @@
             handoffPost({ action: "tail", sessionId: sessionId }).then(function (answer) {
               if (handoffSession !== sessionId) return;
               if (answer !== null && answer.ok === true) {
-                var replies = typeof answer.replies === "number" ? answer.replies : 0;
-                if (replies > handoffBaseline) {
+                var reached = typeof answer.lastSeq === "number"
+                  ? answer.lastSeq > handoffBaseline
+                  : (typeof answer.replies === "number" ? answer.replies > handoffBaseline : false);
+                if (reached && handoffAnswerReady(answer, handoffBaseline)) {
                   var found = handoffBlockOf(answer.text);
                   if (found !== "") {
-                    setHandoffState({ sessionId: sessionId, phase: "ready", block: found, needsEnter: false });
+                    setHandoffState({
+                      sessionId: sessionId,
+                      phase: "ready",
+                      block: found,
+                      needsEnter: false,
+                      turn: typeof answer.turn === "number" ? answer.turn : undefined,
+                    });
                     return;
                   }
-                  /* Keep looking at this same reply: it may still be streaming, and a
-                     reply without a block is not a reason to move past it. */
                 }
+                /* Not ready yet (turn still open, text not newer, or no block in
+                   this reply): keep looking at the same session. */
               }
               if (handoffTries > 150) {
                 setHandoffState({ sessionId: "", phase: "idle", block: "", needsEnter: false });
@@ -2270,10 +2451,12 @@
               handoffTimer = window.setTimeout(tick, 4000);
             });
           }
-          /* The baseline is the reply count before the instruction is answered. */
+          /* The baseline is where the log stood before the instruction is answered. */
           handoffPost({ action: "tail", sessionId: sessionId }).then(function (answer) {
             if (handoffSession !== sessionId) return;
-            handoffBaseline = answer !== null && answer.ok === true && typeof answer.replies === "number" ? answer.replies : 0;
+            handoffBaseline = answer !== null && answer.ok === true && typeof answer.lastSeq === "number"
+              ? answer.lastSeq
+              : (answer !== null && answer.ok === true && typeof answer.replies === "number" ? answer.replies : 0);
             handoffTimer = window.setTimeout(tick, 1500);
           }).catch(function () {
             handoffTimer = window.setTimeout(tick, 3000);
@@ -2286,7 +2469,8 @@
           /* The card starts in its "working" state; if the Host refuses the send
              the fallback flips needsEnter so the card tells the user to press
              Enter instead of pretending the handoff is running. */
-          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false });
+          var startTurn = latestTurnNumber();
+          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false, afterTurn: startTurn === null ? undefined : startTurn });
           sendToSession(sessionId, handoffInstruction());
           watchHandoff(sessionId);
         }
@@ -2363,7 +2547,8 @@
         /** Ask the current Session to rewrite the handoff with the user's adjustments. */
         function rewriteHandoff(sessionId, extra) {
           var text = extra.trim() === "" ? t("handoff.regeneratePrompt") : t("handoff.adjustPrompt") + "\n\n" + extra.trim();
-          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false });
+          var startTurn = latestTurnNumber();
+          setHandoffState({ sessionId: sessionId, phase: "running", block: "", needsEnter: false, afterTurn: startTurn === null ? undefined : startTurn });
           sendToSession(sessionId, text);
           handoffBaseline = 0;
           handoffTries = 0;
@@ -2396,6 +2581,23 @@
 
           var state = live;
           if (state === null || state === undefined || state.sessionId !== sessionId) return null;
+          /* One rendered `turnTail` per turn: show the card only on the turn the
+             note came from, and the progress line only on the newest turn (the
+             open one). Props without a turn number keep the old behaviour. */
+          var turn = props !== undefined && props !== null && typeof props.turn === "number" ? props.turn : null;
+          if (state.phase === "running" && turn !== null) {
+            if (typeof state.afterTurn === "number") {
+              /* Only a turn that started after the click can be the answer. */
+              if (turn <= state.afterTurn) return null;
+            } else {
+              var latest = latestTurnNumber();
+              if (latest !== null && turn !== latest) return null;
+            }
+          }
+          if (state.phase === "ready" && turn !== null) {
+            var target = typeof state.turn === "number" ? state.turn : latestTurnNumber();
+            if (target !== null && turn !== target) return null;
+          }
           if (state.phase === "running") {
             return h("div", { className: "wsr-handoff-live" }, state.needsEnter === true ? t("handoff.pressEnter") : t("handoff.preparing"));
           }
@@ -2713,13 +2915,14 @@
                     restore.className = "wsr-btn";
                     restore.textContent = t("trash.restore");
                     restore.addEventListener("click", function () {
-                      if (typeof window.confirm === "function" && !window.confirm(t("trash.confirmRestore"))) return;
-                      load(t("trash.working"));
-                      post({ action: "restore", name: entry.name }).then(function (result) {
-                        var ok = result.json !== null && result.json.ok === true;
-                        load(ok ? t("trash.restored") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
-                      }).catch(function (error) {
-                        load(t("trash.failed") + (error && error.message ? error.message : error));
+                      askConfirm(t("trash.confirmRestore"), function () {
+                        load(t("trash.working"));
+                        post({ action: "restore", name: entry.name }).then(function (result) {
+                          var ok = result.json !== null && result.json.ok === true;
+                          load(ok ? t("trash.restored") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
+                        }).catch(function (error) {
+                          load(t("trash.failed") + (error && error.message ? error.message : error));
+                        });
                       });
                     });
                     actions.appendChild(restore);
@@ -2729,13 +2932,14 @@
                   purge.className = "wsr-btn wsr-btn-danger";
                   purge.textContent = t("trash.purge");
                   purge.addEventListener("click", function () {
-                    if (typeof window.confirm === "function" && !window.confirm(t("trash.confirmPurge"))) return;
-                    load(t("trash.working"));
-                    post({ action: "purge", name: entry.name }).then(function (result) {
-                      var ok = result.json !== null && result.json.ok === true;
-                      load(ok ? t("trash.purged") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
-                    }).catch(function (error) {
-                      load(t("trash.failed") + (error && error.message ? error.message : error));
+                    askConfirm(t("trash.confirmPurge"), function () {
+                      load(t("trash.working"));
+                      post({ action: "purge", name: entry.name }).then(function (result) {
+                        var ok = result.json !== null && result.json.ok === true;
+                        load(ok ? t("trash.purged") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
+                      }).catch(function (error) {
+                        load(t("trash.failed") + (error && error.message ? error.message : error));
+                      });
                     });
                   });
                   actions.appendChild(purge);
@@ -2850,13 +3054,14 @@
 
           var act = function (entry, action) {
             var question = action === "restore" ? t("trash.confirmRestore") : t("trash.confirmPurge");
-            if (typeof window.confirm === "function" && !window.confirm(question)) return;
-            load(t("trash.working"));
-            trashPost({ action: action, name: entry.name }).then(function (result) {
-              var ok = result.json !== null && result.json.ok === true;
-              load(ok ? (action === "restore" ? t("trash.restored") : t("trash.purged")) : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
-            }).catch(function (error) {
-              load(t("trash.failed") + (error && error.message ? error.message : error));
+            askConfirm(question, function () {
+              load(t("trash.working"));
+              trashPost({ action: action, name: entry.name }).then(function (result) {
+                var ok = result.json !== null && result.json.ok === true;
+                load(ok ? (action === "restore" ? t("trash.restored") : t("trash.purged")) : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
+              }).catch(function (error) {
+                load(t("trash.failed") + (error && error.message ? error.message : error));
+              });
             });
           };
 
@@ -2864,22 +3069,23 @@
             var question = action === "unarchive" ? t("archive.confirmUnarchive")
               : action === "forget" ? t("archive.confirmForget")
                 : t("archive.confirmDelete");
-            if (typeof window.confirm === "function" && !window.confirm(question)) return;
-            load(t("trash.working"));
-            trashPost({ action: action, sessionId: entry.sessionId }).then(function (result) {
-              if (result.json === null || result.json.ok !== true) {
-                load(t("archive.failed") + (result.json && result.json.error ? result.json.error : result.text));
-                return;
-              }
-              if (action === "unarchive") {
-                load(t("archive.unarchived") + (result.json.listed === false ? t("archive.noWorkspace") : ""));
-              } else if (action === "forget") {
-                load(t("archive.forgotten"));
-              } else {
-                load(t("archive.deleted"));
-              }
-            }).catch(function (error) {
-              load(t("archive.failed") + (error && error.message ? error.message : error));
+            askConfirm(question, function () {
+              load(t("trash.working"));
+              trashPost({ action: action, sessionId: entry.sessionId }).then(function (result) {
+                if (result.json === null || result.json.ok !== true) {
+                  load(t("archive.failed") + (result.json && result.json.error ? result.json.error : result.text));
+                  return;
+                }
+                if (action === "unarchive") {
+                  load(t("archive.unarchived") + (result.json.listed === false ? t("archive.noWorkspace") : ""));
+                } else if (action === "forget") {
+                  load(t("archive.forgotten"));
+                } else {
+                  load(t("archive.deleted"));
+                }
+              }).catch(function (error) {
+                load(t("archive.failed") + (error && error.message ? error.message : error));
+              });
             });
           };
 
@@ -3385,6 +3591,7 @@
           current: currentHandoffState,
           set: setHandoffState,
           blockOf: handoffBlockOf,
+          readyOf: handoffAnswerReady,
           start: startHandoff,
           rewrite: rewriteHandoff,
           carry: carryHandoff,

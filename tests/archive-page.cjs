@@ -15,14 +15,37 @@ const assert = require("node:assert");
 let spec = null;
 const fetchCalls = [];
 let fetchAnswer = () => ({ ok: false, error: "not configured" });
-const confirms = [];
+let lastDialog = null;
 
 global.navigator = { language: "en-US" };
 global.document = {
   documentElement: { lang: "en-US" },
-  body: { appendChild() {}, querySelector: () => null, querySelectorAll: () => [] },
+  body: {
+    appendChild(node) { lastDialog = node; return node; },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  },
   head: { appendChild() {} },
-  createElement: (tag) => ({ tagName: tag.toUpperCase(), className: "", style: {}, dataset: {}, children: [], appendChild() {}, addEventListener() {}, removeAttribute() {} }),
+  createElement: (tag) => {
+    const node = {
+      tagName: tag.toUpperCase(),
+      className: "",
+      style: {},
+      dataset: {},
+      attrs: {},
+      children: [],
+      textContent: "",
+      appendChild(child) { node.children.push(child); return child; },
+      addEventListener(type, fn) { (node.handlers = node.handlers || {})[type] = (node.handlers[type] || []).concat(fn); },
+      setAttribute(name, value) { node.attrs[name] = String(value); },
+      getAttribute(name) { return Object.prototype.hasOwnProperty.call(node.attrs, name) ? node.attrs[name] : null; },
+      removeAttribute(name) { delete node.attrs[name]; },
+      remove() {},
+      focus() {},
+      click() { const handlers = node.handlers && node.handlers.click ? node.handlers.click : []; handlers.forEach((fn) => fn({ stopPropagation() {} })); },
+    };
+    return node;
+  },
   addEventListener() {},
   removeEventListener() {},
   querySelector: () => null,
@@ -44,7 +67,6 @@ global.window = {
   clearTimeout() {},
   setInterval() { return 1; },
   clearInterval() {},
-  confirm(question) { confirms.push(question); return true; },
   location: { reload() {} },
   localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
   __ModuleLoader__: { load(input) { spec = input; } },
@@ -144,6 +166,18 @@ function buttonInRow(root, rowText, label) {
   return buttons(row).find((node) => textOf(node) === label) || null;
 }
 
+/** Depth-first search in a real-DOM stub tree (the in-app dialog lives there). */
+function findDom(node, predicate) {
+  if (node === null || node === undefined) return null;
+  if (typeof node !== "object") return null;
+  if (predicate(node)) return node;
+  for (const child of node.children || []) {
+    const found = findDom(child, predicate);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
 /* ---------- boot ------------------------------------------------------- */
 
 const mod = spec.factory((name) => {
@@ -240,16 +274,24 @@ fetchAnswer = (body) => {
   /* ---------- the actions carry the right session ---------------------- */
   const expectAction = async (label, action) => {
     const before = fetchCalls.length;
+    lastDialog = null;
     const button = buttonInRow(tree, ARCHIVED[0].title, label);
     assert.ok(button !== null, `no "${label}" button in the archived row`);
     button.props.onClick();
+    /* No request before the user accepts: the confirmation is in the page now
+       (a native confirm used to strip keyboard focus when it closed). */
+    assert.strictEqual(fetchCalls.length, before, `"${label}" acts before the user confirms`);
+    assert.ok(lastDialog !== null, `"${label}" opens an in-page dialog`);
+    assert.strictEqual(lastDialog.getAttribute("data-wsr-confirm"), "confirm");
+    const accept = findDom(lastDialog, (node) => node.attrs !== undefined && node.attrs["data-wsr-confirm-ok"] === "true");
+    assert.ok(accept !== null, `"${label}" has an accept button`);
+    accept.click();
     await view.settle();
     const sent = fetchCalls.slice(before).map((call) => call.body);
     const hit = sent.find((body) => body.action === action);
     assert.ok(hit !== undefined, `"${label}" did not post ${action}`);
     assert.strictEqual(typeof hit.sessionId, "string");
     assert.strictEqual(hit.sessionId, ARCHIVED[0].sessionId, `"${label}" addressed the wrong session`);
-    assert.ok(confirms.length > 0, `"${label}" asks for confirmation`);
   };
 
   /* The trash row keeps its own, differently-scoped buttons. */
