@@ -1971,6 +1971,69 @@
           });
         }
 
+        /** Enter is the only submit path the composer exposes to a plugin. */
+        function pressEnter(editor) {
+          try {
+            var event = new window.KeyboardEvent("keydown", {
+              key: "Enter",
+              code: "Enter",
+              keyCode: 13,
+              which: 13,
+              bubbles: true,
+              cancelable: true,
+            });
+            editor.dispatchEvent(event);
+            return true;
+          } catch (error) {
+            return false;
+          }
+        }
+
+        /** The composer of the open conversation, if it is on screen. */
+        function composerEditor() {
+          if (typeof document === "undefined") return null;
+          var seat = typeof document.querySelector === "function" ? document.querySelector("[data-composer-seat]") : null;
+          if (seat === null || seat === undefined) return null;
+          var editor = null;
+          try { editor = seat.querySelector('[contenteditable="true"]'); } catch (error) { editor = null; }
+          if (editor === null || editor === undefined) {
+            try { editor = seat.querySelector("textarea"); } catch (error) { editor = null; }
+          }
+          return editor === undefined ? null : editor;
+        }
+
+        function editorText(editor) {
+          if (editor === null || editor === undefined) return "";
+          if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") return typeof editor.value === "string" ? editor.value : "";
+          return typeof editor.textContent === "string" ? editor.textContent : "";
+        }
+
+        /**
+         * Send the handoff in the Session that was just opened.
+         *
+         * The draft initialises asynchronously: poll until the composer actually holds
+         * the note, press Enter once, then stop. If it never shows up (slow render,
+         * another draft kept) the text simply stays there for a manual Enter.
+         */
+        function autoSendDraft(marker) {
+          if (typeof window === "undefined") return;
+          var tries = 0;
+          function step() {
+            tries += 1;
+            var editor = composerEditor();
+            if (editor !== null) {
+              var text = editorText(editor);
+              if (text.indexOf(marker) !== -1) {
+                try { if (typeof editor.focus === "function") editor.focus(); } catch (error) { /* focus is best effort */ }
+                pressEnter(editor);
+                return;
+              }
+            }
+            if (tries < 40) window.setTimeout(step, 350);
+          }
+          window.setTimeout(step, 400);
+        }
+
         /** Write text into the composer and send it, if the editor is reachable. */
         function sendToSession(text) {
           if (typeof document === "undefined" || typeof text !== "string" || text === "") return false;
@@ -2001,24 +2064,7 @@
                 editor.dispatchEvent(new window.Event("input", { bubbles: true }));
               }
             }
-            /* Enter is the only submit path the composer exposes to a plugin. If it
-               does not take, the card says so and the user presses it themselves. */
-            var sent = false;
-            try {
-              var event = new window.KeyboardEvent("keydown", {
-                key: "Enter",
-                code: "Enter",
-                keyCode: 13,
-                which: 13,
-                bubbles: true,
-                cancelable: true,
-              });
-              editor.dispatchEvent(event);
-              sent = true;
-            } catch (error) {
-              sent = false;
-            }
-            return sent;
+            return pressEnter(editor);
           } catch (error) {
             return false;
           }
@@ -2109,6 +2155,7 @@
               try {
                 service.startSession(workspaceId, { prompt: prompt, whenDraftExists: "replace" });
                 resetHandoff();
+                autoSendDraft(t("handoff.preamble").slice(0, 12));
                 return;
               } catch (error) {
                 /* fall through */
