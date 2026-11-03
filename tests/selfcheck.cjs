@@ -640,15 +640,14 @@ function textOf(node) {
   assert.strictEqual(live.props.className, "wsr-handoff-live", "a running handoff shows progress");
   handoffState.set({ sessionId: "session-x", phase: "ready", block: "# 交接" });
   const card = HandoffCard({ sessionId: "session-x" });
-  assert.strictEqual(card.props.className, "wsr-handoff-card", "a ready handoff renders the card");
-  assert.strictEqual(card.children.length, 6, "head, preview, two options, the free-text field and actions");
-  assert.strictEqual(card.children[2].props.className, "wsr-handoff-option", "the confirm row is a choice");
-  assert.strictEqual(card.children[3].props.className, "wsr-handoff-option", "the regenerate row is a choice");
-  assert.strictEqual(card.children[4].props.className, "wsr-handoff-extra", "the third row is free text");
-  const radios = [card.children[2], card.children[3]].map((row) => row.children[0]);
-  assert.strictEqual(radios[0].props.type, "radio");
-  assert.strictEqual(radios[0].props.checked, true, "confirm is the default");
-  assert.strictEqual(radios[1].props.checked, false);
+  assert.strictEqual(card.props.className, "wsr-qcard", "a ready handoff renders the question card");
+  assert.strictEqual(card.children.length, 5, "header, options, free text, preview and footer");
+  const options = card.children[1];
+  assert.strictEqual(options.props.className, "wsr-qoptions");
+  assert.strictEqual(options.children.length, 2, "two mutually exclusive options");
+  assert.ok(options.children[0].props.className.indexOf("wsr-qoption-selected") !== -1, "confirm is selected by default");
+  assert.strictEqual(options.children[1].props.className, "wsr-qoption", "the second option is not selected");
+  assert.strictEqual(card.children[2].children[0].props.className, "wsr-handoff-extra", "the third control is free text");
   assert.strictEqual(HandoffCard({ sessionId: "other" }), null, "another session shows nothing");
   handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
 

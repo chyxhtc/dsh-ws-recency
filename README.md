@@ -125,7 +125,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 1. 每轮回复底部的动作行（复制 / 点赞 / 分支那一排）里点 **交接到新会话**：插件把交接指令放进输入框并尝试直接发送（发不出去会在卡片上提示你按回车）；
 2. 当前会话的 AI 输出一个 ```handoff 代码块——**只写文档路径和要点，不粘贴文档内容**；
 3. 抓到代码块后，**在该轮回复下方**出现一张问询卡片，和工具向用户提问的形态一致：
-   - **确认，交接到新会话**（默认选中）：当前工作区开新会话，内容预填进输入框；
+   - 卡片样式沿用宿主问询卡：标题 + 编号选项 + 底部动作；**确认，交接到新会话**（默认选中）：当前工作区开新会话，内容预填进输入框；
    - **不满意，重新生成一版**：让当前会话按同样的要求再写一份；
    - 底部输入框：填写调整意见（例如"多写接口约束、少写历史"），提交后按这些要求重写；
    - 「查看内容」展开只读预览，「放弃交接」收起卡片。
@@ -169,7 +169,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.21.0/dsh-ws-recency-0.21.0.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.22.0/dsh-ws-recency-0.22.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

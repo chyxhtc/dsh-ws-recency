@@ -148,9 +148,29 @@
           ".wsr-handoff-option-desc{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-handoff-extra{width:100%;box-sizing:border-box;min-height:56px;max-height:140px;resize:vertical;font:inherit;font-size:12px;line-height:1.6;padding:8px 10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-1,#1b1b1b);color:var(--dsw-alias-label-primary,#e6e6e6)}",
           ".wsr-handoff-body{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.6;max-height:220px;overflow:auto;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,#1b1b1b)}",
-          ".wsr-handoff-card{display:flex;flex-direction:column;gap:8px;margin:8px 0;padding:12px 14px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
-          ".wsr-handoff-head{font-size:12px;color:var(--dsw-alias-label-secondary)}",
-          ".wsr-handoff-actions{display:flex;gap:6px;align-items:center;white-space:nowrap}",
+          ".wsr-qcard{width:100%;max-width:var(--dsh-chat-content-width,100%);border-radius:var(--dsw-radius-xl,16px);background:var(--dsw-specific-input-major,var(--dsw-alias-bg-layer-2));box-shadow:var(--dsw-elevation-panel,0 8px 24px rgba(0,0,0,.35));color:var(--dsw-alias-label-primary);display:flex;flex-direction:column;padding:0 0 10px;margin:8px 0;overflow:hidden}",
+          ".wsr-qcard *{box-sizing:border-box}",
+          ".wsr-qhead{display:flex;align-items:flex-start;gap:8px;padding:14px 16px 8px}",
+          ".wsr-qheading{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}",
+          ".wsr-qeyebrow{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.04em}",
+          ".wsr-qtitle{font-size:15px;font-weight:500;line-height:22px;color:var(--dsw-alias-label-primary)}",
+          ".wsr-qdetail{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-qicon{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;cursor:pointer;padding:2px 6px;border-radius:6px}",
+          ".wsr-qicon:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
+          ".wsr-qoptions{display:flex;flex-direction:column;gap:1px;margin:8px 0 0;padding:4px 12px}",
+          ".wsr-qoption{display:flex;align-items:flex-start;gap:8px;width:100%;min-height:40px;padding:8px 12px 8px 8px;border:1px solid transparent;border-radius:var(--dsw-radius-md,8px);background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit;transition:background-color .12s,border-color .12s}",
+          ".wsr-qoption:hover,.wsr-qoption-selected{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08))}",
+          ".wsr-qoption-selected{border-color:var(--dsw-alias-border-l2,rgba(255,255,255,.16))}",
+          ".wsr-qnum{flex:none;width:18px;font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary);text-align:center}",
+          ".wsr-qtext{display:flex;flex-direction:column;gap:2px;min-width:0}",
+          ".wsr-qextra{padding:4px 16px 0}",
+          ".wsr-qpreview{margin:8px 16px 0;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,rgba(0,0,0,.24));white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.6;max-height:220px;overflow:auto}",
+          ".wsr-qfooter{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:8px 16px 0}",
+          ".wsr-qactions{display:flex;align-items:center;gap:8px}",
+          ".wsr-qcancel{border:none;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;cursor:pointer;padding:4px 8px;border-radius:6px}",
+          ".wsr-qcancel:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08))}",
+          ".wsr-qsubmit{border:none;border-radius:8px;background:var(--dsw-alias-brand-primary,#4f7cff);color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;padding:6px 14px}",
+          ".wsr-qsubmit:hover{filter:brightness(1.06)}",
           ".wsr-handoff-live{margin:8px 0;font-size:12px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-msg-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}",
           ".wsr-msg-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
@@ -299,6 +319,7 @@
           "handoff.extraPlaceholder": "补充调整意见（填了就按这些要求重写，例如：多写接口约束、少写历史）",
           "handoff.preview": "查看内容",
           "handoff.submit": "提交",
+          "handoff.eyebrow": "需要你确认",
           "handoff.regeneratePrompt": "这份交接说明需要重写。请按最初同样的要求再输出一份，同样写进 ```handoff 代码块，路径与要点保持精炼。",
           "handoff.adjustPrompt": "请按下面的补充要求重写交接说明，保持 ```handoff 代码块格式：",
           "move.title": "移动到工作区",
@@ -430,6 +451,7 @@
           "handoff.extraPlaceholder": "Adjustments (if filled, the note is rewritten with them: more constraints, less history, …)",
           "handoff.preview": "Show note",
           "handoff.submit": "Submit",
+          "handoff.eyebrow": "Needs your decision",
           "handoff.regeneratePrompt": "Rewrite the handoff note with the same rules as before, again inside a ```handoff block.",
           "handoff.adjustPrompt": "Rewrite the handoff note following these adjustments, keeping the ```handoff block format:",
           "move.title": "Move to workspace",
@@ -2115,10 +2137,10 @@
         /**
          * The handoff question card.
          *
-         * Two mutually exclusive choices and one free-text field, the same shape as a
-         * tool asking the user a question: confirm and carry over, regenerate, or say
-         * what to change. The note itself is read-only here - detail edits belong in
-         * the new Session's composer.
+         * Visual language copied from the Host's own ask-a-question card (the one the
+         * question tool renders): a raised panel with a title, numbered option rows
+         * and one footer of actions. Two mutually exclusive choices plus a free-text
+         * field, which takes precedence when it has content.
          */
         function HandoffTailCard(props) {
           var sessionId = props !== undefined && props !== null && typeof props.sessionId === "string" ? props.sessionId : "";
@@ -2142,73 +2164,70 @@
           }
           if (state.phase !== "ready") return null;
 
-          var rows = [
-            h("label", { className: "wsr-handoff-option", key: "opt-confirm" },
-              h("input", {
-                type: "radio",
-                name: "wsr-handoff-" + sessionId,
-                checked: picked === "confirm",
-                onChange: function () { setPicked("confirm"); },
-              }),
-              h("span", { className: "wsr-handoff-option-text" },
-                h("span", { className: "wsr-handoff-option-title" }, t("handoff.confirm")),
-                h("span", { className: "wsr-handoff-option-desc" }, t("handoff.confirmDesc")),
+          function optionRow(id, index, title, description) {
+            return h("button", {
+              type: "button",
+              key: "opt-" + id,
+              className: "wsr-qoption" + (picked === id ? " wsr-qoption-selected" : ""),
+              onClick: function () { setPicked(id); },
+            },
+              h("span", { className: "wsr-qnum" }, String(index)),
+              h("span", { className: "wsr-qtext" },
+                h("span", { className: "wsr-qtitle" }, title),
+                h("span", { className: "wsr-qdetail" }, description),
               ),
-            ),
-            h("label", { className: "wsr-handoff-option", key: "opt-redo" },
-              h("input", {
-                type: "radio",
-                name: "wsr-handoff-" + sessionId,
-                checked: picked === "redo",
-                onChange: function () { setPicked("redo"); },
-              }),
-              h("span", { className: "wsr-handoff-option-text" },
-                h("span", { className: "wsr-handoff-option-title" }, t("handoff.regen")),
-                h("span", { className: "wsr-handoff-option-desc" }, t("handoff.regenDesc")),
+            );
+          }
+
+          return h("div", { className: "wsr-qcard" },
+            h("div", { className: "wsr-qhead" },
+              h("div", { className: "wsr-qheading" },
+                h("div", { className: "wsr-qeyebrow" }, t("handoff.eyebrow")),
+                h("div", { className: "wsr-qtitle" }, t("handoff.found")),
               ),
-            ),
-            h("textarea", {
-              className: "wsr-handoff-extra",
-              key: "extra",
-              placeholder: t("handoff.extraPlaceholder"),
-              value: extra,
-              onChange: function (event) { setExtra(event.target.value); },
-            }),
-            h("div", { className: "wsr-handoff-actions", key: "actions" },
               h("button", {
                 type: "button",
-                className: "wsr-btn",
+                className: "wsr-qicon",
+                title: t("handoff.preview"),
                 onClick: function () {
-                  if (extra.trim() !== "") { rewriteHandoff(sessionId, extra); return; }
-                  if (picked === "redo") { rewriteHandoff(sessionId, ""); return; }
-                  carryHandoff(sessionId, state.block);
-                },
-              }, t("handoff.submit")),
-              h("button", {
-                type: "button",
-                className: "wsr-btn",
-                onClick: function () { resetHandoff(); },
-              }, t("handoff.cancel")),
-              h("button", {
-                type: "button",
-                className: "wsr-btn",
-                onClick: function () {
-                  var preview = typeof document !== "undefined" ? document.querySelector('[data-wsr-handoff-preview="' + sessionId + '"]') : null;
-                  if (preview !== null && preview !== undefined && preview.style !== undefined) {
-                    preview.style.display = preview.style.display === "none" ? "" : "none";
+                  var body = typeof document !== "undefined" ? document.querySelector('[data-wsr-handoff-preview="' + sessionId + '"]') : null;
+                  if (body !== null && body !== undefined && body.style !== undefined) {
+                    body.style.display = body.style.display === "none" ? "" : "none";
                   }
                 },
               }, t("handoff.preview")),
             ),
-          ];
-
-          return h("div", { className: "wsr-handoff-card" },
-            h("div", { className: "wsr-handoff-head" }, t("handoff.found")),
-            h("div", { "data-wsr-handoff-preview": sessionId, className: "wsr-handoff-body", style: { display: "none" } }, state.block),
-            rows[0],
-            rows[1],
-            rows[2],
-            rows[3],
+            h("div", { className: "wsr-qoptions" },
+              optionRow("confirm", 1, t("handoff.confirm"), t("handoff.confirmDesc")),
+              optionRow("redo", 2, t("handoff.regen"), t("handoff.regenDesc")),
+            ),
+            h("div", { className: "wsr-qextra" },
+              h("textarea", {
+                className: "wsr-handoff-extra",
+                placeholder: t("handoff.extraPlaceholder"),
+                value: extra,
+                onChange: function (event) { setExtra(event.target.value); },
+              }),
+            ),
+            h("div", { "data-wsr-handoff-preview": sessionId, className: "wsr-qpreview", style: { display: "none" } }, state.block),
+            h("div", { className: "wsr-qfooter" },
+              h("div", { className: "wsr-qactions" },
+                h("button", {
+                  type: "button",
+                  className: "wsr-qcancel",
+                  onClick: function () { resetHandoff(); },
+                }, t("handoff.cancel")),
+                h("button", {
+                  type: "button",
+                  className: "wsr-qsubmit",
+                  onClick: function () {
+                    if (extra.trim() !== "") { rewriteHandoff(sessionId, extra); return; }
+                    if (picked === "redo") { rewriteHandoff(sessionId, ""); return; }
+                    carryHandoff(sessionId, state.block);
+                  },
+                }, t("handoff.submit")),
+              ),
+            ),
           );
         }
 
