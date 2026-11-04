@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.24.2";
+export const HOST_VERSION = "0.25.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -307,6 +307,31 @@ function blockText(content) {
 }
 
 /**
+ * A one-line hint of what a tool call touched, for the amplified ranking.
+ *
+ * The argument text is the model's own JSON; the interesting field is the first
+ * path/command/query it names, and a malformed or non-string argument simply
+ * yields no hint.
+ */
+function toolDetail(args) {
+  if (typeof args !== "string") return "";
+  try {
+    const parsed = JSON.parse(args);
+    const value = parsed?.file_path ?? parsed?.path ?? parsed?.command ?? parsed?.pattern ?? parsed?.query ?? parsed?.url ?? parsed?.name;
+    if (typeof value === "string" && value.trim() !== "") return value.trim().replace(/\s+/g, " ").slice(0, 80);
+  } catch {
+    /* not JSON: no hint */
+  }
+  return "";
+}
+
+/** First non-empty line, trimmed, for a user/system block's label. */
+function snippetOf(text, limit = 80) {
+  const line = String(text ?? "").split("\n")[0].trim().replace(/\s+/g, " ");
+  return line.slice(0, limit);
+}
+
+/**
  * Aggregate one session's events into costs.
  *
  * Pure on purpose: the tests call it with hand-written events, and the route
@@ -321,6 +346,15 @@ export function aggregateSession(events) {
   };
   const tools = new Map();
   const callNames = new Map();
+  /* Real per-step context, so the bill can be attributed back to the content
+     that produced it instead of to the step that happened to be running. */
+  const steps = [];
+  /** Content blocks with the step before which they enter the prompt. */
+  const blocks = [];
+  /** Tool-call blocks by call id, so a result can extend its own call. */
+  const callBlocks = new Map();
+  /** Steps at which a compaction dropped the prefix; blocks stop being re-read. */
+  const compactions = [];
   const toolOf = (name) => {
     const key = typeof name === "string" && name !== "" ? name : "unknown";
     let entry = tools.get(key);
@@ -334,6 +368,9 @@ export function aggregateSession(events) {
   for (const event of events) {
     if (event === null || typeof event !== "object") continue;
     const data = event.data ?? {};
+    if (typeof event.type === "string" && event.type.toLowerCase().indexOf("compact") !== -1) {
+      compactions.push(steps.length);
+    }
     if (typeof event.time === "number") {
       if (summary.session.createdAt === 0 || event.time < summary.session.createdAt) summary.session.createdAt = event.time;
       if (event.time > summary.session.lastAt) summary.session.lastAt = event.time;
@@ -359,13 +396,24 @@ export function aggregateSession(events) {
           summary.totals.cacheReadTokens += Number(usage.cacheReadTokens) || 0;
           summary.totals.outputTokens += Number(usage.outputTokens) || 0;
           summary.totals.totalTokens += Number(usage.totalTokens) || 0;
+          steps.push({
+            input: Number(usage.inputTokens) || 0,
+            cacheRead: Number(usage.cacheReadTokens) || 0,
+            output: Number(usage.outputTokens) || 0,
+          });
         }
+        /* Whatever this reply said or requested enters the prompt of the next
+           step. Reasoning is deliberately left out: providers usually do not
+           resend it, so it would be counted as amplified when it never is. */
         const content = data.message !== null && data.message !== undefined ? data.message.content : undefined;
         for (const block of Array.isArray(content) ? content : []) {
           if (block === null || typeof block !== "object") continue;
           if (block.type === "reasoning") summary.estimate.agent.reasoning += estimateTokens(block.text);
-          else if (block.type === "text") summary.estimate.agent.text += estimateTokens(block.text);
-          else if (block.type === "tool-call" && block.id !== undefined) callNames.set(String(block.id), block.name);
+          else if (block.type === "text") {
+            const tokens = estimateTokens(block.text);
+            summary.estimate.agent.text += tokens;
+            if (tokens > 0) blocks.push({ kind: "agent", name: "agent", detail: snippetOf(block.text), tokens, entry: steps.length });
+          } else if (block.type === "tool-call" && block.id !== undefined) callNames.set(String(block.id), block.name);
         }
         break;
       }
@@ -374,21 +422,48 @@ export function aggregateSession(events) {
         if (data.callId !== undefined) callNames.set(String(data.callId), name);
         const entry = toolOf(name);
         entry.calls += 1;
-        entry.args += estimateTokens(data.arguments);
+        const args = estimateTokens(data.arguments);
+        entry.args += args;
+        const block = {
+          kind: "tool",
+          name: typeof name === "string" && name !== "" ? name : "unknown",
+          detail: toolDetail(data.arguments),
+          tokens: args,
+          args,
+          results: 0,
+          entry: steps.length,
+        };
+        blocks.push(block);
+        if (data.callId !== undefined) callBlocks.set(String(data.callId), block);
         break;
       }
       case "tool/result": {
-        const name = callNames.get(String(data.toolCallId ?? data.message?.source?.callId ?? ""));
+        const callId = String(data.toolCallId ?? data.message?.source?.callId ?? "");
+        const name = callNames.get(callId);
         const entry = toolOf(name);
-        entry.results += estimateTokens(blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content));
+        const results = estimateTokens(blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content));
+        entry.results += results;
+        const block = callBlocks.get(callId);
+        if (block !== undefined) {
+          block.results += results;
+          block.tokens += results;
+        } else if (results > 0) {
+          blocks.push({ kind: "tool", name: typeof name === "string" && name !== "" ? name : "unknown", detail: "", tokens: results, args: 0, results, entry: steps.length });
+        }
         break;
       }
       case "user/message": {
-        summary.estimate.agent.user += estimateTokens(blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content));
+        const text = blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content);
+        const tokens = estimateTokens(text);
+        summary.estimate.agent.user += tokens;
+        if (tokens > 0) blocks.push({ kind: "user", name: "user", detail: snippetOf(text), tokens, entry: steps.length });
         break;
       }
       case "system/message": {
-        summary.estimate.agent.system += estimateTokens(blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content));
+        const text = blockText(data.message !== null && data.message !== undefined ? data.message.content : data.content);
+        const tokens = estimateTokens(text);
+        summary.estimate.agent.system += tokens;
+        if (tokens > 0) blocks.push({ kind: "system", name: "system", detail: snippetOf(text), tokens, entry: steps.length });
         break;
       }
       default:
@@ -408,6 +483,85 @@ export function aggregateSession(events) {
     for (const entry of list) entry.share = entry.total / grand;
     summary.estimate.agent.share = agent.total / grand;
   }
+
+  /* -------------------------------------------------------------------------
+   * Amplified cost: the bill is `sum(context per step)`, so a block that enters
+   * early is paid for again on every later step. Its share of the bill is
+   * `tokens x remaining steps`, not the tokens it showed at the moment it
+   * appeared. That is what makes "top steps" useless and "top content" useful.
+   * ----------------------------------------------------------------------- */
+  const totalSteps = steps.length;
+  const bill = steps.reduce((sum, step) => sum + step.input + step.cacheRead, 0);
+  const limitFor = (entry) => {
+    let limit = totalSteps;
+    /* Conservative: a compaction recorded before step k replaces everything up
+       to k, so a block that entered at k is not re-read afterwards either. */
+    for (const at of compactions) if (at >= entry && at < limit) limit = at;
+    return limit;
+  };
+  const byKind = new Map();
+  const addKind = (kind, tokens, remaining) => {
+    let entry = byKind.get(kind);
+    if (entry === undefined) {
+      entry = { kind, tokens: 0, amplified: 0 };
+      byKind.set(kind, entry);
+    }
+    entry.tokens += tokens;
+    entry.amplified += tokens * remaining;
+  };
+  for (const block of blocks) {
+    const limit = limitFor(block.entry);
+    block.remaining = Math.max(0, limit - block.entry);
+    block.amplified = block.tokens * block.remaining;
+    if (block.kind === "tool") {
+      addKind("results", block.results, block.remaining);
+      addKind("args", block.args, block.remaining);
+    } else {
+      addKind(block.kind, block.tokens, block.remaining);
+    }
+  }
+  const attributed = [...byKind.values()].reduce((sum, entry) => sum + entry.amplified, 0);
+  const ranked = blocks
+    .filter((block) => block.amplified > 0)
+    .sort((a, b) => b.amplified - a.amplified)
+    .slice(0, 15)
+    .map((block) => ({
+      kind: block.kind,
+      name: block.name,
+      detail: block.detail,
+      entry: block.entry + 1,
+      remaining: block.remaining,
+      tokens: block.tokens,
+      args: block.args || 0,
+      results: block.results || 0,
+      amplified: block.amplified,
+      share: bill > 0 ? block.amplified / bill : 0,
+      saving: Math.round(block.amplified * 0.8),
+    }));
+
+  /* Downsample the context curve: at most 96 points keeps the panel cheap. */
+  const series = [];
+  if (totalSteps > 0) {
+    const buckets = Math.min(96, totalSteps);
+    const size = Math.ceil(totalSteps / buckets);
+    for (let start = 0; start < totalSteps; start += size) {
+      const end = Math.min(totalSteps, start + size);
+      let sum = 0;
+      for (let index = start; index < end; index += 1) sum += steps[index].input + steps[index].cacheRead;
+      series.push({ step: start + 1, context: Math.round(sum / (end - start)) });
+    }
+  }
+  summary.amplified = {
+    bill,
+    attributed,
+    share: bill > 0 ? attributed / bill : 0,
+    steps: totalSteps,
+    series,
+    blocks: ranked,
+    byKind: [...byKind.values()]
+      .map((entry) => ({ ...entry, share: bill > 0 ? entry.amplified / bill : 0 }))
+      .sort((a, b) => b.amplified - a.amplified),
+  };
   return summary;
 }
 

@@ -546,6 +546,23 @@ function textOf(node) {
         toolsTotal: 640,
         grandTotal: 1000,
       },
+      amplified: {
+        bill: 10000,
+        attributed: 6000,
+        share: 0.6,
+        steps: 3,
+        series: [{ step: 1, context: 1000 }, { step: 2, context: 3000 }, { step: 3, context: 6000 }],
+        byKind: [
+          { kind: "results", tokens: 500, amplified: 1500, share: 0.15 },
+          { kind: "args", tokens: 100, amplified: 300, share: 0.03 },
+          { kind: "agent", tokens: 360, amplified: 900, share: 0.09 },
+          { kind: "user", tokens: 50, amplified: 100, share: 0.01 },
+        ],
+        blocks: [
+          { kind: "tool", name: "read", detail: "src/app.js", entry: 1, remaining: 5, tokens: 9200, args: 13, results: 9187, amplified: 46000, share: 0.46, saving: 36800 },
+          { kind: "tool", name: "pwsh", detail: "npm test", entry: 2, remaining: 4, tokens: 3500, args: 60, results: 3440, amplified: 14000, share: 0.14, saving: 11200 },
+        ],
+      },
     },
   };
 
@@ -574,6 +591,22 @@ function textOf(node) {
   assert.ok(text.indexOf("60.0%") !== -1, "shares are shown as percentages");
   assert.ok(text.indexOf("10.5K") !== -1, "token totals are compact");
   assert.strictEqual(body.querySelectorAll(".wsr-stats-card").length, 5, "five exact totals are shown");
+
+  /* The amplified section: content x remaining steps, not step tokens. */
+  const amplified = body.querySelector(".wsr-amplified");
+  assert.ok(amplified !== null, "the amplified cost section renders");
+  assert.strictEqual(amplified.querySelector(".wsr-amplified-title").textContent, "Amplified cost (what the bill pays for)");
+  assert.strictEqual(amplified.querySelectorAll(".wsr-context-bar").length, 3, "one bar per context point");
+  assert.strictEqual(amplified.querySelectorAll(".wsr-kind").length, 4, "the kind legend lists the parts");
+  const amplifiedRows = amplified.querySelectorAll(".wsr-amplified-row");
+  assert.strictEqual(amplifiedRows.length, 2, "the ranking lists the amplified blocks");
+  const topRow = amplifiedRows[0];
+  assert.ok(textOf(topRow).indexOf("read") !== -1, "the top block is the read");
+  assert.ok(textOf(topRow).indexOf("src/app.js") !== -1, "its file is shown");
+  assert.ok(textOf(topRow).indexOf("46.0K") !== -1, "the amplified total is shown");
+  assert.ok(textOf(topRow).indexOf("46.0%") !== -1, "its share of the bill is shown");
+  assert.ok(textOf(topRow).indexOf("36.8K") !== -1, "the what-if saving is shown");
+  assert.ok(textOf(amplified).indexOf("re-read") !== -1, "the meta says how often it is re-read");
 
   const chartRows = body.querySelectorAll(".wsr-chart-row");
   assert.strictEqual(chartRows.length, 3, "one bar per source: the agent plus both tools");
@@ -622,15 +655,25 @@ function textOf(node) {
   prefs.argMode = "tool";
   assert.strictEqual(prefs.argMode, "tool", "the default mode stays per-tool");
 
+  /* Three tabs keep the dialog short: distribution, amplified, details. */
+  const tabs = body.querySelectorAll(".wsr-stats-tab");
+  assert.strictEqual(tabs.length, 3, "three tabs");
+  assert.deepStrictEqual(tabs.map((button) => button.textContent), ["Distribution", "Amplified", "Details"]);
+  const distributionPanel = body.querySelectorAll(".wsr-stats-panel")[0];
+  const amplifiedPanel = body.querySelector(".wsr-amplified").parentElement;
   const details = body.querySelector(".wsr-stats-details");
-  assert.strictEqual(details.style.display, "none", "the table starts folded");
-  const toggle = body.querySelector(".wsr-details-toggle");
-  assert.strictEqual(toggle.textContent, "Show details");
-  toggle.click();
-  assert.strictEqual(details.style.display, "", "the toggle unfolds the detail table");
-  assert.strictEqual(toggle.textContent, "Hide details");
-  toggle.click();
-  assert.strictEqual(details.style.display, "none", "and folds it again");
+  assert.strictEqual(distributionPanel.style.display, "", "distribution is the default tab");
+  assert.strictEqual(amplifiedPanel.style.display, "none", "the amplified tab starts hidden");
+  assert.strictEqual(details.style.display, "none", "the details tab starts hidden");
+  tabs[1].click();
+  assert.strictEqual(amplifiedPanel.style.display, "", "the amplified tab shows its panel");
+  assert.strictEqual(distributionPanel.style.display, "none", "the other panel is hidden");
+  tabs[2].click();
+  assert.strictEqual(details.style.display, "", "the details tab shows the table");
+  assert.ok(details.querySelector(".wsr-stats-table") !== null, "the table lives in the details tab");
+  tabs[0].click();
+  assert.strictEqual(distributionPanel.style.display, "", "back to distribution");
+  assert.strictEqual(details.style.display, "none", "details hidden again");
 
   panel.querySelector(".wsr-modal-close").click();
   assert.strictEqual(overlayRoot.children.indexOf(backdrop), -1, "closing removes the modal");

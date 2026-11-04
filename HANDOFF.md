@@ -1,4 +1,4 @@
-# dsh-ws-recency — 交接说明（截至 0.24.2）
+# dsh-ws-recency — 交接说明（截至 0.25.0）
 
 > 给下一个会话用的现状快照。先读这一页，再按需看代码。
 
@@ -12,9 +12,9 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，当前 `0.24.2` |
-| 最新已发布 tag / Release | `v0.24.2`（附件 `dsh-ws-recency-0.24.2.tgz`） |
-| 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已提 |
+| npm | `dsh-ws-recency`，已发布 `0.24.1`；本地 `0.25.0` 待发（含 0.24.2 的两个修复 + 放大成本分析） |
+| 最新已发布 tag / Release | `v0.24.1`（附件 `dsh-ws-recency-0.24.1.tgz`）；本地 tag `v0.25.0` 待打 |
+| 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
 
@@ -25,7 +25,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 3. **三色标记**：运行中=蓝、完成未读=绿、手动「需要跟进」=琥珀；标记只能手动取消；点通过 `sidebar.session.row.leading` 插槽渲染；带跟进标记的会话永不折叠。
 4. **全局置顶区**：用宿主自己的 `pinnedSessionIds`，在分组之上单独一区；置顶行在原分组隐藏；点行走 `uiWorkspace.openSession(id)`，取不到就退回点宿主那行。
 5. **删除会话 → 回收站**：`…` 菜单；停会话 → 摘归档/置顶 → 按 **workspace.json 原始记录** detach → 删投影缓存 → 日志目录移到 `.trash/ws-recency/<id>-<时间戳>/`，并写 `.wsr-trash.json`（sessionId/cwd/reason/at/title/统计）。
-6. **Token 消耗统计**：会话菜单 + 输入框下方统计条末尾的「用量分析」pill；宿主路由 `/ws-recency/session-stats`；真实 usage（input/cacheRead/output/total）+ 按来源估算拆分；条形图为主、明细表折叠；色相由工具身份决定，明艳度按排名递减；每个工具那条 bar 拆两段（参数=淡色 `sourceColorDim`，结果=实色 `sourceColor`），`argMode` 可把参数并进主 agent。
+6. **Token 消耗统计**：会话菜单 + 输入框下方统计条末尾的「用量分析」pill；宿主路由 `/ws-recency/session-stats`；真实 usage（input/cacheRead/output/total）+ 按来源估算拆分；条形图为主；色相由工具身份决定，明艳度按排名递减；每个工具那条 bar 拆两段（参数=淡色 `sourceColorDim`，结果=实色 `sourceColor`），`argMode` 可把参数并进主 agent。0.25.0 起面板分三个 tab：**分布统计 / 放大归因 / 明细**（5 张摘要卡片常驻顶部，模块级 `statsTab` 记住上次选择；放大归因 tab 仅在宿主返回 `amplified` 时出现）。放大成本 / 账单归因：账单=Σ每步(input+cacheRead)，每块内容成本 = 内容 token × 之后被重读的步数（压缩点截断），返回 `amplified.bill/attributed/share/series/byKind/blocks`；放大排行给进入步、原始 token、重读次数、放大后、占账单、压到 20% 省多少。
 7. **移动到工作区**：菜单选择目标；重写 header 的 cwd（persistence `create` + `append` 回放全部事件），旧日志先移进回收站做备份；同步 live session header 与工作区 header 索引后再 attach、再 detach；任何失败回滚。
 8. **回收站面板**：`sidebar.panellist` 注册「回收站」，`main` 区域渲染页面：两段——「已删除的会话」和「已归档的会话」（宿主的 `archivedSessionIds`：取消归档 / 移到回收站 / 彻底删除）；另有刷新列表 / 刷新界面 / 扫描并刷新。
 9. **归档集成**：归档仍是宿主动作，插件只接管管理界面。列表数据：`workspaceRegistry.archivedSessionIds` + `sessionPersistence.list()` + 投影缓存（标题→第一条 prompt→会话 id）；按 lastAt 倒序；取消归档走 `workspaceRegistry.unarchiveSession`，槽位不在就按 cwd 重新 attach。
@@ -67,11 +67,24 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 
 卡片本身挂在 `conversation.chat.turnTail`，该槽**每轮渲染一次**，因此 `ready` 状态带 `turn`，只在 `props.turn === state.turn` 的那一轮显示；`running` 的提示行只显示在 `turn > afterTurn`（点击时最大轮次）的尾部。
 
+## 放大成本 / 账单归因（0.25.0）
+
+账单 = 每步 `input+cacheRead` 之和；每块内容进入上下文后会在后续每一步被重读，所以它的成本是 `tokens × (压缩前剩余步数)`。`aggregateSession` 的 `amplified` 字段：
+
+- `bill`：Σ每步上下文（真实 usage）。
+- `series`：按步下采样到 ≤96 点的上下文曲线。
+- `byKind`：`results / args / agent / user / system` 的放大成本与占账单比例。
+- `blocks`：前 15 个内容块（工具调用为主），含 `entry`（第几步进入，1 基）、`remaining`（之后重读次数）、`tokens`、`amplified`、`share`、`saving`（压到 20% 可省）。
+- 思维链不计入：多数 provider 不回传，算了会虚高。
+- 压缩事件（事件名含 `compact`）会把早于压缩点的块截断；当前实现按「`at >= entry` 即被压缩」处理，偏保守。
+
+实测（本会话 354 步，账单 94.8M）：工具结果放大后占 42.7%，参数 11.1%；最贵的是同一份 `index.js` 被 read 两次（9,221 和 8,753 token，分别放大成 3.22M / 3.05M），两笔合计 6.6% 账单——这就是「小数字 × 剩余步数」的解释力。
+
 ## 代码结构
 
-- `index.js`（宿主半，~64KB）：路由、回收站、归档集合的列表/取消归档/彻底删除、移动、统计聚合、交接 tail/save、`announceSession`、`projectKey`、`rawWorkspaceMembership`、`cachedCheckpoint`。
-- `client.js`（客户端半，~188KB）：DOM pass（排序/折叠/标记/置顶）、菜单项、统计面板、移动面板、回收站页面（卡片）、设置行、交接（状态 observable + 官方 prompt 发送 + 轮询 + 问询卡）、`t()` 本地字典回退。
-- `tests/selfcheck.cjs`（客户端 DOM：排序/折叠/标记/置顶/统计/交接卡/交接块切分/官方发送与降级）、`tests/archive-page.cjs`（回收站页面渲染 + 动作）、`tests/handoff.cjs`（宿主 tail/save/守卫）、`tests/stats.cjs`、`tests/move.cjs`、`tests/trash.cjs`、`tests/archive.cjs`（宿主）。
+- `index.js`（宿主半，~68KB）：路由、回收站、归档集合的列表/取消归档/彻底删除、移动、统计聚合与放大归因、交接 tail/save、`announceSession`、`projectKey`、`rawWorkspaceMembership`、`cachedCheckpoint`。
+- `client.js`（客户端半，~200KB）：DOM pass（排序/折叠/标记/置顶）、菜单项、统计面板（含放大排行与上下文曲线）、移动面板、回收站页面（卡片）、设置行、交接（状态 observable + 官方 prompt 发送 + 轮询 + 问询卡）、`t()` 本地字典回退。
+- `tests/selfcheck.cjs`（客户端 DOM：排序/折叠/标记/置顶/统计与放大面板/交接卡/交接块切分/官方发送与降级）、`tests/archive-page.cjs`（回收站页面渲染 + 动作）、`tests/handoff.cjs`（宿主 tail/save/守卫）、`tests/stats.cjs`（聚合 + 放大归因 + 压缩截断 + 持久层）、`tests/move.cjs`、`tests/trash.cjs`、`tests/archive.cjs`（宿主）。
 - `README.md`（用户文档）、`PUBLISHING.md`（发布流程）、`awesome-entry.yml`（市场条目模板）。
 
 ## 踩过的坑（重要，别重犯）
@@ -93,6 +106,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 15. **菜单项的交接必须和动作行共用一条发送路径**：0.24.0 的「…」菜单项调用的是 0.20 删掉的 `openHandoffPanel`，点一次抛一次 `ReferenceError`，测试只断言了渲染没断言 onSelect。现在菜单项 = `openSession(id)` + `startHandoff(id)`，`selfcheck` 会真的点它并断言 `sessions.using` 收到 prompt。
 16. **交接卡不能只看「最后一条回复」**：0.24.1 及以前一看到新 assistant 消息就解析 `tail` 的 `text`，而 `text` 可能是上一轮留下的旧交接块（本轮先落的是工具步骤）→ 点完交接 1.5 秒就弹卡。必须同时满足「本轮已结束」+「文本序号晚于点击水位」；卡片的 `turnTail` 槽每轮都有，还要只认产生它的那一轮。回归断言在 `selfcheck` 的 `readyOf` 与 turn 匹配两条。
 17. **别用 `window.confirm` / `window.alert`**：Windows 上 Electron 的原生确认框关闭后渲染进程没有键盘焦点——输入框点不进去、切换会话也没用，切到别的应用再切回来才恢复（用户实测：删除会话后必现）。插件内所有确认都改成页面内 `askConfirm`/`askNotice`（遮罩 + 文案 + 取消/确认，Escape 取消，焦点在确认按钮，关掉后把焦点还给原元素）；`closeStatsPanel` 会连带关闭确认层。新增原生对话框前先想想这个坑。
+18. **别按步骤排行「最贵的一步」**：每步的 token 就是当时的上下文（354 步的会话约 24 万/步，几乎相同），排第一永远是最后一步，数字大但不可操作。要看「内容块 × 之后还剩多少步」：一次 9k token 的 read 在第 6 步进入、后面还有 349 步，折合 322 万 token（3.4% 账单）。用户明确说过按步骤的排行「无法形成放大的直接结论」，这版就是按这个反馈做的。
 
 ## 测试与发布
 
@@ -124,8 +138,10 @@ node tests/handoff.cjs
 - `client.js` 里还有无入口的死代码：旧弹窗 `openTrashPanel` + `TrashFooterAction`（改走 `sidebar.panellist` 后没再注册）——可清理。
 - 交接的两次发送 0.24.1 起走宿主 Session 控制器；0.24.1 已在真实界面走通。0.24.2 的「等本轮结束 + 只认新一轮 + 卡片只挂当轮」需要重启后再走一遍：点交接后处理期间不应再弹卡，结束后卡片只出现在最后一轮下方。
 - 0.24.2 的页面内确认框也要实测一次：删除会话后立即点输入框应能聚焦（旧版用系统 confirm，关掉后要切走应用再回来）。
+- 0.25.0 的放大面板要在重启后的真实界面确认渲染（数据已用真实会话离线验证：354 步、账单 94.8M、工具结果放大后占 42.7%、最贵两条是同一份 `index.js` 的两次 read，合计 6.6% 账单）。
 - 归档卡片的 token 首次读取较慢（已按日志大小缓存，第二次起快了）。
-- 市场目录（dshmarket）里仍显示 0.9.2，等目录重新生成；本地 `awesome-entry.yml` 已补上交接功能描述，随下一次条目 PR 生效。
+- 市场目录 11-04 nightly 已刷新到 0.24.1（目录包 `2026.1104.14928`）；0.25.0 发布后要等下一个 nightly（约 12:25）才进目录，push 构建不重新探测 npm。
+- 可以接着做：同一文件的多次 read / 重复命令的聚合提示（放大排行的 `detail` 已经能看出来，做成「同一文件 N 次、合计 X% 账单」更直接）。
 - 图表色相哈希可能有碰撞，少数工具同色。
 - 移动到工作区**不搬文件**（设计如此，界面上有提示）。
 - 折叠依赖宿主 `sessionOverflowButton` 类名；宿主改版会失效（失效只是少一个折叠控件）。

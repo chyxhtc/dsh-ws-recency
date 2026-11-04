@@ -67,6 +67,41 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   const share = pwsh.share + stats.estimate.agent.share;
   assert.ok(Math.abs(share - 1) < 1e-9, "shares add up to 1");
 
+  /* ---------- amplified cost: content x remaining steps ------------------ */
+  const amplified = stats.amplified;
+  assert.strictEqual(amplified.steps, 2);
+  assert.strictEqual(amplified.bill, 1030, "the bill is the real per-step context sum");
+  assert.deepStrictEqual(amplified.series.map((point) => point.context), [1000, 30], "the context curve comes from real usage");
+  assert.ok(Math.abs(amplified.share - 18 / 1030) < 1e-9, "the attributed share is the amplified total over the bill");
+  const topBlock = amplified.blocks.find((block) => block.kind === "tool");
+  assert.ok(topBlock !== undefined, "the tool call is attributed");
+  assert.strictEqual(topBlock.name, "pwsh");
+  assert.strictEqual(topBlock.detail, "ls", "the argument JSON names what was touched");
+  assert.strictEqual(topBlock.entry, 2, "it enters before the second step");
+  assert.strictEqual(topBlock.remaining, 1, "one later step re-reads it");
+  assert.strictEqual(topBlock.tokens, 8);
+  assert.strictEqual(topBlock.amplified, 8, "one re-read leaves the tokens unchanged");
+  assert.strictEqual(topBlock.saving, 6);
+  const kinds = Object.fromEntries(amplified.byKind.map((entry) => [entry.kind, entry]));
+  assert.deepStrictEqual(Object.keys(kinds).sort(), ["agent", "args", "results", "user"]);
+  assert.strictEqual(kinds.user.amplified, 8, "the user message entered before step 1, so it is re-read twice");
+  assert.strictEqual(kinds.args.amplified, 4);
+  assert.strictEqual(kinds.results.amplified, 4);
+  assert.strictEqual(kinds.agent.amplified, 2);
+
+  /* A compaction stops the re-reading of what it folded away. */
+  const compacted = mod.aggregateSession([
+    { type: "user/message", data: { message: { content: [{ type: "text", text: "abcdefgh" }] } } },
+    { type: "assistant/message", data: { usage: { inputTokens: 10, cacheReadTokens: 0, outputTokens: 1, totalTokens: 11 }, message: { content: [{ type: "text", text: "ok" }] } } },
+    { type: "context/compacted", data: {} },
+    { type: "assistant/message", data: { usage: { inputTokens: 20, cacheReadTokens: 0, outputTokens: 1, totalTokens: 21 }, message: { content: [{ type: "text", text: "done" }] } } },
+  ]);
+  assert.strictEqual(compacted.amplified.bill, 30);
+  assert.strictEqual(compacted.amplified.blocks[0].kind, "user");
+  assert.strictEqual(compacted.amplified.blocks[0].entry, 1, "the user message entered before step 1");
+  assert.strictEqual(compacted.amplified.blocks[0].remaining, 1, "the compaction limits it to the one step it was in");
+  assert.strictEqual(compacted.amplified.blocks[0].amplified, 2);
+
   /* A tool call without its own tool/call record still lands in the table. */
   const orphan = mod.aggregateSession([
     {

@@ -233,8 +233,6 @@
           ".wsr-chart-legend-text{white-space:nowrap}",
           ".wsr-chart-value{text-align:right;font-variant-numeric:tabular-nums}",
           ".wsr-chart-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
-          ".wsr-details-toggle{align-self:flex-start;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer;padding:2px 0}",
-          ".wsr-details-toggle:hover{color:var(--dsw-alias-label-primary)}",
           ".wsr-stats-details{display:flex;flex-direction:column;gap:8px}",
           ".wsr-stats-table{display:flex;flex-direction:column}",
           ".wsr-stats-row{display:grid;grid-template-columns:1.4fr .6fr .8fr .8fr .8fr .6fr;gap:6px;padding:6px 4px;border-bottom:.5px solid rgba(255,255,255,.06)}",
@@ -244,6 +242,35 @@
           ".wsr-td-strong{font-weight:600}",
           ".wsr-td-dim{color:var(--dsw-alias-label-tertiary);opacity:.65}",
           ".wsr-stats-note{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}",
+          /* Three views, one dialog: distribution, amplification, details. */
+          ".wsr-stats-tabs{display:flex;gap:2px;border-bottom:.5px solid rgba(255,255,255,.08)}",
+          ".wsr-stats-tab{border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;padding:6px 10px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-.5px}",
+          ".wsr-stats-tab:hover{color:var(--dsw-alias-label-primary)}",
+          ".wsr-stats-tab-active{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary,#4f7cff)}",
+          ".wsr-stats-panels{display:flex;flex-direction:column;gap:10px}",
+          ".wsr-stats-panel{display:flex;flex-direction:column;gap:10px}",
+          /* Amplified cost: the bill is the area under the context curve, so the
+             ranking is by content x remaining steps, not by step tokens. */
+          ".wsr-amplified{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
+          ".wsr-amplified-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}",
+          ".wsr-amplified-title{font-size:12px;font-weight:600}",
+          ".wsr-amplified-summary{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-context-chart{display:flex;align-items:flex-end;gap:2px;height:54px;padding-top:4px;border-bottom:.5px solid rgba(255,255,255,.08)}",
+          ".wsr-context-bar{flex:1;min-width:1px;border-radius:1px 1px 0 0;background:linear-gradient(180deg,rgba(79,124,255,.9),rgba(79,124,255,.3))}",
+          ".wsr-context-caption{font-size:10px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-kind-legend{display:flex;flex-wrap:wrap;gap:10px}",
+          ".wsr-kind{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-kind-dot{width:8px;height:8px;border-radius:2px;flex:none}",
+          ".wsr-amplified-list{display:flex;flex-direction:column;gap:2px}",
+          ".wsr-amplified-row{display:grid;grid-template-columns:1fr 76px 48px;gap:8px;align-items:start;padding:6px 0;border-bottom:.5px solid rgba(255,255,255,.06)}",
+          ".wsr-amplified-main{min-width:0;display:flex;flex-direction:column;gap:1px}",
+          ".wsr-amplified-name{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-amplified-detail{font-size:11px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}",
+          ".wsr-amplified-meta{font-size:10px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-amplified-value{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px}",
+          ".wsr-amplified-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-size:11px;font-variant-numeric:tabular-nums}",
+          ".wsr-amplified-if{grid-column:1 / -1;font-size:10px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-amplified-empty{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-toggle{width:100%;height:28px;padding:0 12px 0 calc(28px + var(--dsh-workspace-indent,0px));cursor:pointer;text-align:left;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;font-size:12px}",
           ".wsr-toggle:hover{color:var(--dsw-alias-label-secondary)}",
           '[' + STATE_ATTR + '="running"] [class*="_title"]{color:#4f8ef7}',
@@ -384,12 +411,26 @@
           "archive.workspace": "工作区",
           "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
-          "stats.details.show": "显示明细 ▾",
-          "stats.details.hide": "收起明细 ▴",
           "composer.analysis": "用量分析",
           "stats.legend.args": "参数（模型写的）",
           "stats.legend.results": "结果（环境返回的）",
           "stats.argModeNote": "当前把工具参数计入主 agent：每个工具只算返回结果，表格里「参数」列显示为淡色（那些 token 记在主 agent 那一行）。",
+          "stats.amplified.title": "放大成本（账单归因）",
+          "stats.amplified.summary": "账单 {bill} token；可归因内容经重读放大后占 {share}（{attributed}）",
+          "stats.amplified.contextCaption": "每步上下文（面积≈账单）：越早进入的内容被重读越多",
+          "stats.amplified.point": "第 {step} 步 · {context}",
+          "stats.amplified.meta": "第 {entry} 步进入 · {tokens} token × {remaining} 次重读",
+          "stats.amplified.whatIf": "若压到 20%，可省 {save}（{share}）",
+          "stats.amplified.empty": "没有可归因的放大内容（压缩后或旧日志可能缺失）",
+          "stats.amplified.note": "放大成本按内容长度估算；账单总量来自真实 usage。思维链通常不回传，故未计入。",
+          "stats.amplified.results": "工具结果",
+          "stats.amplified.args": "工具参数",
+          "stats.amplified.agent": "主 agent 输出",
+          "stats.amplified.user": "用户消息",
+          "stats.amplified.system": "系统消息",
+          "stats.tab.distribution": "分布统计",
+          "stats.tab.amplified": "放大归因",
+          "stats.tab.details": "明细",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
           "confirm.cancel": "\u53d6\u6d88",
@@ -517,12 +558,26 @@
           "archive.workspace": "workspace",
           "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
-          "stats.details.show": "Show details",
-          "stats.details.hide": "Hide details",
           "composer.analysis": "Usage analysis",
           "stats.legend.args": "arguments (written by the model)",
           "stats.legend.results": "results (returned by the environment)",
           "stats.argModeNote": "Tool arguments currently count towards the agent: each tool shows only its results, and the table's \"args\" column is faded because those tokens sit on the agent's row.",
+          "stats.amplified.title": "Amplified cost (what the bill pays for)",
+          "stats.amplified.summary": "Bill {bill} tokens; attributable content amplifies to {share} ({attributed})",
+          "stats.amplified.contextCaption": "Context per step (area ≈ bill): earlier content is re-read more",
+          "stats.amplified.point": "step {step} · {context}",
+          "stats.amplified.meta": "entered at step {entry} · {tokens} tokens × {remaining} re-reads",
+          "stats.amplified.whatIf": "at 20%, saves {save} ({share})",
+          "stats.amplified.empty": "No amplifiable content (compacted or older logs may lack it)",
+          "stats.amplified.note": "Amplified cost is estimated from content length; the bill total comes from real usage. Reasoning is usually not resent, so it is excluded.",
+          "stats.amplified.results": "tool results",
+          "stats.amplified.args": "tool arguments",
+          "stats.amplified.agent": "agent output",
+          "stats.amplified.user": "user messages",
+          "stats.amplified.system": "system messages",
+          "stats.tab.distribution": "Distribution",
+          "stats.tab.amplified": "Amplified",
+          "stats.tab.details": "Details",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
           "confirm.cancel": "Cancel",
@@ -550,7 +605,14 @@
           }
           var dictionary = fallbackDictionary();
           var text = (dictionary && dictionary[key]) || key;
-          if (params !== undefined && params.n !== undefined) text = text.replace("{n}", String(params.n));
+          /* The host's translate may interpolate; the local fallback has to do
+             it itself, or every template would render its braces verbatim. */
+          if (params !== undefined && params !== null) {
+            for (var name in params) {
+              if (!Object.prototype.hasOwnProperty.call(params, name)) continue;
+              text = text.split("{" + name + "}").join(String(params[name]));
+            }
+          }
           return text;
         }
 
@@ -1482,6 +1544,8 @@
         /* ------------------------- token statistics ------------------------- */
 
         var statsModal = null;
+        /** Which stats tab stays selected across openings. */
+        var statsTab = "distribution";
 
         function formatTokens(value) {
           var n = Number(value) || 0;
@@ -1774,6 +1838,99 @@
           return "hsl(" + hue + ", " + saturation + "%, " + lightness + "%)";
         }
 
+        var AMPLIFIED_KIND = {
+          results: ["stats.amplified.results", "#4f8ef7"],
+          args: ["stats.amplified.args", "#8fa3c8"],
+          agent: ["stats.amplified.agent", "#7a6cff"],
+          user: ["stats.amplified.user", "#6fbf73"],
+          system: ["stats.amplified.system", "#c9a227"],
+        };
+
+        /**
+         * The bill's shape, then its amplified ranking.
+         *
+         * A step's token count is just "context at that moment", which is nearly
+         * the same on every step; the number that explains the bill is a content
+         * block's tokens times the number of later steps that re-read it. The
+         * host half computes that attribution; this only draws it.
+         */
+        function buildAmplified(stats) {
+          var amplified = stats.amplified;
+          if (amplified === null || amplified === undefined || !Array.isArray(amplified.series)) return null;
+          var bill = Number(amplified.bill) || 0;
+          var section = statsDiv("wsr-amplified");
+
+          var head = statsDiv("wsr-amplified-head");
+          head.appendChild(statsDiv("wsr-amplified-title", t("stats.amplified.title")));
+          head.appendChild(statsDiv("wsr-amplified-summary", t("stats.amplified.summary", {
+            bill: formatTokens(bill),
+            share: formatShare(Number(amplified.share) || 0),
+            attributed: formatTokens(amplified.attributed || 0),
+          })));
+          section.appendChild(head);
+
+          var series = amplified.series;
+          var largest = 1;
+          for (var i = 0; i < series.length; i += 1) {
+            if (Number(series[i].context) > largest) largest = Number(series[i].context);
+          }
+          var chart = statsDiv("wsr-context-chart");
+          for (var j = 0; j < series.length; j += 1) {
+            var bar = statsDiv("wsr-context-bar");
+            bar.style.height = Math.max(2, Math.round((Number(series[j].context) / largest) * 100)) + "%";
+            bar.setAttribute("title", t("stats.amplified.point", { step: String(series[j].step), context: formatTokens(series[j].context) }));
+            chart.appendChild(bar);
+          }
+          section.appendChild(chart);
+          section.appendChild(statsDiv("wsr-context-caption", t("stats.amplified.contextCaption")));
+
+          var kinds = amplified.byKind || [];
+          if (kinds.length > 0) {
+            var legend = statsDiv("wsr-kind-legend");
+            for (var k = 0; k < kinds.length; k += 1) {
+              var kind = kinds[k];
+              var known = AMPLIFIED_KIND[kind.kind];
+              var item = statsDiv("wsr-kind");
+              var dot = statsDiv("wsr-kind-dot");
+              dot.style.background = known === undefined ? "#9aa0a6" : known[1];
+              item.appendChild(dot);
+              item.appendChild(statsDiv("", t(known === undefined ? kind.kind : known[0]) + " " + formatShare(kind.share || 0)));
+              legend.appendChild(item);
+            }
+            section.appendChild(legend);
+          }
+
+          var list = statsDiv("wsr-amplified-list");
+          var blocks = amplified.blocks || [];
+          if (blocks.length === 0) list.appendChild(statsDiv("wsr-amplified-empty", t("stats.amplified.empty")));
+          for (var b = 0; b < blocks.length; b += 1) {
+            var block = blocks[b];
+            var known = AMPLIFIED_KIND[block.kind];
+            var row = statsDiv("wsr-amplified-row");
+            var main = statsDiv("wsr-amplified-main");
+            main.appendChild(statsDiv("wsr-amplified-name", block.kind === "tool" ? String(block.name) : t(known === undefined ? block.kind : known[0])));
+            if (typeof block.detail === "string" && block.detail !== "") main.appendChild(statsDiv("wsr-amplified-detail", block.detail));
+            main.appendChild(statsDiv("wsr-amplified-meta", t("stats.amplified.meta", {
+              entry: String(block.entry),
+              tokens: formatTokens(block.tokens),
+              remaining: String(block.remaining),
+            })));
+            row.appendChild(main);
+            row.appendChild(statsDiv("wsr-amplified-value", formatTokens(block.amplified)));
+            row.appendChild(statsDiv("wsr-amplified-share", formatShare(block.share || 0)));
+            if (Number(block.remaining) > 0 && Number(block.saving) > 0) {
+              row.appendChild(statsDiv("wsr-amplified-if", t("stats.amplified.whatIf", {
+                save: formatTokens(block.saving),
+                share: formatShare(Number(block.saving) / (bill > 0 ? bill : 1)),
+              })));
+            }
+            list.appendChild(row);
+          }
+          section.appendChild(list);
+          section.appendChild(statsDiv("wsr-stats-note", t("stats.amplified.note")));
+          return section;
+        }
+
         function renderStats(body, stats) {
           body.textContent = "";
           while (body.firstChild !== null) body.removeChild(body.firstChild);
@@ -1797,6 +1954,10 @@
             grid.appendChild(card);
           }
           body.appendChild(grid);
+
+          /* Three views instead of one long page: distribution, amplification,
+             details. The summary cards stay above the tabs for every view. */
+          var amplifiedSection = buildAmplified(stats);
 
           var tools = estimate.tools || [];
           var mode = argModeOf();
@@ -1850,16 +2011,12 @@
           var largest = 1;
           for (var m = 0; m < entries.length; m += 1) if (entries[m].value > largest) largest = entries[m].value;
           for (var k = 0; k < entries.length; k += 1) chart.appendChild(chartBar(entries[k], largest));
-          body.appendChild(chart);
+          var distributionPanel = statsDiv("wsr-stats-panel");
+          distributionPanel.appendChild(chart);
+          distributionPanel.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
 
-          /* The table is the detail view: folded away until asked for. */
-          var toggle = document.createElement("button");
-          toggle.type = "button";
-          toggle.className = "wsr-details-toggle";
-          toggle.textContent = t("stats.details.show");
-
-          var details = statsDiv("wsr-stats-details");
-          details.style.display = "none";
+          /* The table is now its own tab instead of a folded section. */
+          var detailsPanel = statsDiv("wsr-stats-panel wsr-stats-details");
 
           var table = statsDiv("wsr-stats-table");
           var head = document.createElement("div");
@@ -1875,24 +2032,57 @@
             var toolValue = mode === "agent" ? toolResults : (toolRow.total || toolArgs + toolResults);
             table.appendChild(statsRow(toolRow.name, toolRow.calls, toolArgs, toolResults, toolValue, shareOf(toolValue), mode === "agent"));
           }
-          details.appendChild(table);
-          details.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
+          detailsPanel.appendChild(table);
+          detailsPanel.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
             reasoning: formatTokens(agent.reasoning),
             text: formatTokens(agent.text),
             user: formatTokens(agent.user),
             system: formatTokens(agent.system),
           })));
+          if (mode === "agent") detailsPanel.appendChild(statsDiv("wsr-stats-note", t("stats.argModeNote")));
 
-          toggle.addEventListener("click", function () {
-            var open = details.style.display !== "none";
-            details.style.display = open ? "none" : "";
-            toggle.textContent = open ? t("stats.details.show") : t("stats.details.hide");
-          });
-
-          body.appendChild(toggle);
-          body.appendChild(details);
-          body.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
-          if (mode === "agent") body.appendChild(statsDiv("wsr-stats-note", t("stats.argModeNote")));
+          var tabs = statsDiv("wsr-stats-tabs");
+          tabs.setAttribute("role", "tablist");
+          var panels = statsDiv("wsr-stats-panels");
+          var defs = [["distribution", "stats.tab.distribution", distributionPanel]];
+          if (amplifiedSection !== null) {
+            var amplifiedPanel = statsDiv("wsr-stats-panel");
+            amplifiedPanel.appendChild(amplifiedSection);
+            defs.push(["amplified", "stats.tab.amplified", amplifiedPanel]);
+          }
+          defs.push(["details", "stats.tab.details", detailsPanel]);
+          var tabButtons = {};
+          var selectTab = function (id) {
+            statsTab = id;
+            for (var index = 0; index < defs.length; index += 1) {
+              var def = defs[index];
+              var active = def[0] === id;
+              if (tabButtons[def[0]] !== undefined) {
+                tabButtons[def[0]].className = "wsr-stats-tab" + (active ? " wsr-stats-tab-active" : "");
+                tabButtons[def[0]].setAttribute("aria-selected", active ? "true" : "false");
+              }
+              def[2].style.display = active ? "" : "none";
+            }
+          };
+          for (var d = 0; d < defs.length; d += 1) {
+            (function (def) {
+              var button = document.createElement("button");
+              button.type = "button";
+              button.className = "wsr-stats-tab";
+              button.setAttribute("role", "tab");
+              button.setAttribute("data-wsr-stats-tab", def[0]);
+              button.textContent = t(def[1]);
+              button.addEventListener("click", function () { selectTab(def[0]); });
+              tabButtons[def[0]] = button;
+              tabs.appendChild(button);
+              panels.appendChild(def[2]);
+            })(defs[d]);
+          }
+          var initialTab = statsTab;
+          if (initialTab === "amplified" && amplifiedSection === null) initialTab = "distribution";
+          selectTab(initialTab);
+          body.appendChild(tabs);
+          body.appendChild(panels);
         }
 
         function openStatsPanel(sessionId) {
