@@ -477,6 +477,28 @@ assert.strictEqual(A.rows[0].getAttribute("data-wsr-pin-hidden"), "true", "the o
 pinRow.click();
 assert.deepStrictEqual(service.opened, ["A-fresh-1"], "clicking a pinned row opens it");
 
+/* A pinned session keeps its colour: the host's copy is hidden, so the state
+   has to live on the plugin's own row as well. */
+statuses["A-fresh-1"] = { running: true };
+render();
+const runningPin = pinSection.querySelector(".wsr-pin-row");
+assert.strictEqual(runningPin.getAttribute("data-wsr-state"), "running", "a running pinned session is marked");
+statuses["A-fresh-1"] = { completionUnread: true };
+render();
+assert.strictEqual(pinSection.querySelector(".wsr-pin-row").getAttribute("data-wsr-state"), "unread", "a pinned session that finished unread is marked");
+statuses["A-fresh-1"] = {};
+render();
+assert.strictEqual(pinSection.querySelector(".wsr-pin-row").getAttribute("data-wsr-state"), null, "the mark clears with the state");
+
+/* A rebuild (title change) must paint the state too, not just the in-place pass. */
+statuses["A-fresh-1"] = { running: true };
+sessions.byId["A-fresh-1"].title = "renamed while running";
+render();
+assert.strictEqual(pinSection.querySelector(".wsr-pin-row").getAttribute("data-wsr-state"), "running", "a rebuilt pin row keeps the running state");
+sessions.byId["A-fresh-1"].title = "pinned one";
+statuses["A-fresh-1"] = {};
+render();
+
 /* ---------- pinned navigation never depends on one service call -------- */
 
 /* The row is the app's own way in, so it is the fallback for both failures. */

@@ -107,6 +107,9 @@
           ".wsr-pin-ws{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-pin-unpin{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px;visibility:hidden}",
           ".wsr-pin-row:hover .wsr-pin-unpin{visibility:visible}",
+          ".wsr-pin-row[" + STATE_ATTR + '="running"] .wsr-pin-title{color:#4f8ef7}',
+          ".wsr-pin-row[" + STATE_ATTR + '="unread"] .wsr-pin-title{color:#3fae6b}',
+          ".wsr-pin-row[" + STATE_ATTR + '="followup"] .wsr-pin-title{color:#d99a2b}',
           ".wsr-pin-unpin:hover{color:var(--dsw-alias-label-primary)}",
           ".wsr-pill{box-sizing:border-box;border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-variant-numeric:tabular-nums;line-height:inherit;white-space:nowrap;border-radius:var(--dsw-radius-sm,6px);display:inline-flex;align-items:center;gap:6px;padding:1px 8px;cursor:pointer}",
           ".wsr-pill:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));color:var(--dsw-alias-label-secondary,#cfd3d8)}",
@@ -1090,10 +1093,11 @@
           return false;
         }
 
-        function pinnedRowElement(item) {
+        function pinnedRowElement(item, state) {
           var row = document.createElement("div");
           row.className = "wsr-pin-row";
           row.setAttribute("data-row-key", "pin:" + item.id);
+          setRowState(row, state === undefined ? null : state);
           var title = document.createElement("span");
           title.className = "wsr-pin-title";
           title.textContent = item.title;
@@ -1122,8 +1126,7 @@
         }
 
         /** Hide the copies inside their own groups so nothing is listed twice. */
-        function hideOriginalRows(entries, pinnedIds) {
-          for (var i = 0; i < entries.length; i += 1) {
+        function hideOriginalRows(entries, pinnedIds) {          for (var i = 0; i < entries.length; i += 1) {
             var rows = rowElements(entries[i].section);
             for (var j = 0; j < rows.length; j += 1) {
               var id = sessionIdOf(rows[j]);
@@ -1138,6 +1141,30 @@
           }
         }
 
+        /** One session's running / unread / follow-up state, or null. */
+        function statesOfId(states, id) {
+          if (states === null || states === undefined || id === null || id === undefined || id === "") return null;
+          var state = states[id];
+          return state === undefined ? null : state;
+        }
+
+        /**
+         * Push the current state onto the pin rows already in the DOM.
+         *
+         * The section is rebuilt only when the pinned set or its labels change, so
+         * a session that starts running has to be recoloured in place - otherwise
+         * its row would keep the state it had when the section was last built.
+         */
+        function applyPinStates(host, states) {
+          if (host === null || typeof host.querySelectorAll !== "function") return;
+          var rows = host.querySelectorAll('[data-row-key^="pin:"]');
+          for (var i = 0; i < rows.length; i += 1) {
+            var key = rows[i].getAttribute("data-row-key");
+            var id = key === null ? "" : key.slice("pin:".length);
+            setRowState(rows[i], statesOfId(states, id));
+          }
+        }
+
         /**
          * Render the "pinned" section above every workspace group.
          *
@@ -1145,7 +1172,7 @@
          * (flex order -1), rebuilt only when the pinned set or its labels change. The
          * host keeps owning the list; the workspace grouping below is untouched.
          */
-        function renderPinned(entries, sessions, workspaces, settings) {
+        function renderPinned(entries, sessions, workspaces, settings, states) {
           if (typeof document === "undefined") return;
           var items = pinnedItemsOf(sessions, workspaces, settings);
 
@@ -1184,8 +1211,10 @@
             head.className = "wsr-pin-head";
             head.textContent = t("pin.head");
             pinHost.appendChild(head);
-            for (var i = 0; i < items.length; i += 1) pinHost.appendChild(pinnedRowElement(items[i]));
+            for (var i = 0; i < items.length; i += 1) pinHost.appendChild(pinnedRowElement(items[i], statesOfId(states, items[i].id)));
           }
+          /* The state can change while the pinned set stays the same. */
+          applyPinStates(pinHost, states);
           var pinnedIds = new Set(items.map(function (item) { return item.id; }));
           hideOriginalRows(entries, pinnedIds);
         }
@@ -1217,7 +1246,13 @@
          * is never inferred, and only an explicit clear removes it. Running and
          * unread outrank it on screen; once they pass, amber comes back.
          */
-        function decorateRows(entries, sessions, statuses, settings) {
+        /**
+         * running / unread / follow-up per session id.
+         *
+         * Both the host's rows and the plugin's own pinned rows read this, so a
+         * pinned session keeps the same colour it had inside its group.
+         */
+        function statesOf(sessions, statuses, settings) {
           var flags = settings.followUps;
           var byId = sessions.byId || {};
           var states = {};
@@ -1238,7 +1273,10 @@
             var flagged = flags[id] !== undefined;
             states[id] = running ? "running" : unread ? "unread" : flagged ? "followup" : null;
           }
+          return states;
+        }
 
+        function decorateRows(entries, states) {
           for (var i = 0; i < entries.length; i += 1) {
             var rows = rowElements(entries[i].section);
             for (var j = 0; j < rows.length; j += 1) {
@@ -1425,8 +1463,9 @@
 
           orderGroups(entries, latestByWorkspace(sessions, workspaces));
           foldRows(entries, settings, sessions, Date.now());
-          renderPinned(entries, sessions, workspaces, settings);
-          if (settings.colors) decorateRows(entries, sessions, data.statuses, settings);
+          var states = settings.colors ? statesOf(sessions, data.statuses, settings) : null;
+          renderPinned(entries, sessions, workspaces, settings, states);
+          if (states !== null) decorateRows(entries, states);
           decorateComposerStats();
         }
 
