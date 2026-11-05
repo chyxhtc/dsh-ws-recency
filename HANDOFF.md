@@ -12,8 +12,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，已发布 `0.24.1`；本地 `0.25.0` 待发（含 0.24.2 的两个修复 + 放大成本分析） |
-| 最新已发布 tag / Release | `v0.24.1`（附件 `dsh-ws-recency-0.24.1.tgz`）；本地 tag `v0.25.0` 待打 |
+| npm | `dsh-ws-recency`，已发布 `0.25.1`（0.25.0 同日发布，含一个置顶行状态色的修复） |
+| 最新已发布 tag / Release | `v0.25.1`（tag 已推；GitHub Release 附件 `dsh-ws-recency-0.25.1.tgz` 待建，本机无可用 GitHub token） |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
@@ -23,7 +23,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 1. **工作区分组排序**：按组内最新 `updatedAt` 写 flex `order`；若别处写了 `data-busy-rank` 则优先。
 2. **历史折叠**：超过 `foldDays`（默认 3 天）的会话折叠；宿主的「展开其余」按钮被 CSS 隐藏，由插件自己的 `展开历史 N` / `收起历史` 驱动（逐轮点隐藏按钮直到渲染完，靠 `aria-expanded` 停）；选中/运行中/等待中不折叠，空白草稿行不折叠；每 5 分钟重算。
 3. **三色标记**：运行中=蓝、完成未读=绿、手动「需要跟进」=琥珀；标记只能手动取消；点通过 `sidebar.session.row.leading` 插槽渲染；带跟进标记的会话永不折叠。
-4. **全局置顶区**：用宿主自己的 `pinnedSessionIds`，在分组之上单独一区；置顶行在原分组隐藏；点行走 `uiWorkspace.openSession(id)`，取不到就退回点宿主那行。
+4. **全局置顶区**：用宿主自己的 `pinnedSessionIds`，在分组之上单独一区；置顶行在原分组隐藏；点行走 `uiWorkspace.openSession(id)`，取不到就退回点宿主那行。置顶行与分组行共用同一套状态色（运行中/完成未读/需要跟进），0.25.1 起状态变化即时刷新（节不重建，只改行的 `data-wsr-state`）。
 5. **删除会话 → 回收站**：`…` 菜单；停会话 → 摘归档/置顶 → 按 **workspace.json 原始记录** detach → 删投影缓存 → 日志目录移到 `.trash/ws-recency/<id>-<时间戳>/`，并写 `.wsr-trash.json`（sessionId/cwd/reason/at/title/统计）。
 6. **Token 消耗统计**：会话菜单 + 输入框下方统计条末尾的「用量分析」pill；宿主路由 `/ws-recency/session-stats`；真实 usage（input/cacheRead/output/total）+ 按来源估算拆分；条形图为主；色相由工具身份决定，明艳度按排名递减；每个工具那条 bar 拆两段（参数=淡色 `sourceColorDim`，结果=实色 `sourceColor`），`argMode` 可把参数并进主 agent。0.25.0 起面板分三个 tab：**分布统计 / 放大归因 / 明细**（5 张摘要卡片常驻顶部，模块级 `statsTab` 记住上次选择；放大归因 tab 仅在宿主返回 `amplified` 时出现）。放大成本 / 账单归因：账单=Σ每步(input+cacheRead)，每块内容成本 = 内容 token × 之后被重读的步数（压缩点截断），返回 `amplified.bill/attributed/share/series/byKind/blocks`；放大排行给进入步、原始 token、重读次数、放大后、占账单、压到 20% 省多少。
 7. **移动到工作区**：菜单选择目标；重写 header 的 cwd（persistence `create` + `append` 回放全部事件），旧日志先移进回收站做备份；同步 live session header 与工作区 header 索引后再 attach、再 detach；任何失败回滚。
@@ -107,6 +107,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 16. **交接卡不能只看「最后一条回复」**：0.24.1 及以前一看到新 assistant 消息就解析 `tail` 的 `text`，而 `text` 可能是上一轮留下的旧交接块（本轮先落的是工具步骤）→ 点完交接 1.5 秒就弹卡。必须同时满足「本轮已结束」+「文本序号晚于点击水位」；卡片的 `turnTail` 槽每轮都有，还要只认产生它的那一轮。回归断言在 `selfcheck` 的 `readyOf` 与 turn 匹配两条。
 17. **别用 `window.confirm` / `window.alert`**：Windows 上 Electron 的原生确认框关闭后渲染进程没有键盘焦点——输入框点不进去、切换会话也没用，切到别的应用再切回来才恢复（用户实测：删除会话后必现）。插件内所有确认都改成页面内 `askConfirm`/`askNotice`（遮罩 + 文案 + 取消/确认，Escape 取消，焦点在确认按钮，关掉后把焦点还给原元素）；`closeStatsPanel` 会连带关闭确认层。新增原生对话框前先想想这个坑。
 18. **别按步骤排行「最贵的一步」**：每步的 token 就是当时的上下文（354 步的会话约 24 万/步，几乎相同），排第一永远是最后一步，数字大但不可操作。要看「内容块 × 之后还剩多少步」：一次 9k token 的 read 在第 6 步进入、后面还有 349 步，折合 322 万 token（3.4% 账单）。用户明确说过按步骤的排行「无法形成放大的直接结论」，这版就是按这个反馈做的。
+19. **插件自己画的置顶行拿不到宿主的状态装饰**：`decorateRows` 只按 `data-row-key="session:<id>"` 找宿主行，而置顶行是 `data-row-key="pin:<id>"` 的插件自建节点、宿主那行又被隐藏，所以运行中/未读的状态色全丢了（0.25.1 修）。修法是 `statesOf()` 统一算出 id→state，置顶行用它写 `data-wsr-state`；**别把状态塞进节的重建签名**——那个签名只该管「哪些 id、标题、工作区名」，加状态会让整节每步重建、还会吞掉 hover；用 `applyPinStates()` 每次 pass 原地刷属性。
+20. **GitHub 只能走 SSH + 代理，且 `connect.exe` 路径不能带空格**：本机 GCM 里的 HTTPS token 已失效（401），ssh 22 被墙。可用路径是在 `~/.ssh/config` 里给 `github.com` 加 `HostName ssh.github.com` / `Port 443` / `ProxyCommand C:/Users/Konka/.ssh/connect.exe -H 127.0.0.1:7897 %h %p`（connect.exe 从 Git 目录复制到无空格路径）。`ProxyCommand` 的值由 sh 解释，写成 `C:/Program Files/...` 会报 `/bin/sh: C:/Program: No such file or directory`；另外**别用 PowerShell 的 `Set-Content -Encoding UTF8` 改 `~/.ssh/config`**（PS 5.1 会写 BOM，ssh 直接 `Bad configuration option: \357\273\277host`），用 Node 的 UTF-8 写。GitHub 的 SSH 前端有缓存不一致：同一把钥匙会间歇性 `Permission denied (publickey)`，重试即可。
 
 ## 测试与发布
 
@@ -129,12 +131,13 @@ node tests/handoff.cjs
    - npm 11 是异步发布，PUT 返回 `202`；立刻 `npm view` 可能还是旧版本，等 1–3 分钟；
    - 期间重跑会报 `E409 Cannot publish over previously staged version`——不要再发请求，改轮询 `https://registry.npmjs.org/dsh-ws-recency/<version>`。
 5. `npm pack` 后建 GitHub Release 并上传 tgz：用 `undici` 的 `ProxyAgent("http://127.0.0.1:7897")` 走 `api.github.com` / `uploads.github.com`；
-   - 没有存 GitHub token，从 git 凭据里取：`git credential fill`（stdin: `protocol=https` / `host=github.com` / 空行）拿到 `gho_…`，用 `Authorization: Bearer <token>`；
+   - **2026-11-05 起本机没有可用的 GitHub token**：GCM 里的 `gho_…` 已失效（`api.github.com/user` 返 401），`git credential fill` 现在直接报 `Cannot prompt`。/settings/keys 里也没有本机 SSH key，是这次会话里现加的；
    - `undici` 不在仓库依赖里，用 `createRequire("D:/IDE/Hypers Work/resources/app/package.json")("undici")` 从应用目录解析；
    - 上传走 `POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=<file>`，`content-type: application/octet-stream`，成功返回 `201`。
 
 ## 已知遗留 / 可做
 
+- `v0.25.1` 的 GitHub Release 还没建（tag 已推，npm 已发；只差 `dsh-ws-recency-0.25.1.tgz` 附件，README 里的预构建包链接指向它）。本机没有 API token，要么用户给 PAT，要么在网页上拖一个附件上去。
 - `client.js` 里还有无入口的死代码：旧弹窗 `openTrashPanel` + `TrashFooterAction`（改走 `sidebar.panellist` 后没再注册）——可清理。
 - 交接的两次发送 0.24.1 起走宿主 Session 控制器；0.24.1 已在真实界面走通。0.24.2 的「等本轮结束 + 只认新一轮 + 卡片只挂当轮」需要重启后再走一遍：点交接后处理期间不应再弹卡，结束后卡片只出现在最后一轮下方。
 - 0.24.2 的页面内确认框也要实测一次：删除会话后立即点输入框应能聚焦（旧版用系统 confirm，关掉后要切走应用再回来）。
