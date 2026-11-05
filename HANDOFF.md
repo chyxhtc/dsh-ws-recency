@@ -13,7 +13,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
 | npm | `dsh-ws-recency`，已发布 `0.25.1`（0.25.0 同日发布，含一个置顶行状态色的修复） |
-| 最新已发布 tag / Release | `v0.25.1`（tag 已推；GitHub Release 附件 `dsh-ws-recency-0.25.1.tgz` 待建，本机无可用 GitHub token） |
+| 最新已发布 tag / Release | `v0.25.1`；Release 已建并带附件 `dsh-ws-recency-0.25.1.tgz`（75,908 字节），v0.25.0 tag 也一起推了但没有单独的 Release |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
@@ -137,7 +137,7 @@ node tests/handoff.cjs
 
 ## 已知遗留 / 可做
 
-- `v0.25.1` 的 GitHub Release 还没建（tag 已推，npm 已发；只差 `dsh-ws-recency-0.25.1.tgz` 附件，README 里的预构建包链接指向它）。本机没有 API token，要么用户给 PAT，要么在网页上拖一个附件上去。
+- `v0.25.1` 的 Release 已建、附件已上传并核验（HTTP 200 + Content-Length 75908）。上传用的 PAT 是用户在临时文件里给的，用完即删；下次发版还是要重新要 token，或改用 `gh auth login` 的 device flow。
 - `client.js` 里还有无入口的死代码：旧弹窗 `openTrashPanel` + `TrashFooterAction`（改走 `sidebar.panellist` 后没再注册）——可清理。
 - 交接的两次发送 0.24.1 起走宿主 Session 控制器；0.24.1 已在真实界面走通。0.24.2 的「等本轮结束 + 只认新一轮 + 卡片只挂当轮」需要重启后再走一遍：点交接后处理期间不应再弹卡，结束后卡片只出现在最后一轮下方。
 - 0.24.2 的页面内确认框也要实测一次：删除会话后立即点输入框应能聚焦（旧版用系统 confirm，关掉后要切走应用再回来）。
