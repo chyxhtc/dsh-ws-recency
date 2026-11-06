@@ -279,6 +279,20 @@
           '[' + STATE_ATTR + '="running"] [class*="_title"]{color:#4f8ef7}',
           '[' + STATE_ATTR + '="unread"] [class*="_title"]{color:#3fae6b}',
           '[' + STATE_ATTR + '="followup"] [class*="_title"]{color:#d99a2b}',
+          ".wsr-search-bar{display:flex;gap:8px;align-items:center}",
+          ".wsr-search-input{flex:1;min-width:0;height:30px;padding:0 10px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:inherit;font-size:13px}",
+          ".wsr-hit{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:8px;cursor:pointer}",
+          ".wsr-hit:hover{background:var(--dsw-alias-bg-layer-2)}",
+          ".wsr-hit-head{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-hit-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px}",
+          ".wsr-hit-role{flex:none;padding:0 6px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);font-size:10px}",
+          ".wsr-hit-user{color:#4f8ef7}",
+          ".wsr-hit-agent{color:#3fae6b}",
+          ".wsr-hit-ws{flex:none;max-width:30%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-hit-turn{flex:none}",
+          ".wsr-hit-snippet{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);word-break:break-word}",
+          ".wsr-mark{background:rgba(79,142,247,.28);color:inherit;border-radius:2px}",
+          '[data-wsr-flash="true"]{outline:2px solid #4f8ef7;outline-offset:2px;border-radius:8px}',
           ".wsr-dot{display:block;width:7px;height:7px;border-radius:50%;margin:0 auto;background:#d99a2b;cursor:pointer}",
           ".wsr-dot:hover{outline:2px solid var(--dsw-alias-border-l2)}",
           ".wsr-setRow{display:flex;align-items:center;gap:16px;justify-content:space-between;padding:12px 0}",
@@ -374,6 +388,17 @@
           "adopt.done": "已补登记 {n} 个会话。",
           "adopt.cleaned": "清理了 {n} 处重复/失效的工作区归属。",
           "adopt.failed": "扫描失败：",
+          "search.title": "搜索会话内容",
+          "search.placeholder": "输入关键词后回车；多个词用空格分隔，要求同时出现",
+          "search.run": "搜索",
+          "search.searching": "搜索中…",
+          "search.indexing": "还有 {n} 个会话正在建立索引，结果会陆续补上…",
+          "search.summary": "{hits} 处命中 · 共 {sessions} 个会话 · {ms} ms",
+          "search.empty": "没有匹配的内容。",
+          "search.failed": "搜索失败：",
+          "search.you": "你",
+          "search.assistant": "助手",
+          "search.turn": "第 {n} 轮",
           "ui.reload": "刷新界面",
           "ui.refresh": "刷新列表",
           "trash.title": "回收站",
@@ -522,6 +547,17 @@
           "adopt.done": "Re-attached {n} session(s).",
           "adopt.cleaned": " Cleared {n} stale membership(s).",
           "adopt.failed": "Scan failed: ",
+          "search.title": "Search session content",
+          "search.placeholder": "Type a word and press Enter; separate words with spaces to require all of them",
+          "search.run": "Search",
+          "search.searching": "Searching\u2026",
+          "search.indexing": "Still indexing {n} session(s); results will fill in\u2026",
+          "search.summary": "{hits} hit(s) across {sessions} session(s) \u00b7 {ms} ms",
+          "search.empty": "Nothing matched.",
+          "search.failed": "Search failed: ",
+          "search.you": "You",
+          "search.assistant": "Assistant",
+          "search.turn": "turn {n}",
           "ui.reload": "Reload UI",
           "ui.refresh": "Refresh",
           "trash.title": "Trash",
@@ -3210,6 +3246,263 @@
           });
         }
 
+        /* ---------- session content search -------------------------------- */
+
+        /** What the uncontrolled input holds; the panel keeps only results in state. */
+        var searchDraft = "";
+        /** Bumped per search so a slow answer cannot overwrite a newer one. */
+        var searchGeneration = 0;
+
+        function searchPost(body) {
+          return fetch("/ws-recency/search", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body || {}),
+          }).then(function (response) {
+            return response.text().then(function (text) {
+              var parsed = null;
+              try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
+              return { status: response.status, text: text, json: parsed };
+            });
+          });
+        }
+
+        function SearchPanelIcon(props) {
+          var Icon = ui.IconSearchOutlineRegular;
+          if (typeof Icon !== "function") return null;
+          var size = props !== undefined && props !== null && typeof props.size === "number" ? props.size : 16;
+          return h(Icon, { size: size });
+        }
+
+        function conversationScroller() {
+          if (typeof document === "undefined") return null;
+          try {
+            var direct = document.querySelector("[data-conversation-scroll]");
+            if (direct !== null) return direct;
+            /* The marker is the documented hook; without it, take the nearest
+               ancestor that actually scrolls rather than giving up. */
+            var anyRow = document.querySelector("[data-chat-turn]");
+            var node = anyRow === null ? null : anyRow.parentElement;
+            while (node !== null && node !== undefined) {
+              if (typeof node.scrollHeight === "number" && node.scrollHeight > node.clientHeight && node.clientHeight > 0) return node;
+              node = node.parentElement;
+            }
+            return null;
+          } catch (error) {
+            return null;
+          }
+        }
+
+        function turnRowOf(turn) {
+          if (typeof document === "undefined" || !isFinite(turn)) return null;
+          try {
+            return document.querySelector('[data-chat-turn="' + String(turn) + '"]');
+          } catch (error) {
+            return null;
+          }
+        }
+
+        /** Ring the row the search sent the user to, without taking keyboard focus. */
+        function flashTurnRow(row) {
+          try {
+            if (typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "center" });
+          } catch (error) {
+            /* some engines only accept the boolean form */
+          }
+          try {
+            row.setAttribute("data-wsr-flash", "true");
+            window.setTimeout(function () {
+              if (row.getAttribute("data-wsr-flash") !== null) row.removeAttribute("data-wsr-flash");
+            }, 2600);
+          } catch (error) {
+            /* the conversation may have been replaced while we waited */
+          }
+        }
+
+        /**
+         * Bring one turn of one session into view.
+         *
+         * The chat mounts recent turns first and loads older history as the
+         * scroller approaches its top, so this walks the scroller upwards until
+         * the turn exists, then centres it. Every step is DOM-only: nothing here
+         * steals focus or synthesises keystrokes.
+         */
+        function revealTurn(sessionId, turn) {
+          if (typeof document === "undefined" || !isFinite(turn)) return;
+          var deadline = Date.now() + 8000;
+          var steps = 0;
+          var tick = function () {
+            if (Date.now() > deadline) return;
+            if (currentConversationId() !== sessionId) {
+              window.setTimeout(tick, 150);
+              return;
+            }
+            var row = turnRowOf(turn);
+            if (row !== null) {
+              flashTurnRow(row);
+              return;
+            }
+            var scroller = conversationScroller();
+            if (scroller === null) {
+              window.setTimeout(tick, 150);
+              return;
+            }
+            if (steps >= 24) {
+              window.setTimeout(tick, 300);
+              return;
+            }
+            steps += 1;
+            var height = typeof scroller.clientHeight === "number" && scroller.clientHeight > 0 ? scroller.clientHeight : 600;
+            var top = Number(scroller.scrollTop) || 0;
+            scroller.scrollTop = Math.max(0, top - Math.max(240, height * 0.8));
+            window.setTimeout(tick, 260);
+          };
+          window.setTimeout(tick, 120);
+        }
+
+        function jumpToSearchHit(hit) {
+          openSessionRow(hit.sessionId);
+          revealTurn(hit.sessionId, hit.turn);
+        }
+
+        /** Snippet text with every query term wrapped in a mark. */
+        function highlightSnippet(snippet, terms) {
+          var text = typeof snippet === "string" ? snippet : "";
+          var lower = text.toLowerCase();
+          var ranges = [];
+          for (var i = 0; i < terms.length; i += 1) {
+            var term = String(terms[i] || "").toLowerCase();
+            if (term === "") continue;
+            var from = 0;
+            while (from < lower.length) {
+              var at = lower.indexOf(term, from);
+              if (at < 0) break;
+              ranges.push({ start: at, end: at + term.length });
+              from = at + term.length;
+            }
+          }
+          ranges.sort(function (a, b) { return a.start - b.start; });
+          var pieces = [];
+          var cursor = 0;
+          for (var j = 0; j < ranges.length; j += 1) {
+            var range = ranges[j];
+            if (range.start < cursor) continue;
+            if (range.start > cursor) pieces.push(h("span", { key: "t" + j }, text.slice(cursor, range.start)));
+            pieces.push(h("mark", { key: "m" + j, className: "wsr-mark" }, text.slice(range.start, range.end)));
+            cursor = range.end;
+          }
+          if (cursor < text.length) pieces.push(h("span", { key: "tail" }, text.slice(cursor)));
+          return pieces;
+        }
+
+        /**
+         * The search page: one input, one list of hits.
+         *
+         * The host answers with the sessions it managed to index inside its time
+         * budget plus how many are still pending, so this asks again until the
+         * index has caught up instead of making the user press search twice.
+         */
+        function SearchPanelPage() {
+          var state = react.useState({ loaded: false, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" });
+          var view = state[0];
+          var setView = state[1];
+
+          var run = function (text, refresh) {
+            var query = typeof text === "string" ? text.trim() : "";
+            searchGeneration += 1;
+            var generation = searchGeneration;
+            if (query === "") {
+              setView({ loaded: true, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" });
+              return;
+            }
+            setView({ loaded: true, query: query, hits: view.hits, terms: view.terms, scanned: view.scanned, total: view.total, pending: view.pending, took: view.took, busy: true, error: "" });
+            var ask = function (needRefresh) {
+              searchPost({ query: query, refresh: needRefresh === true }).then(function (answer) {
+                if (generation !== searchGeneration) return;
+                var json = answer.json;
+                if (json === null || json.ok !== true) {
+                  setView({ loaded: true, query: query, hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: t("search.failed") + "HTTP " + answer.status });
+                  return;
+                }
+                setView({
+                  loaded: true,
+                  query: query,
+                  hits: Array.isArray(json.hits) ? json.hits : [],
+                  terms: Array.isArray(json.terms) ? json.terms : [],
+                  scanned: json.scanned || 0,
+                  total: json.total || 0,
+                  pending: json.pending || 0,
+                  took: json.took || 0,
+                  busy: false,
+                  error: "",
+                });
+                if (json.pending > 0) {
+                  window.setTimeout(function () {
+                    if (generation === searchGeneration) ask(false);
+                  }, 150);
+                }
+              }).catch(function (error) {
+                if (generation !== searchGeneration) return;
+                setView({ loaded: true, query: query, hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: t("search.failed") + (error && error.message ? error.message : error) });
+              });
+            };
+            ask(refresh === true);
+          };
+
+          var input = h("input", {
+            className: "wsr-search-input",
+            type: "search",
+            placeholder: t("search.placeholder"),
+            defaultValue: "",
+            onChange: function (event) {
+              searchDraft = event !== undefined && event.target !== undefined ? String(event.target.value || "") : "";
+            },
+            onKeyDown: function (event) {
+              if (event !== undefined && event.key === "Enter") {
+                if (typeof event.preventDefault === "function") event.preventDefault();
+                run(searchDraft, false);
+              }
+            },
+          });
+
+          var rows = view.hits.map(function (hit, index) {
+            return h("div", {
+              className: "wsr-hit",
+              key: String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index),
+              title: hit.cwd || "",
+              onClick: function () { jumpToSearchHit(hit); },
+            },
+              h("div", { className: "wsr-hit-head" },
+                h("span", { className: "wsr-hit-role " + (hit.role === "user" ? "wsr-hit-user" : "wsr-hit-agent") }, hit.role === "user" ? t("search.you") : t("search.assistant")),
+                h("span", { className: "wsr-hit-title" }, hit.title || hit.sessionId || ""),
+                typeof hit.workspace === "string" && hit.workspace !== "" ? h("span", { className: "wsr-hit-ws" }, hit.workspace) : null,
+                h("span", { className: "wsr-hit-turn" }, t("search.turn", { n: String(hit.turn) })),
+              ),
+              h("div", { className: "wsr-hit-snippet" },
+                hit.lead === true ? "\u2026" : null,
+                highlightSnippet(hit.snippet || "", view.terms),
+                hit.tail === true ? "\u2026" : null,
+              ),
+            );
+          });
+
+          return h("div", { className: "wsr-page wsr-search-page" },
+            h("div", { className: "wsr-page-head" },
+              h("div", { className: "wsr-page-heading" }, t("search.title")),
+            ),
+            h("div", { className: "wsr-search-bar" },
+              input,
+              h("button", { type: "button", className: "wsr-btn", onClick: function () { run(searchDraft, false); } }, t("search.run")),
+            ),
+            view.busy ? h("div", { className: "wsr-page-note" }, t("search.searching")) : null,
+            view.error !== "" ? h("div", { className: "wsr-page-note wsr-page-error" }, view.error) : null,
+            view.pending > 0 ? h("div", { className: "wsr-page-note" }, t("search.indexing", { n: String(view.pending) })) : null,
+            view.loaded && !view.busy ? h("div", { className: "wsr-page-note" }, t("search.summary", { hits: String(view.hits.length), sessions: String(view.total), ms: String(view.took) })) : null,
+            view.loaded && !view.busy && view.hits.length === 0 ? h("div", { className: "wsr-page-note" }, t("search.empty")) : null,
+            h("div", { className: "wsr-page-list" }, rows),
+          );
+        }
+
         /** The sidebar's trash entry glyph. */
         function TrashPanelIcon(props) {
           var Icon = ui.IconTrashOutlineRegular;
@@ -3692,6 +3985,24 @@
           ctx.slots.inject("sidebar.panellist", function () {
             return ctx.slots.register({
               name: "sidebar.panellist",
+              id: "ws-recency-search",
+              order: 19,
+              locale: NS,
+              label: function () { return t("search.title"); },
+            }, SearchPanelIcon);
+          });
+
+          ctx.slots.inject("main", function () {
+            return ctx.slots.register({
+              name: "main",
+              key: "ws-recency-search",
+              locale: NS,
+            }, SearchPanelPage);
+          });
+
+          ctx.slots.inject("sidebar.panellist", function () {
+            return ctx.slots.register({
+              name: "sidebar.panellist",
               id: "ws-recency-trash",
               order: 20,
               locale: NS,
@@ -3825,6 +4136,15 @@
           rewrite: rewriteHandoff,
           carry: carryHandoff,
           send: sendToSession,
+        };
+
+        /* Test hook: the jump and the highlighting are pure DOM helpers. */
+        exports.__search = {
+          draft: function () { return searchDraft; },
+          highlight: highlightSnippet,
+          reveal: revealTurn,
+          jump: jumpToSearchHit,
+          turnRow: turnRowOf,
         };
 
         exports.name = "dsh-ws-recency";

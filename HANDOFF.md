@@ -1,10 +1,10 @@
-# dsh-ws-recency — 交接说明（截至 0.25.0）
+# dsh-ws-recency — 交接说明（截至 0.26.0）
 
 > 给下一个会话用的现状快照。先读这一页，再按需看代码。
 
 ## 一句话
 
-DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、全局置顶（可点进会话）、删除到回收站、归档会话也在回收站面板里管理（两者都是卡片）、按来源拆分的 token 分析（参数/结果分段）、会话跨工作区移动、交接到新会话。
+DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、全局置顶（可点进会话）、删除到回收站、归档会话也在回收站面板里管理（两者都是卡片）、按来源拆分的 token 分析（参数/结果分段）、会话跨工作区移动、交接到新会话，以及跨会话的内容搜索（点结果跳到那句话所在的那一轮）。
 
 ## 仓库与发布
 
@@ -33,6 +33,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 11. **交接到新会话（0.19–0.24.2）**：每轮动作行或「…」菜单「交接到新会话」→ 把指令交给宿主 Session 控制器直接发送（`sessions.using(id, {source}) → session.prompt([{type:"text"}], "queue")`，不碰输入框、不模拟按键）→ 轮询宿主 `/ws-recency/handoff` 的 `tail`，只认**点击之后产生、且本轮已结束**的那条回复（`textSeq > baseline` 且 `turnOpen === false`）里的 `~~~handoff` 块 → 在**产生它的那一轮**下方出问询卡（确认 / 重新生成 / 填意见重写 / 只读预览 / 放弃）→ 确认后 `uiWorkspace.connectWorkspace(workspaceId)` 建/复用空白会话并 `openSession`，再用同一套 `sessions.using` 把「前言 + 正文」作为第一条 prompt 发出；同时存档到 `~/.hypers-work/.wsr/handoff/<sessionId>-<时间>.md`。仅在 Client 没有 `sessions` 服务时退回旧路（写输入框 + 合成 Enter / `startSession` 草稿）。
 12. **补登记游离会话 / 刷新机制**：`session-adopt` 扫回「cwd 属于某工作区却不在任何分组」的会话；恢复/扫描/移动后宿主发 `api-session/added`，另有「刷新界面」按钮。
 13. **设置（设置 → 通用）**：折叠天数、是否让选中/运行中/等待中豁免折叠、颜色标记总开关、全局置顶区开关、工具参数是否计入主 agent。偏好存 `dsh.ws-recency.prefs.v1`。
+14. **会话内容搜索（0.26.0）**：侧栏放大镜 → `main` 页 `ws-recency-search`。宿主 `POST /ws-recency/search` 扫全部会话日志，只取 user/assistant 的 `text` 块（思维链、工具参数、工具结果都不算）；多词 AND、大小写不敏感、纯字面匹配。命中返回 sessionId/标题/工作区/轮次/角色/片段。每个会话一份正文缓存 `~/.hypers-work/.wsr/search/<id>.json`，key 是 `sizeBytes:revision`；单请求有时间预算（6s）与新解码上限（8 个会话），没扫完返回 `pending`，面板自动续请求补齐。点结果：`openSession` → 滚到 `[data-chat-turn="<turn>"]` → 蓝框闪 2.6 秒；历史是懒加载的，所以会往上翻最多 24 步（8 秒上限）。
 
 ## 宿主路由（都在 `index.js`）
 
@@ -45,6 +46,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 | `POST /ws-recency/session-adopt` | 补登记/修复归属 |
 | `POST /ws-recency/handoff` | `{action:"tail", sessionId}` 取最新 assistant 文本，另返回 `textSeq`（该文本的日志序号）、`lastSeq`（最新事件序号）、`turn`（文本所属轮次）、`turnOpen`（该轮是否仍在跑）；`{action:"save", sessionId, text}` 存 markdown |
 | `POST /ws-recency/trash` | `{action:"list"\|"restore"\|"purge", name}`；`{action:"archived"}`；`{action:"unarchive"\|"delete"\|"forget", sessionId}` |
+| `POST /ws-recency/search` | `{query, refresh?}` → `{hits:[{sessionId,title,workspace,cwd,turn,seq,at,role,snippet,lead,tail}], scanned,total,pending,decoded,took}`；依赖 `sessionPersistence` + `workspaceRegistry` |
 
 全部只接受 POST + 回环 origin。
 
@@ -84,7 +86,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 
 - `index.js`（宿主半，~68KB）：路由、回收站、归档集合的列表/取消归档/彻底删除、移动、统计聚合与放大归因、交接 tail/save、`announceSession`、`projectKey`、`rawWorkspaceMembership`、`cachedCheckpoint`。
 - `client.js`（客户端半，~200KB）：DOM pass（排序/折叠/标记/置顶）、菜单项、统计面板（含放大排行与上下文曲线）、移动面板、回收站页面（卡片）、设置行、交接（状态 observable + 官方 prompt 发送 + 轮询 + 问询卡）、`t()` 本地字典回退。
-- `tests/selfcheck.cjs`（客户端 DOM：排序/折叠/标记/置顶/统计与放大面板/交接卡/交接块切分/官方发送与降级）、`tests/archive-page.cjs`（回收站页面渲染 + 动作）、`tests/handoff.cjs`（宿主 tail/save/守卫）、`tests/stats.cjs`（聚合 + 放大归因 + 压缩截断 + 持久层）、`tests/move.cjs`、`tests/trash.cjs`、`tests/archive.cjs`（宿主）。
+- `tests/selfcheck.cjs`（客户端 DOM：排序/折叠/标记/置顶/统计与放大面板/交接卡/交接块切分/官方发送与降级/搜索页与跳转）、`tests/archive-page.cjs`（回收站页面渲染 + 动作）、`tests/handoff.cjs`（宿主 tail/save/守卫）、`tests/stats.cjs`（聚合 + 放大归因 + 压缩截断 + 持久层）、`tests/search.cjs`（正文提取 + 多词匹配 + 片段 + 轮次/工作区 + 缓存失效 + 路由守卫）、`tests/move.cjs`、`tests/trash.cjs`、`tests/archive.cjs`（宿主）。
 - `README.md`（用户文档）、`PUBLISHING.md`（发布流程）、`awesome-entry.yml`（市场条目模板）。
 
 ## 踩过的坑（重要，别重犯）
@@ -109,12 +111,15 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 18. **别按步骤排行「最贵的一步」**：每步的 token 就是当时的上下文（354 步的会话约 24 万/步，几乎相同），排第一永远是最后一步，数字大但不可操作。要看「内容块 × 之后还剩多少步」：一次 9k token 的 read 在第 6 步进入、后面还有 349 步，折合 322 万 token（3.4% 账单）。用户明确说过按步骤的排行「无法形成放大的直接结论」，这版就是按这个反馈做的。
 19. **插件自己画的置顶行拿不到宿主的状态装饰**：`decorateRows` 只按 `data-row-key="session:<id>"` 找宿主行，而置顶行是 `data-row-key="pin:<id>"` 的插件自建节点、宿主那行又被隐藏，所以运行中/未读的状态色全丢了（0.25.1 修）。修法是 `statesOf()` 统一算出 id→state，置顶行用它写 `data-wsr-state`；**别把状态塞进节的重建签名**——那个签名只该管「哪些 id、标题、工作区名」，加状态会让整节每步重建、还会吞掉 hover；用 `applyPinStates()` 每次 pass 原地刷属性。
 20. **GitHub 只能走 SSH + 代理，且 `connect.exe` 路径不能带空格**：本机 GCM 里的 HTTPS token 已失效（401），ssh 22 被墙。可用路径是在 `~/.ssh/config` 里给 `github.com` 加 `HostName ssh.github.com` / `Port 443` / `ProxyCommand C:/Users/Konka/.ssh/connect.exe -H 127.0.0.1:7897 %h %p`（connect.exe 从 Git 目录复制到无空格路径）。`ProxyCommand` 的值由 sh 解释，写成 `C:/Program Files/...` 会报 `/bin/sh: C:/Program: No such file or directory`；另外**别用 PowerShell 的 `Set-Content -Encoding UTF8` 改 `~/.ssh/config`**（PS 5.1 会写 BOM，ssh 直接 `Bad configuration option: \357\273\277host`），用 Node 的 UTF-8 写。GitHub 的 SSH 前端有缓存不一致：同一把钥匙会间歇性 `Permission denied (publickey)`，重试即可。
+21. **跳轮次只能靠 DOM，别想调宿主 API**：宿主有 `viewport.scrollToTurn()`，但只在 `@deepseek-ai/dsh-client-ui-chat` 内部（右侧轮次导轨用），没有对外暴露；对外只有 `uiWorkspace.openSession`。可用标识：对话行 `data-chat-turn="<n>"`、滚动容器 `[data-conversation-scroll]`、宿主自带的全文搜索需要改 profile 的 `session-query-sqlite` 开关（默认 `openAt: never`，全文调用直接报 `SESSION_QUERY_SEARCH_DISABLED`），所以索引和定位都自己做。历史是懒加载的：打开会话只挂最近的若干轮，往上滚才拉更早的，因此定位要「边往上滚边找」，不能打开就 `querySelector` 一次了事。
+22. **搜索索引别整包读日志**：65 个会话约 91MB 压缩日志，一次性解码会把内存顶满。`readSessionEvents` 已经分页（5000 条一页），缓存只存正文（每条上限 200k 字符），并且单请求设时间预算 + 新解码上限；剩下的靠 `pending` 让面板续请求，别指望一次请求扫完。
 
 ## 测试与发布
 
 ```powershell
 node tests/selfcheck.cjs
 node tests/stats.cjs
+node tests/search.cjs
 node tests/move.cjs
 node tests/trash.cjs
 node tests/archive.cjs

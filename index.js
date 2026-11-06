@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.25.1";
+export const HOST_VERSION = "0.26.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -44,6 +44,7 @@ export const HEALTH_PATH = "/ws-recency/health";
 export const MOVE_SESSION_PATH = "/ws-recency/session-move";
 export const ADOPT_SESSION_PATH = "/ws-recency/session-adopt";
 export const TRASH_LIST_PATH = "/ws-recency/trash";
+export const SEARCH_CONTENT_PATH = "/ws-recency/search";
 
 export const HANDOFF_PATH = "/ws-recency/handoff";
 
@@ -599,9 +600,245 @@ async function readSessionEvents(ctx, sessionId) {
   return all;
 }
 
+/* ------------------------------------------------------------------------- *
+ * Session content search
+ *
+ * Literal search over what was actually said: the user's prompts and the
+ * assistant's text blocks. Each session keeps a small cache of that text keyed
+ * by the log's size+revision, so a query only decodes sessions that changed;
+ * it stops when its time budget is spent and reports how many are still
+ * pending, which is what the panel shows as "still indexing".
+ * ------------------------------------------------------------------------- */
+
+const SEARCH_INDEX_VERSION = 1;
+/** Longer messages are cut for the cache: snippets never need the tail. */
+const SEARCH_MESSAGE_CAP = 200000;
+const SEARCH_PER_SESSION = 3;
+const SEARCH_TOTAL_CAP = 60;
+const SEARCH_BUDGET_MS = 6000;
+const SEARCH_NEW_PER_QUERY = 8;
+
+/** Same normalisation on both sides of a cwd comparison. */
+function normalizedPath(value) {
+  return typeof value === "string" ? value.replace(/[\\/]+$/, "").toLowerCase() : "";
+}
+
+async function searchIndexDirectory() {
+  return join(await dshHome(), ".wsr", "search");
+}
+
+function searchCacheKey(stat) {
+  const size = Number(stat !== null && stat !== undefined ? stat.sizeBytes : 0) || 0;
+  const revision = stat !== null && stat !== undefined && stat.revision !== undefined && stat.revision !== null ? String(stat.revision) : "";
+  return `${size}:${revision}`;
+}
+
+/** The cached text of one session, or null when it is missing or stale. */
+async function readSearchCache(directory, sessionId) {
+  try {
+    const raw = await readFile(join(directory, `${sessionId}.json`), "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object") return null;
+    if (parsed.v !== SEARCH_INDEX_VERSION || typeof parsed.key !== "string" || !Array.isArray(parsed.messages)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSearchCache(directory, sessionId, payload) {
+  try {
+    await mkdir(directory, { recursive: true });
+    const target = join(directory, `${sessionId}.json`);
+    const temporary = `${target}.${process.pid}.tmp`;
+    await writeFile(temporary, JSON.stringify(payload), "utf8");
+    await rename(temporary, target);
+  } catch {
+    /* the cache is best effort: a failed write only costs a re-decode */
+  }
+}
+
+/**
+ * The prose of one message.
+ *
+ * Deliberately narrower than `blockText`: reasoning and tool-call arguments are
+ * not conversation text, and indexing them would make the search hit things the
+ * user never read.
+ */
+function conversationText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts = [];
+  for (const block of content) {
+    if (block === null || typeof block !== "object") continue;
+    if (block.type === "text" && typeof block.text === "string") parts.push(block.text);
+  }
+  return parts.join("\n");
+}
+
+/**
+ * One session's searchable transcript.
+ *
+ * Turns come from `data.turn` when the event carries it and from the running
+ * `turn/start` count otherwise, so a hit can name the turn the chat view uses
+ * for its own anchors.
+ */
+function extractSearchMessages(events) {
+  const messages = [];
+  let turn = 0;
+  for (const event of events) {
+    if (event === null || typeof event !== "object") continue;
+    if (event.type === "turn/start") {
+      turn += 1;
+      continue;
+    }
+    if (event.type !== "user/message" && event.type !== "assistant/message") continue;
+    const data = event.data ?? {};
+    const content = data.message !== null && data.message !== undefined ? data.message.content : data.content;
+    let text = conversationText(content).trim();
+    if (text === "") continue;
+    if (text.length > SEARCH_MESSAGE_CAP) text = text.slice(0, SEARCH_MESSAGE_CAP);
+    const declared = Number(data.turn);
+    messages.push({
+      turn: Number.isSafeInteger(declared) ? declared : turn,
+      seq: Number.isSafeInteger(Number(event.seq)) ? Number(event.seq) : 0,
+      at: Number.isFinite(Number(event.time)) ? Number(event.time) : 0,
+      role: event.type === "user/message" ? "user" : "assistant",
+      text,
+    });
+  }
+  return messages;
+}
+
+function searchSnippet(text, needle) {
+  const haystack = text.toLowerCase();
+  const index = needle === "" ? -1 : haystack.indexOf(needle);
+  if (index < 0) return { snippet: text.slice(0, 160), lead: true, tail: text.length > 160 };
+  const start = Math.max(0, index - 60);
+  const end = Math.min(text.length, index + needle.length + 120);
+  const body = text.slice(start, end).replace(/\s+/g, " ").trim();
+  return { snippet: body, lead: start > 0, tail: end < text.length };
+}
+
+/**
+ * Search every session's transcript.
+ *
+ * `terms` are the whitespace-separated pieces of the query; all of them have to
+ * appear in the same message, so a two-word query narrows instead of widening.
+ */
+export async function searchSessions(ctx, query, options = {}) {
+  const started = Date.now();
+  const terms = String(query ?? "").toLowerCase().split(/\s+/).filter((term) => term !== "");
+  if (terms.length === 0) return { ok: true, query: "", terms: [], hits: [], scanned: 0, total: 0, pending: 0, took: 0 };
+
+  const directory = await searchIndexDirectory();
+  const workspaces = typeof ctx.workspaceRegistry?.list === "function" ? ctx.workspaceRegistry.list() : [];
+  const workspaceByPath = new Map();
+  for (const workspace of Array.isArray(workspaces) ? workspaces : []) {
+    const path = normalizedPath(workspace?.path ?? workspace?.cwd);
+    if (path !== "") workspaceByPath.set(path, typeof workspace.name === "string" ? workspace.name : workspace.title || "");
+  }
+
+  let snapshots = [];
+  try {
+    snapshots = await ctx.sessionPersistence.list();
+  } catch {
+    snapshots = [];
+  }
+  const sessions = [];
+  for (const snapshot of Array.isArray(snapshots) ? snapshots : []) {
+    const header = snapshot?.header;
+    if (header === null || header === undefined || typeof header.id !== "string") continue;
+    sessions.push({ id: header.id, header, sizeBytes: Number(snapshot.sizeBytes) || 0, updatedAt: Number(header.updatedAt ?? header.createdAt ?? 0) });
+  }
+  sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const refresh = options.refresh === true;
+  const hits = [];
+  let scanned = 0;
+  let pending = 0;
+  let decoded = 0;
+
+  for (const session of sessions) {
+    if (hits.length >= SEARCH_TOTAL_CAP) break;
+    scanned += 1;
+    let stat = null;
+    try {
+      stat = await ctx.sessionPersistence.stat(session.id);
+    } catch {
+      stat = null;
+    }
+    const key = searchCacheKey(stat);
+    let cached = refresh ? null : await readSearchCache(directory, session.id);
+    if (cached !== null && cached.key !== key) cached = null;
+    if (cached === null) {
+      if (decoded >= SEARCH_NEW_PER_QUERY || Date.now() - started > SEARCH_BUDGET_MS) {
+        pending += 1;
+        continue;
+      }
+      decoded += 1;
+      let messages = [];
+      try {
+        messages = extractSearchMessages(await readSessionEvents(ctx, session.id));
+      } catch {
+        messages = [];
+      }
+      await writeSearchCache(directory, session.id, { v: SEARCH_INDEX_VERSION, key, messages });
+      cached = { key, messages };
+    }
+
+    let found = 0;
+    for (const message of cached.messages) {
+      if (message === null || typeof message !== "object" || typeof message.text !== "string") continue;
+      const haystack = message.text.toLowerCase();
+      if (!terms.every((term) => haystack.indexOf(term) !== -1)) continue;
+      const { snippet, lead, tail } = searchSnippet(message.text, terms[0]);
+      const title = session.header.title ?? "";
+      const cwd = normalizedPath(session.header.cwd);
+      hits.push({
+        sessionId: session.id,
+        title: typeof title === "string" && title.trim() !== "" ? title.trim() : titleFromMessages(cached.messages, session.id),
+        workspace: workspaceByPath.get(cwd) ?? "",
+        cwd: typeof session.header.cwd === "string" ? session.header.cwd : "",
+        turn: message.turn,
+        seq: message.seq,
+        at: message.at,
+        role: message.role,
+        snippet,
+        lead: lead === true,
+        tail: tail === true,
+      });
+      found += 1;
+      if (found >= SEARCH_PER_SESSION || hits.length >= SEARCH_TOTAL_CAP) break;
+    }
+  }
+
+  hits.sort((a, b) => b.at - a.at);
+  return {
+    ok: true,
+    query: String(query ?? "").trim(),
+    terms,
+    hits,
+    scanned: sessions.length,
+    total: sessions.length,
+    pending,
+    decoded,
+    took: Date.now() - started,
+  };
+}
+
+/** First prompt line, the same fallback the sidebar uses for an untitled session. */
+function titleFromMessages(messages, sessionId) {
+  for (const message of Array.isArray(messages) ? messages : []) {
+    if (message?.role !== "user" || typeof message.text !== "string") continue;
+    const first = message.text.split("\n")[0].trim();
+    if (first !== "") return first.slice(0, 80);
+  }
+  return sessionId;
+}
+
 /** Statistics for one session, cached briefly so re-opening the panel is cheap. */
-export async function sessionStatistics(ctx, sessionId) {
-  let stat;
+export async function sessionStatistics(ctx, sessionId) {  let stat;
   try {
     stat = await ctx.sessionPersistence.stat(sessionId);
   } catch {
@@ -1656,6 +1893,26 @@ export async function handleMoveRequest(ctx, req, res) {
   }
 }
 
+/** POST { query, refresh? } -> matching snippets across every session's transcript. */
+export async function handleSearchRequest(ctx, req, res) {
+  if ((req.method ?? "POST").toUpperCase() !== "POST") {
+    sendJson(res, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+  if (!loopbackOrigin(req)) {
+    sendJson(res, 403, { ok: false, error: "origin not trusted" });
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const query = body !== null && typeof body.query === "string" ? body.query : "";
+    const result = await searchSessions(ctx, query, { refresh: body !== null && body.refresh === true });
+    sendJson(res, 200, result);
+  } catch (error) {
+    sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 /** POST { sessionId } -> token statistics for that session. */
 export async function handleStatsRequest(ctx, req, res) {
   if ((req.method ?? "POST").toUpperCase() !== "POST") {
@@ -1701,7 +1958,7 @@ export function apply(ctx) {
         handler: (req, res) => sendJson(res, 200, {
           ok: true,
           version: HOST_VERSION,
-          routes: { stats: statsMounted, trash: trashMounted, move: moveMounted },
+          routes: { stats: statsMounted, trash: trashMounted, move: moveMounted, search: searchMounted },
         }),
       }), "ws-recency: health route");
 
@@ -1733,6 +1990,15 @@ export function apply(ctx) {
         }), "ws-recency: adopt route");
       });
 
+      webCtx.inject(["sessionPersistence", "workspaceRegistry"], (searchCtx) => {
+        searchMounted = true;
+        webCtx.effect(() => server.register({
+          kind: "exact",
+          path: SEARCH_CONTENT_PATH,
+          handler: (req, res) => handleSearchRequest(searchCtx, req, res),
+        }), "ws-recency: search route");
+      });
+
       webCtx.inject(["sessionPersistence"], (handoffCtx) => {
         webCtx.effect(() => server.register({
           kind: "exact",
@@ -1758,3 +2024,4 @@ export function apply(ctx) {
 let statsMounted = false;
 let trashMounted = false;
 let moveMounted = false;
+let searchMounted = false;

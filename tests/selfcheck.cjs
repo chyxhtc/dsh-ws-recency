@@ -5,7 +5,8 @@
  *   - group order follows each workspace's freshest `updatedAt`,
  *   - sessions older than foldDays are folded, one control per group,
  *   - colors: running / unread / persistent manual follow-up,
- *   - the global pinned section renders native pins and hides the copies.
+ *   - the global pinned section renders native pins and hides the copies,
+ *   - the search page posts the query and jumps to the matching turn.
  */
 const path = require("node:path");
 const assert = require("node:assert");
@@ -119,6 +120,17 @@ composerSeat.append(composerRow);
 const conversationNode = el("div", "conv");
 conversationNode.attrs["data-conversation-session"] = "A-fresh-1";
 
+/* Search-jump fixtures: the chat's scroller plus one mounted turn row. */
+const searchScroller = el("div", "scroll");
+searchScroller.clientHeight = 600;
+searchScroller.scrollTop = 1200;
+const searchTurns = {};
+const mountedTurn = el("div", "chat-row");
+mountedTurn.attrs["data-chat-turn"] = "5";
+mountedTurn.scrolled = false;
+mountedTurn.scrollIntoView = function () { mountedTurn.scrolled = true; };
+searchTurns["5"] = mountedTurn;
+
 /* Keep the fallback dictionary deterministic in this test. */
 global.navigator = { language: "en-US" };
 global.documentElement = null;
@@ -130,6 +142,12 @@ global.document = {
   querySelector(selector) {
     if (selector === "[data-composer-seat]") return composerSeat;
     if (selector === "[data-conversation-session]") return conversationNode;
+    /* The search jump: the chat's scroller and the turn rows it mounts. */
+    if (selector === "[data-conversation-scroll]") return searchScroller;
+    if (selector.indexOf("[data-chat-turn=") === 0) {
+      const turn = selector.slice(selector.indexOf('"') + 1, selector.lastIndexOf('"'));
+      return searchTurns[turn] || null;
+    }
     /* The plugin looks rows up by their host key when it has to fall back to
        clicking one (the pinned section's navigation fallback). */
     if (selector.indexOf("[data-row-key=") === 0) {
@@ -235,6 +253,7 @@ const mod = spec.factory((name) => {
       MenuItemButton: (props, ...children) => ({ type: "menuitem", props: props || {}, children }),
       IconDataOutlineRegular: () => ({ type: "icon" }),
       IconTrashOutlineRegular: () => ({ type: "icon" }),
+      IconSearchOutlineRegular: () => ({ type: "icon" }),
     };
   }
   return {};
@@ -253,6 +272,8 @@ let HandoffAction = null;
 let HandoffCard = null;
 let TrashPage = null;
 let TrashMenuItem = null;
+let SearchIcon = null;
+let SearchPage = null;
 const service = {
   opened: [],
   unpinned: [],
@@ -296,11 +317,13 @@ const ctx = {
       if (spec2.name === "sidebar.session.row.leading") FollowUpDot = component;
       if (spec2.id === "ws-recency-stats") StatsMenuItem = component;
       if (spec2.id === "ws-recency-move") MoveMenuItem = component;
-      if (spec2.name === "sidebar.panellist") TrashIcon = component;
+      if (spec2.name === "sidebar.panellist" && spec2.id === "ws-recency-trash") TrashIcon = component;
+      if (spec2.name === "sidebar.panellist" && spec2.id === "ws-recency-search") SearchIcon = component;
       if (spec2.id === "ws-recency-handoff" && spec2.name === "sidebar.workspaces.session.menu.item") HandoffItem = component;
       if (spec2.id === "ws-recency-handoff" && spec2.name === "conversation.chat.assistant-actions") HandoffAction = component;
       if (spec2.id === "ws-recency-handoff-card") HandoffCard = component;
-      if (spec2.name === "main") TrashPage = component;
+      if (spec2.name === "main" && spec2.key === "ws-recency-trash") TrashPage = component;
+      if (spec2.name === "main" && spec2.key === "ws-recency-search") SearchPage = component;
       if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
     },
@@ -946,11 +969,58 @@ function textOf(node) {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.ok(moveBody.children.length > 0);
 
+  /* ---------- session content search ----------------------------------- */
+  const SEARCH = mod.__search;
+  assert.ok(SEARCH !== undefined, "the search hooks are exposed");
+  assert.ok(SearchIcon !== null, "the search panel glyph was registered");
+  assert.ok(SearchIcon({ size: 16 }) !== null, "the search glyph renders");
+  assert.ok(SearchPage !== null, "the search page was registered");
+  const searchPage = SearchPage({});
+  assert.strictEqual(searchPage.props.className, "wsr-page wsr-search-page");
+
+  const findNode = (node, predicate) => {
+    if (node === null || typeof node !== "object") return null;
+    if (predicate(node)) return node;
+    const nodes = Array.isArray(node.children) ? node.children : [];
+    for (const child of nodes) {
+      const found = findNode(child, predicate);
+      if (found !== null) return found;
+    }
+    return null;
+  };
+
+  const searchInput = findNode(searchPage, (node) => node.props !== undefined && node.props.className === "wsr-search-input");
+  assert.ok(searchInput !== null, "the search box renders");
+  searchInput.props.onChange({ target: { value: "build failed" } });
+  assert.strictEqual(SEARCH.draft(), "build failed", "the draft follows the input");
+
+  global.fetch.answer = { ok: true, query: "build failed", terms: ["build", "failed"], hits: [], scanned: 3, total: 3, pending: 0, took: 12 };
+  const beforeSearch = global.fetch.calls.length;
+  searchInput.props.onKeyDown({ key: "Enter", preventDefault() {} });
+  const searchCall = global.fetch.calls[beforeSearch];
+  assert.ok(String(searchCall.url).indexOf("/ws-recency/search") !== -1, "Enter posts the search route");
+  assert.strictEqual(JSON.parse(searchCall.options.body).query, "build failed", "the whole query is sent");
+
+  /* Highlighting works on the snippet, so the list never re-renders to mark it. */
+  const marked = SEARCH.highlight("the build failed here", ["build", "failed"]);
+  const markNodes = marked.filter((node) => node.type === "mark");
+  assert.strictEqual(markNodes.length, 2, "every term is marked");
+  assert.strictEqual(markNodes[0].children[0], "build");
+  assert.strictEqual(markNodes[1].children[0], "failed");
+
+  /* A hit opens its session and rings the turn it came from. */
+  service.opened.length = 0;
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 5 });
+  assert.deepStrictEqual(service.opened, ["A-fresh-1"], "clicking a hit opens the session");
+  flush();
+  assert.strictEqual(mountedTurn.scrolled, true, "the matching turn is scrolled into view");
+  assert.strictEqual(mountedTurn.getAttribute("data-wsr-flash"), null, "the ring is cleared afterwards");
+
   conversationNode.attrs["data-conversation-session"] = "";
   render();
   assert.strictEqual(composerSeat.querySelector("[data-wsr-composer-analysis]"), null, "the pill goes away with the conversation");
 })().then(() => {
-  console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel");
+  console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel, search jump");
 }).catch((error) => {
   console.error(error);
   process.exit(1);
