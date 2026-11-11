@@ -13,7 +13,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
 | npm | `dsh-ws-recency`，已发布 `0.26.2`（0.26.0 内容搜索；0.25.1/0.26.1/0.26.2 修置顶行状态色与图标） |
-| 最新已发布 tag / Release | `v0.26.2` tag 已推；Release 附件需 GitHub token，见下 |
+| 最新已发布 tag / Release | `v0.26.2`；Release 已建并带附件（84,081 字节），`v0.26.1`（84,045）与 `v0.26.0`（82,851）的 Release 也补建了 |
+| GitHub 凭据 | SSH key 负责 `git push`；API（Release/附件）用 Windows 凭据管理器里的 fine-grained PAT（`github_pat_…`），`git credential fill`（`protocol=https`/`host=github.com`/`username=chyxhtc`）能取到。**别再每次要 token**，`tools/release.mjs` 已封装建 Release + 传附件 |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
@@ -135,14 +136,18 @@ node tests/handoff.cjs
 4. `npm publish --access public`（npm 需要代理配置 `proxy/https-proxy=http://127.0.0.1:7897`，已在 `~/.npmrc`）；
    - npm 11 是异步发布，PUT 返回 `202`；立刻 `npm view` 可能还是旧版本，等 1–3 分钟；
    - 期间重跑会报 `E409 Cannot publish over previously staged version`——不要再发请求，改轮询 `https://registry.npmjs.org/dsh-ws-recency/<version>`。
-5. `npm pack` 后建 GitHub Release 并上传 tgz：用 `undici` 的 `ProxyAgent("http://127.0.0.1:7897")` 走 `api.github.com` / `uploads.github.com`；
-   - **2026-11-05 起本机没有可用的 GitHub token**：GCM 里的 `gho_…` 已失效（`api.github.com/user` 返 401），`git credential fill` 现在直接报 `Cannot prompt`。/settings/keys 里也没有本机 SSH key，是这次会话里现加的；
-   - `undici` 不在仓库依赖里，用 `createRequire("D:/IDE/Hypers Work/resources/app/package.json")("undici")` 从应用目录解析；
-   - 上传走 `POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=<file>`，`content-type: application/octet-stream`，成功返回 `201`。
+5. `npm pack` 后建 GitHub Release 并上传 tgz。**pat 已在 Windows 凭据管理器里**（fine-grained，仅这个仓库，Contents 读写），别再去要 token：
+   ```powershell
+   $out = "protocol=https`nhost=github.com`nusername=chyxhtc`n`n" | git credential fill
+   $env:GH_TOKEN = (($out | Where-Object { $_ -match "^password=" }) -replace "^password=","")
+   node tools/release.mjs vX.Y.Z "X.Y.Z" notes.md dsh-ws-recency-X.Y.Z.tgz
+   ```
+   - `tools/release.mjs` 直接调 `api.github.com` + `uploads.github.com`，已存在就跳过（可重跑）；`undici` 从应用目录 `createRequire` 解析，代理走 `127.0.0.1:7897`；
+   - 撤销 token：GitHub 设置里删 + `git credential reject`（同样喂 `protocol/host/username`）。
 
 ## 已知遗留 / 可做
 
-- `v0.25.1` 的 Release 已建、附件已上传并核验（HTTP 200 + Content-Length 75908）。上传用的 PAT 是用户在临时文件里给的，用完即删；下次发版还是要重新要 token，或改用 `gh auth login` 的 device flow。
+- 发布链路已理顺：`git push` 走 SSH（`~/.ssh/config` 里 `github.com` → `ssh.github.com:443` + 代理），Release 走凭据管理器里的 PAT + `tools/release.mjs`，npm 用 `~/.npmrc` 的代理与登录态。三者都不再需要人给东西。
 - `client.js` 里还有无入口的死代码：旧弹窗 `openTrashPanel` + `TrashFooterAction`（改走 `sidebar.panellist` 后没再注册）——可清理。
 - 交接的两次发送 0.24.1 起走宿主 Session 控制器；0.24.1 已在真实界面走通。0.24.2 的「等本轮结束 + 只认新一轮 + 卡片只挂当轮」需要重启后再走一遍：点交接后处理期间不应再弹卡，结束后卡片只出现在最后一轮下方。
 - 0.24.2 的页面内确认框也要实测一次：删除会话后立即点输入框应能聚焦（旧版用系统 confirm，关掉后要切走应用再回来）。
