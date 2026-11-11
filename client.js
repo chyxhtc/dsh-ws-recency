@@ -107,6 +107,15 @@
           ".wsr-pin-ws{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-pin-unpin{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px;visibility:hidden}",
           ".wsr-pin-row:hover .wsr-pin-unpin{visibility:visible}",
+          ".wsr-pin-slot{flex:none;width:14px;height:14px;display:flex;align-items:center;justify-content:center}",
+          ".wsr-pin-dot{display:block;width:10px;height:10px;border-radius:50%;background:var(--dsw-alias-label-tertiary,#8a8f98)}",
+          '.wsr-pin-dot[data-state="done"]{background:var(--dsw-alias-state-success-primary,#3fae6b)}',
+          '.wsr-pin-dot[data-state="warning"]{background:var(--dsw-alias-state-warning-primary,#d99a2b)}',
+          ".wsr-pin-spin{animation:wsr-pin-spin 1s linear infinite;transform-origin:50% 50%}",
+          ".wsr-pin-spin circle{fill:none;stroke-width:2}",
+          ".wsr-pin-track{stroke:var(--dsw-alias-border-l3,rgba(255,255,255,.2))}",
+          ".wsr-pin-arc{stroke:var(--dsw-alias-state-business-primary,#4f8ef7);stroke-linecap:round;stroke-dasharray:22 60}",
+          "@keyframes wsr-pin-spin{to{transform:rotate(360deg)}}",
           ".wsr-pin-row[" + STATE_ATTR + '="running"] .wsr-pin-title{color:#4f8ef7}',
           ".wsr-pin-row[" + STATE_ATTR + '="unread"] .wsr-pin-title{color:#3fae6b}',
           ".wsr-pin-row[" + STATE_ATTR + '="followup"] .wsr-pin-title{color:#d99a2b}',
@@ -279,6 +288,7 @@
           '[' + STATE_ATTR + '="running"] [class*="_title"]{color:#4f8ef7}',
           '[' + STATE_ATTR + '="unread"] [class*="_title"]{color:#3fae6b}',
           '[' + STATE_ATTR + '="followup"] [class*="_title"]{color:#d99a2b}',
+          '[' + STATE_ATTR + '="waiting"] [class*="_title"]{color:#d99a2b}',
           ".wsr-search-bar{display:flex;gap:8px;align-items:center}",
           ".wsr-search-input{flex:1;min-width:0;height:30px;padding:0 10px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:inherit;font-size:13px}",
           ".wsr-hit{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:8px;cursor:pointer}",
@@ -319,6 +329,9 @@
           "pin.enabled": "\u663e\u793a\u7f6e\u9876\u533a",
           "pin.head": "\u7f6e\u9876",
           "pin.unpin": "\u53d6\u6d88\u7f6e\u9876",
+          "pin.status.running": "运行中",
+          "pin.status.done": "已完成",
+          "pin.status.followup": "需要跟进",
           "argmode.title": "把工具参数计入主 agent",
           "argmode.description": "工具参数是模型自己写的（pwsh 的命令、write 的文件内容），严格说算主 agent 的输出，不算工具的消耗。打开后消耗分布里工具只算返回结果，参数并入主 agent。",
           "argmode.enabled": "工具参数计入主 agent",
@@ -481,6 +494,9 @@
           "argmode.enabled": "Tool arguments count for the agent",
           "pin.head": "Pinned",
           "pin.unpin": "Unpin",
+          "pin.status.running": "Running",
+          "pin.status.done": "Completed",
+          "pin.status.followup": "Needs follow-up",
           "menu.flag": "Mark as needs follow-up",
           "menu.unflag": "Clear follow-up mark",
           "menu.trash": "Delete session (move to trash)",
@@ -1129,11 +1145,88 @@
           return false;
         }
 
+        /** The host's four status looks, mapped onto the plugin's own states. */
+        function pinDotStateOf(state) {
+          if (state === "running") return "ongoing";
+          if (state === "waiting") return "warning";
+          if (state === "unread") return "done";
+          if (state === "followup") return "warning";
+          return "idle";
+        }
+
+        /** The running spinner, drawn as the host draws it: track + arc, both circling. */
+        function pinSpinner() {
+          if (typeof document === "undefined" || typeof document.createElementNS !== "function") return null;
+          try {
+            var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "wsr-pin-spin");
+            svg.setAttribute("viewBox", "0 0 24 24");
+            svg.setAttribute("width", "14");
+            svg.setAttribute("height", "14");
+            svg.setAttribute("aria-hidden", "true");
+            var track = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            track.setAttribute("class", "wsr-pin-track");
+            track.setAttribute("cx", "12");
+            track.setAttribute("cy", "12");
+            track.setAttribute("r", "9.5");
+            var arc = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            arc.setAttribute("class", "wsr-pin-arc");
+            arc.setAttribute("cx", "12");
+            arc.setAttribute("cy", "12");
+            arc.setAttribute("r", "9.5");
+            svg.appendChild(track);
+            svg.appendChild(arc);
+            return svg;
+          } catch (error) {
+            return null;
+          }
+        }
+
+        /**
+         * Repaint the leading marker of a pinned row.
+         *
+         * A grouped row gets this from the host (`SessionStatusDots`: spinner while
+         * running, a dot when done). Pinned rows are the plugin's own DOM, so the
+         * same shapes are drawn here; the paint is skipped when the state did not
+         * change, so a running spinner is not re-created on every pass.
+         */
+        function paintPinState(row, state) {
+          if (row === null || typeof row.querySelector !== "function") return;
+          var slot = row.querySelector(".wsr-pin-slot");
+          if (slot === null) return;
+          var key = pinDotStateOf(state);
+          if (slot.getAttribute("data-wsr-dot") === key) return;
+          slot.setAttribute("data-wsr-dot", key);
+          while (slot.firstChild !== undefined && slot.firstChild !== null) slot.removeChild(slot.firstChild);
+          if (key === "ongoing") {
+            slot.setAttribute("title", t("pin.status.running"));
+            var spinner = pinSpinner();
+            if (spinner !== null) slot.appendChild(spinner);
+            return;
+          }
+          if (key === "idle") {
+            slot.setAttribute("title", "");
+            return;
+          }
+          var label = key === "done" ? t("pin.status.done") : t("pin.status.followup");
+          var dot = document.createElement("span");
+          dot.className = "wsr-pin-dot";
+          dot.setAttribute("data-state", key);
+          dot.setAttribute("role", "img");
+          dot.setAttribute("aria-label", label);
+          dot.setAttribute("title", label);
+          slot.appendChild(dot);
+        }
+
         function pinnedRowElement(item, state) {
           var row = document.createElement("div");
           row.className = "wsr-pin-row";
           row.setAttribute("data-row-key", "pin:" + item.id);
           setRowState(row, state === undefined ? null : state);
+          var slot = document.createElement("span");
+          slot.className = "wsr-pin-slot";
+          row.appendChild(slot);
+          paintPinState(row, state === undefined ? null : state);
           var title = document.createElement("span");
           title.className = "wsr-pin-title";
           title.textContent = item.title;
@@ -1162,7 +1255,8 @@
         }
 
         /** Hide the copies inside their own groups so nothing is listed twice. */
-        function hideOriginalRows(entries, pinnedIds) {          for (var i = 0; i < entries.length; i += 1) {
+        function hideOriginalRows(entries, pinnedIds) {
+          for (var i = 0; i < entries.length; i += 1) {
             var rows = rowElements(entries[i].section);
             for (var j = 0; j < rows.length; j += 1) {
               var id = sessionIdOf(rows[j]);
@@ -1197,7 +1291,9 @@
           for (var i = 0; i < rows.length; i += 1) {
             var key = rows[i].getAttribute("data-row-key");
             var id = key === null ? "" : key.slice("pin:".length);
-            setRowState(rows[i], statesOfId(states, id));
+            var state = statesOfId(states, id);
+            setRowState(rows[i], state);
+            paintPinState(rows[i], state);
           }
         }
 
@@ -1307,7 +1403,13 @@
                conversation moved on - continuing a conversation is often the very
                reason a follow-up is still owed. */
             var flagged = flags[id] !== undefined;
-            states[id] = running ? "running" : unread ? "unread" : flagged ? "followup" : null;
+            /* Waiting on the user outranks everything the host itself reports:
+               an approval, a plan review or a question is what the row is for now. */
+            var pending = status !== null && status.pendingInteraction !== null && status.pendingInteraction !== undefined
+              ? status.pendingInteraction.kind
+              : undefined;
+            var waiting = pending === "approval" || pending === "plan-review" || pending === "question";
+            states[id] = waiting ? "waiting" : running ? "running" : unread ? "unread" : flagged ? "followup" : null;
           }
           return states;
         }

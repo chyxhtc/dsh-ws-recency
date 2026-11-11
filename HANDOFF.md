@@ -1,4 +1,4 @@
-# dsh-ws-recency — 交接说明（截至 0.26.0）
+# dsh-ws-recency — 交接说明（截至 0.26.1）
 
 > 给下一个会话用的现状快照。先读这一页，再按需看代码。
 
@@ -12,8 +12,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，已发布 `0.26.0`（0.25.0 同日发布、0.25.1 修置顶行状态色） |
-| 最新已发布 tag / Release | `v0.26.0` tag 已推；Release 附件 `dsh-ws-recency-0.26.0.tgz` 尚未上传（本机没有可用的 GitHub token，上一个 PAT 用完已删） |
+| npm | `dsh-ws-recency`，已发布 `0.26.1`（0.26.0 内容搜索；0.25.1 修置顶行状态色） |
+| 最新已发布 tag / Release | `v0.26.1` tag 已推；Release 附件需 GitHub token，见下 |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
@@ -23,7 +23,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 1. **工作区分组排序**：按组内最新 `updatedAt` 写 flex `order`；若别处写了 `data-busy-rank` 则优先。
 2. **历史折叠**：超过 `foldDays`（默认 3 天）的会话折叠；宿主的「展开其余」按钮被 CSS 隐藏，由插件自己的 `展开历史 N` / `收起历史` 驱动（逐轮点隐藏按钮直到渲染完，靠 `aria-expanded` 停）；选中/运行中/等待中不折叠，空白草稿行不折叠；每 5 分钟重算。
 3. **三色标记**：运行中=蓝、完成未读=绿、手动「需要跟进」=琥珀；标记只能手动取消；点通过 `sidebar.session.row.leading` 插槽渲染；带跟进标记的会话永不折叠。
-4. **全局置顶区**：用宿主自己的 `pinnedSessionIds`，在分组之上单独一区；置顶行在原分组隐藏；点行走 `uiWorkspace.openSession(id)`，取不到就退回点宿主那行。置顶行与分组行共用同一套状态色（运行中/完成未读/需要跟进），0.25.1 起状态变化即时刷新（节不重建，只改行的 `data-wsr-state`）。
+4. **全局置顶区**：用宿主自己的 `pinnedSessionIds`，在分组之上单独一区；置顶行在原分组隐藏；点行走 `uiWorkspace.openSession(id)`，取不到就退回点宿主那行。置顶行与分组行共用同一套状态色（运行中/完成未读/需要跟进），0.25.1 起状态变化即时刷新（节不重建，只改行的 `data-wsr-state`）。0.26.1 起还画同一套状态图标：`pinDotStateOf` 把 running→ongoing、waiting→warning、unread→done、followup→warning，`paintPinState` 只在该行状态变化时重画（运行中的转圈不会每个 pass 重建）。
 5. **删除会话 → 回收站**：`…` 菜单；停会话 → 摘归档/置顶 → 按 **workspace.json 原始记录** detach → 删投影缓存 → 日志目录移到 `.trash/ws-recency/<id>-<时间戳>/`，并写 `.wsr-trash.json`（sessionId/cwd/reason/at/title/统计）。
 6. **Token 消耗统计**：会话菜单 + 输入框下方统计条末尾的「用量分析」pill；宿主路由 `/ws-recency/session-stats`；真实 usage（input/cacheRead/output/total）+ 按来源估算拆分；条形图为主；色相由工具身份决定，明艳度按排名递减；每个工具那条 bar 拆两段（参数=淡色 `sourceColorDim`，结果=实色 `sourceColor`），`argMode` 可把参数并进主 agent。0.25.0 起面板分三个 tab：**分布统计 / 放大归因 / 明细**（5 张摘要卡片常驻顶部，模块级 `statsTab` 记住上次选择；放大归因 tab 仅在宿主返回 `amplified` 时出现）。放大成本 / 账单归因：账单=Σ每步(input+cacheRead)，每块内容成本 = 内容 token × 之后被重读的步数（压缩点截断），返回 `amplified.bill/attributed/share/series/byKind/blocks`；放大排行给进入步、原始 token、重读次数、放大后、占账单、压到 20% 省多少。
 7. **移动到工作区**：菜单选择目标；重写 header 的 cwd（persistence `create` + `append` 回放全部事件），旧日志先移进回收站做备份；同步 live session header 与工作区 header 索引后再 attach、再 detach；任何失败回滚。
@@ -109,7 +109,7 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 16. **交接卡不能只看「最后一条回复」**：0.24.1 及以前一看到新 assistant 消息就解析 `tail` 的 `text`，而 `text` 可能是上一轮留下的旧交接块（本轮先落的是工具步骤）→ 点完交接 1.5 秒就弹卡。必须同时满足「本轮已结束」+「文本序号晚于点击水位」；卡片的 `turnTail` 槽每轮都有，还要只认产生它的那一轮。回归断言在 `selfcheck` 的 `readyOf` 与 turn 匹配两条。
 17. **别用 `window.confirm` / `window.alert`**：Windows 上 Electron 的原生确认框关闭后渲染进程没有键盘焦点——输入框点不进去、切换会话也没用，切到别的应用再切回来才恢复（用户实测：删除会话后必现）。插件内所有确认都改成页面内 `askConfirm`/`askNotice`（遮罩 + 文案 + 取消/确认，Escape 取消，焦点在确认按钮，关掉后把焦点还给原元素）；`closeStatsPanel` 会连带关闭确认层。新增原生对话框前先想想这个坑。
 18. **别按步骤排行「最贵的一步」**：每步的 token 就是当时的上下文（354 步的会话约 24 万/步，几乎相同），排第一永远是最后一步，数字大但不可操作。要看「内容块 × 之后还剩多少步」：一次 9k token 的 read 在第 6 步进入、后面还有 349 步，折合 322 万 token（3.4% 账单）。用户明确说过按步骤的排行「无法形成放大的直接结论」，这版就是按这个反馈做的。
-19. **插件自己画的置顶行拿不到宿主的状态装饰**：`decorateRows` 只按 `data-row-key="session:<id>"` 找宿主行，而置顶行是 `data-row-key="pin:<id>"` 的插件自建节点、宿主那行又被隐藏，所以运行中/未读的状态色全丢了（0.25.1 修）。修法是 `statesOf()` 统一算出 id→state，置顶行用它写 `data-wsr-state`；**别把状态塞进节的重建签名**——那个签名只该管「哪些 id、标题、工作区名」，加状态会让整节每步重建、还会吞掉 hover；用 `applyPinStates()` 每次 pass 原地刷属性。
+19. **插件自己画的置顶行拿不到宿主的状态装饰**：`decorateRows` 只按 `data-row-key="session:<id>"` 找宿主行，而置顶行是 `data-row-key="pin:<id>"` 的插件自建节点、宿主那行又被隐藏，所以运行中/未读的状态色全丢了（0.25.1 修）。修法是 `statesOf()` 统一算出 id→state，置顶行用它写 `data-wsr-state`；**别把状态塞进节的重建签名**——那个签名只该管「哪些 id、标题、工作区名」，加状态会让整节每步重建、还会吞掉 hover；用 `applyPinStates()` 每次 pass 原地刷属性。**图标同理但要自己画**（0.26.1）：分组行的图标来自宿主的 `SessionStatusDots`（`StateDot` 组件，running 是 track+arc 的转圈 svg，done/warning 是圆点），置顶行是纯 DOM，`paintPinState()` 用 `createElementNS` 造同款 svg/圆点，并按 `data-wsr-dot` 去重，避免动画每 pass 重置。等待审批/问询（`status.pendingInteraction.kind`）在置顶行也要显示 warning 点。
 20. **GitHub 只能走 SSH + 代理，且 `connect.exe` 路径不能带空格**：本机 GCM 里的 HTTPS token 已失效（401），ssh 22 被墙。可用路径是在 `~/.ssh/config` 里给 `github.com` 加 `HostName ssh.github.com` / `Port 443` / `ProxyCommand C:/Users/Konka/.ssh/connect.exe -H 127.0.0.1:7897 %h %p`（connect.exe 从 Git 目录复制到无空格路径）。`ProxyCommand` 的值由 sh 解释，写成 `C:/Program Files/...` 会报 `/bin/sh: C:/Program: No such file or directory`；另外**别用 PowerShell 的 `Set-Content -Encoding UTF8` 改 `~/.ssh/config`**（PS 5.1 会写 BOM，ssh 直接 `Bad configuration option: \357\273\277host`），用 Node 的 UTF-8 写。GitHub 的 SSH 前端有缓存不一致：同一把钥匙会间歇性 `Permission denied (publickey)`，重试即可。
 21. **跳轮次只能靠 DOM，别想调宿主 API**：宿主有 `viewport.scrollToTurn()`，但只在 `@deepseek-ai/dsh-client-ui-chat` 内部（右侧轮次导轨用），没有对外暴露；对外只有 `uiWorkspace.openSession`。可用标识：对话行 `data-chat-turn="<n>"`、滚动容器 `[data-conversation-scroll]`、宿主自带的全文搜索需要改 profile 的 `session-query-sqlite` 开关（默认 `openAt: never`，全文调用直接报 `SESSION_QUERY_SEARCH_DISABLED`），所以索引和定位都自己做。历史是懒加载的：打开会话只挂最近的若干轮，往上滚才拉更早的，因此定位要「边往上滚边找」，不能打开就 `querySelector` 一次了事。
 22. **搜索索引别整包读日志**：65 个会话约 91MB 压缩日志，一次性解码会把内存顶满。`readSessionEvents` 已经分页（5000 条一页），缓存只存正文（每条上限 200k 字符），并且单请求设时间预算 + 新解码上限；剩下的靠 `pending` 让面板续请求，别指望一次请求扫完。

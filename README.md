@@ -46,6 +46,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 - 置顶区每行显示标题 + 所属工作区名，点行直接打开；hover 出现「取消置顶」；
 - 置顶期间它在原工作区分组里的那一行**隐藏**（不重复出现），取消置顶后原行回到原位；
 - 置顶行沿用同一套状态色（运行中蓝 / 完成未读绿 / 需要跟进琥珀），运行状态变化即时更新（0.25.1 修）；
+- 置顶行也带状态图标：运行中是转圈、完成未读是圆点、等你确认/回答时是同款琥珀点（0.26.1 起与分组里的行一致，之前只有颜色）；
 - 工作区分组、组内顺序、折叠、颜色全部照旧；
 - 只在按工作区分组时出现；搜索、扁平视图、侧栏收起时自动隐藏。
 
@@ -195,7 +196,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.26.0/dsh-ws-recency-0.26.0.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.26.1/dsh-ws-recency-0.26.1.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

@@ -156,6 +156,16 @@ global.document = {
     return composerSeat.querySelector(selector);
   },
   createElement: (tag) => el(tag),
+  createElementNS(ns, tag) {
+    const node = el(tag);
+    const base = node.setAttribute.bind(node);
+    /* SVG elements expose the class only as an attribute. */
+    node.setAttribute = (name, value) => {
+      if (name === "class") node.className = String(value);
+      base(name, value);
+    };
+    return node;
+  },
   addEventListener() {},
   removeEventListener() {},
   querySelectorAll(selector) {
@@ -506,12 +516,32 @@ statuses["A-fresh-1"] = { running: true };
 render();
 const runningPin = pinSection.querySelector(".wsr-pin-row");
 assert.strictEqual(runningPin.getAttribute("data-wsr-state"), "running", "a running pinned session is marked");
+/* The grouped rows get a spinner from the host; the pinned row draws its own. */
+const runningSlot = runningPin.querySelector(".wsr-pin-slot");
+assert.strictEqual(runningSlot.getAttribute("data-wsr-dot"), "ongoing", "the pinned row shows the running spinner slot");
+assert.strictEqual(runningSlot.querySelector(".wsr-pin-spin").getAttribute("class"), "wsr-pin-spin", "the spinner is an svg");
 statuses["A-fresh-1"] = { completionUnread: true };
 render();
-assert.strictEqual(pinSection.querySelector(".wsr-pin-row").getAttribute("data-wsr-state"), "unread", "a pinned session that finished unread is marked");
+const unreadPin = pinSection.querySelector(".wsr-pin-row");
+assert.strictEqual(unreadPin.getAttribute("data-wsr-state"), "unread", "a pinned session that finished unread is marked");
+assert.strictEqual(unreadPin.querySelector(".wsr-pin-slot").getAttribute("data-wsr-dot"), "done", "a finished pinned session gets the done dot");
 statuses["A-fresh-1"] = {};
+prefs.followUps["A-fresh-1"] = NOW;
+render();
+assert.strictEqual(pinSection.querySelector(".wsr-pin-row").querySelector(".wsr-pin-slot").getAttribute("data-wsr-dot"), "warning", "a followed-up pinned session gets the amber dot");
+delete prefs.followUps["A-fresh-1"];
 render();
 assert.strictEqual(pinSection.querySelector(".wsr-pin-row").getAttribute("data-wsr-state"), null, "the mark clears with the state");
+assert.strictEqual(pinSection.querySelector(".wsr-pin-slot").getAttribute("data-wsr-dot"), "idle", "an idle pinned row keeps an empty slot");
+
+/* Waiting on the user is the host's amber dot, and it outranks "running". */
+statuses["A-fresh-1"] = { running: true, pendingInteraction: { kind: "approval" } };
+render();
+assert.strictEqual(pinSection.querySelector(".wsr-pin-row").getAttribute("data-wsr-state"), "waiting", "a pinned session waiting for approval is marked");
+assert.strictEqual(pinSection.querySelector(".wsr-pin-slot").getAttribute("data-wsr-dot"), "warning", "it gets the warning dot");
+statuses["A-fresh-1"] = {};
+render();
+assert.strictEqual(pinSection.querySelector(".wsr-pin-slot").getAttribute("data-wsr-dot"), "idle", "an idle pinned row keeps an empty slot");
 
 /* A rebuild (title change) must paint the state too, not just the in-place pass. */
 statuses["A-fresh-1"] = { running: true };
