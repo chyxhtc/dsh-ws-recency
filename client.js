@@ -332,6 +332,7 @@
           "pin.status.running": "运行中",
           "pin.status.done": "已完成",
           "pin.status.followup": "需要跟进",
+          "pin.status.waiting": "等待你的确认",
           "argmode.title": "把工具参数计入主 agent",
           "argmode.description": "工具参数是模型自己写的（pwsh 的命令、write 的文件内容），严格说算主 agent 的输出，不算工具的消耗。打开后消耗分布里工具只算返回结果，参数并入主 agent。",
           "argmode.enabled": "工具参数计入主 agent",
@@ -497,6 +498,7 @@
           "pin.status.running": "Running",
           "pin.status.done": "Completed",
           "pin.status.followup": "Needs follow-up",
+          "pin.status.waiting": "Waiting for you",
           "menu.flag": "Mark as needs follow-up",
           "menu.unflag": "Clear follow-up mark",
           "menu.trash": "Delete session (move to trash)",
@@ -1208,7 +1210,11 @@
             slot.setAttribute("title", "");
             return;
           }
-          var label = key === "done" ? t("pin.status.done") : t("pin.status.followup");
+          var label = state === "waiting"
+            ? t("pin.status.waiting")
+            : state === "unread"
+              ? t("pin.status.done")
+              : t("pin.status.followup");
           var dot = document.createElement("span");
           dot.className = "wsr-pin-dot";
           dot.setAttribute("data-state", key);

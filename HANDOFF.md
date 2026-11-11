@@ -1,4 +1,4 @@
-# dsh-ws-recency — 交接说明（截至 0.26.1）
+# dsh-ws-recency — 交接说明（截至 0.26.2）
 
 > 给下一个会话用的现状快照。先读这一页，再按需看代码。
 
@@ -12,8 +12,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，已发布 `0.26.1`（0.26.0 内容搜索；0.25.1 修置顶行状态色） |
-| 最新已发布 tag / Release | `v0.26.1` tag 已推；Release 附件需 GitHub token，见下 |
+| npm | `dsh-ws-recency`，已发布 `0.26.2`（0.26.0 内容搜索；0.25.1/0.26.1/0.26.2 修置顶行状态色与图标） |
+| 最新已发布 tag / Release | `v0.26.2` tag 已推；Release 附件需 GitHub token，见下 |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
 | 真实 DSH home | `C:\Users\Konka\.hypers-work`（不是 `~/.dsh`），profile：`desktop` |
