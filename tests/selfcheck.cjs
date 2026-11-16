@@ -665,7 +665,17 @@ function textOf(node) {
   assert.ok(text.indexOf("main agent") !== -1, "the agent row is present");
   assert.ok(text.indexOf("60.0%") !== -1, "shares are shown as percentages");
   assert.ok(text.indexOf("10.5K") !== -1, "token totals are compact");
-  assert.strictEqual(body.querySelectorAll(".wsr-stats-card").length, 5, "five exact totals are shown");
+  /* Five cards again, bill first and accented; the split card is gone, so the
+     three-way breakdown rides in its own card as before. */
+  assert.strictEqual(body.querySelectorAll(".wsr-stats-card").length, 5, "five cards");
+  const cards = body.querySelectorAll(".wsr-stats-card");
+  assert.strictEqual(cards[0].querySelector(".wsr-stats-label").textContent, "total", "the bill leads");
+  assert.ok(String(cards[0].className).indexOf("wsr-stats-card-primary") !== -1, "only the bill is accented");
+  assert.strictEqual(body.querySelectorAll(".wsr-stats-card-primary").length, 1, "one accented card");
+  assert.strictEqual(body.querySelector(".wsr-stats-split"), null, "the split line is gone with the wide card");
+  assert.strictEqual(body.querySelectorAll(".wsr-stats-footnote").length, 1, "the口径 note appears once");
+  assert.strictEqual(body.querySelectorAll(".wsr-stats-note").length, 1, "no second copy of the estimate disclaimer");
+  assert.strictEqual(body.querySelectorAll(".wsr-amplified-if").length, 0, "the what-if saving line is gone");
 
   /* The amplified section: content x remaining steps, not step tokens. */
   const amplified = body.querySelector(".wsr-amplified");
@@ -687,22 +697,34 @@ function textOf(node) {
   assert.ok(textOf(topRow).indexOf("src/app.js") !== -1, "its file is shown");
   assert.ok(textOf(topRow).indexOf("46.0K") !== -1, "the amplified total is shown");
   assert.ok(textOf(topRow).indexOf("46.0%") !== -1, "its share of the bill is shown");
-  assert.ok(textOf(topRow).indexOf("36.8K") !== -1, "the what-if saving is shown");
+  assert.ok(textOf(topRow).indexOf("36.8K") === -1, "the what-if saving line is gone: the jump markers carry the advice now");
   assert.ok(textOf(amplified).indexOf("re-read") !== -1, "the meta says how often it is re-read");
 
-  const chartRows = body.querySelectorAll(".wsr-chart-row");
+  /* The header row shares the grid, so the bar rows are one fewer than the rows
+     in the DOM; every bar row must keep five cells or the columns drift. */
+  const headerRow = body.querySelector(".wsr-chart-headrow");
+  assert.ok(headerRow !== null, "the chart has a column header row");
+  const chartRows = body.querySelectorAll(".wsr-chart-row").filter((row) => row !== headerRow);
   assert.strictEqual(chartRows.length, 3, "one bar per source: the agent plus both tools");
+  for (const row of chartRows) {
+    assert.strictEqual(row.children.length, 5, "every bar row fills the five-column grid");
+  }
+  assert.strictEqual(headerRow.querySelector(".wsr-chart-calls-head").textContent, "calls", "the count column is labelled");
+  assert.strictEqual(chartRows[1].querySelector(".wsr-chart-calls").textContent, "4x", "a tool row carries its call count");
+  assert.strictEqual(chartRows[0].querySelector(".wsr-chart-calls").textContent, "", "the agent row keeps the cell empty, not missing");
   assert.strictEqual(chartRows[0].querySelector(".wsr-chart-value").textContent, "360");
   assert.strictEqual(chartRows[1].querySelector(".wsr-chart-label").textContent, "pwsh");
   const widest = chartRows[1].querySelector(".wsr-chart-group").style.width;
   assert.strictEqual(widest, "100.00%", "the largest bar fills the track");
   assert.ok(chartRows[0].querySelector(".wsr-chart-group").style.width !== widest, "smaller bars are shorter");
 
-  /* Colour identity: curated hue per known tool, hash for the rest, rank fades. */
+  /* Colour identity is the tool family, at one fixed vividness: the hue says
+     what kind of work it is, never how big it got. */
   assert.strictEqual(chartRows[0].querySelector(".wsr-chart-group").style.background, undefined, "the group never paints a colour behind the segments");
-  assert.strictEqual(chartRows[0].querySelector(".wsr-bar-results").style.background, "hsl(217, 88%, 50%)");
-  assert.strictEqual(chartRows[1].querySelector(".wsr-bar-results").style.background, "hsl(32, 80%, 52%)", "pwsh keeps its orange");
-  assert.strictEqual(chartRows[2].querySelector(".wsr-bar-results").style.background, "hsl(152, 72%, 54%)", "read keeps its green and fades one rank");
+  assert.strictEqual(chartRows[1].querySelector(".wsr-bar-results").style.background, "hsl(32, 72%, 58%)", "pwsh is a shell tool");
+  assert.strictEqual(chartRows[2].querySelector(".wsr-bar-results").style.background, "hsl(152, 72%, 58%)", "read is a file tool at the same vividness");
+  assert.strictEqual(chartRows[1].querySelector(".wsr-chart-family").textContent, "shell", "the name cell names the family its colour stands for");
+  assert.strictEqual(chartRows[2].querySelector(".wsr-chart-family").textContent, "files", "the other family is named too");
 
   /* ---------- the argument / result split ------------------------------- */
   /* pwsh: 100 args of 600 total -> the light segment is a sixth of the bar. */
@@ -713,7 +735,12 @@ function textOf(node) {
   assert.ok(resultsSeg !== null, "a tool bar carries a result segment");
   assert.strictEqual(argsSeg.style.width, "16.67%", "the argument segment is sized inside the tool's bar");
   assert.strictEqual(resultsSeg.style.width, "83.33%", "the rest of the bar is results");
-  assert.strictEqual(argsSeg.style.background, "hsl(32, 56%, 68%)", "the argument segment is its own, lighter colour");
+  assert.strictEqual(argsSeg.style.background, "hsl(32, 32%, 84%)", "the argument segment is a much lighter shade of the family");
+  /* The split has to be legible on its own, so the bar says what its two shades mean. */
+  const splitGroup = argsSeg.parentElement;
+  assert.ok(splitGroup.getAttribute("title") !== null, "a split bar explains its shades on hover");
+  assert.ok(String(splitGroup.getAttribute("title")).indexOf("total") !== -1, "the tooltip names the tool's total");
+  assert.ok(String(splitGroup.getAttribute("title")).indexOf("light") === -1, "no colour words in the copy: users read them as the row colours below");
   assert.notStrictEqual(argsSeg.style.background, resultsSeg.style.background, "the two segments must not composite to the same colour");
   assert.strictEqual(argsSeg.style.opacity, undefined, "the contrast comes from the colour, not from opacity over a same-hue bar");
   assert.strictEqual(chartRows[0].querySelector(".wsr-bar-args"), null, "the agent bar is not split");
@@ -727,7 +754,8 @@ function textOf(node) {
   itemAgain.props.onSelect();
   await new Promise((resolve) => setTimeout(resolve, 0));
   const agentBody = overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-body");
-  const agentRows = agentBody.querySelectorAll(".wsr-chart-row");
+  const agentHeader = agentBody.querySelector(".wsr-chart-headrow");
+  const agentRows = agentBody.querySelectorAll(".wsr-chart-row").filter((row) => row !== agentHeader);
   assert.strictEqual(agentRows[0].querySelector(".wsr-chart-value").textContent, "470", "the agent keeps its own tokens plus the moved arguments");
   assert.strictEqual(agentRows[1].querySelector(".wsr-chart-value").textContent, "500", "the tool keeps only its results");
   assert.strictEqual(agentRows[1].querySelector(".wsr-bar-args"), null, "nothing is split when arguments belong to the agent");

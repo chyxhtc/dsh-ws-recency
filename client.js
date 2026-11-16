@@ -131,6 +131,8 @@
           ".wsr-modal-tools{display:flex;align-items:center;gap:8px;flex:none}",
           ".wsr-modal-body{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px;font-size:12px}",
           ".wsr-stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}",
+          ".wsr-stats-card-primary{box-shadow:inset 0 0 0 1px rgba(79,124,255,.45)}",
+          ".wsr-stats-card-primary .wsr-stats-value{color:#7aa2ff}",
           ".wsr-stats-card{background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));border-radius:8px;padding:8px 10px}",
           ".wsr-stats-value{font-size:15px;font-weight:600}",
           ".wsr-stats-label{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
@@ -234,19 +236,23 @@
           ".wsr-chart{display:flex;flex-direction:column;gap:6px}",
           ".wsr-chart-head{display:flex;align-items:center;justify-content:space-between;gap:10px}",
           ".wsr-chart-title{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
-          ".wsr-chart-row{display:grid;grid-template-columns:120px 1fr 64px 56px;align-items:center;gap:8px}",
           ".wsr-chart-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}",
+          ".wsr-chart-row{display:grid;grid-template-columns:120px 1fr 64px 56px 48px;align-items:center;gap:8px}",
+          ".wsr-chart-family{font-size:10px;color:var(--dsw-alias-label-tertiary);margin-top:-2px}",
+          ".wsr-family-legend{padding-bottom:4px}",
           ".wsr-chart-track{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden;display:flex}",
           ".wsr-chart-fill{height:100%;border-radius:0;min-width:0}",
           ".wsr-chart-group{display:flex;height:100%;min-width:2px;border-radius:4px;overflow:hidden}",
           ".wsr-chart-swatch{width:8px;height:8px;border-radius:2px;background:hsl(217, 88%, 50%)}",
-          ".wsr-chart-swatch-dim{background:hsl(217, 56%, 68%)}",
+          ".wsr-chart-swatch-dim{background:hsl(217, 32%, 84%)}",
           ".wsr-chart-legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center}",
           ".wsr-chart-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-chart-legend-text{white-space:nowrap}",
           ".wsr-chart-value{text-align:right;font-variant-numeric:tabular-nums}",
           ".wsr-chart-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
           ".wsr-chart-calls{text-align:right;color:var(--dsw-alias-label-tertiary);font-size:10px;font-variant-numeric:tabular-nums}",
+          ".wsr-chart-headrow{font-size:10px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-chart-value-head,.wsr-chart-share-head,.wsr-chart-calls-head{text-align:right}",
           ".wsr-stats-details{display:flex;flex-direction:column;gap:8px}",
           ".wsr-stats-table{display:flex;flex-direction:column}",
           ".wsr-stats-row{display:grid;grid-template-columns:1.4fr .6fr .8fr .8fr .8fr .6fr;gap:6px;padding:6px 4px;border-bottom:.5px solid rgba(255,255,255,.06)}",
@@ -272,10 +278,14 @@
           ".wsr-context-chart{display:flex;align-items:flex-end;gap:2px;height:54px;padding-top:4px;border-bottom:.5px solid rgba(255,255,255,.08)}",
           ".wsr-context-bar{flex:1;min-width:1px;border-radius:1px 1px 0 0;background:linear-gradient(180deg,rgba(79,124,255,.9),rgba(79,124,255,.3))}",
           ".wsr-context-caption{font-size:10px;color:var(--dsw-alias-label-tertiary)}",
-          ".wsr-context-jump{position:relative}",
-          ".wsr-context-jump-dot{position:absolute;left:50%;top:-5px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#d99a2b}",
+          ".wsr-context-jump{position:relative;cursor:pointer}",
+          ".wsr-context-jump-hit{position:absolute;left:50%;top:-9px;width:22px;height:22px;margin-left:-11px;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer}",
+          ".wsr-context-jump-dot{width:6px;height:6px;border-radius:50%;background:#d99a2b;transition:transform .12s,box-shadow .12s}",
+          ".wsr-context-jump-hit-hot .wsr-context-jump-dot{transform:scale(1.8);box-shadow:0 0 0 4px rgba(217,154,43,.25)}",
+          ".wsr-context-jump:hover .wsr-context-bar-inner{filter:brightness(1.15)}",
           ".wsr-context-jumps{display:flex;flex-direction:column;gap:2px}",
-          ".wsr-context-jump-row{font-size:11px;color:var(--dsw-alias-label-secondary)}",
+          ".wsr-context-jump-row{font-size:11px;color:var(--dsw-alias-label-secondary);padding:1px 4px;border-radius:4px;transition:background .12s,color .12s}",
+          ".wsr-context-jump-row-hot{background:rgba(217,154,43,.16);color:var(--dsw-alias-label-primary)}",
           ".wsr-kind-legend{display:flex;flex-wrap:wrap;gap:10px}",
           ".wsr-kind{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-kind-dot{width:8px;height:8px;border-radius:2px;flex:none}",
@@ -287,8 +297,8 @@
           ".wsr-amplified-meta{font-size:10px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-amplified-value{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px}",
           ".wsr-amplified-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-size:11px;font-variant-numeric:tabular-nums}",
-          ".wsr-amplified-if{grid-column:1 / -1;font-size:10px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-amplified-empty{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-stats-footnote{padding-top:6px;border-top:.5px solid rgba(255,255,255,.06)}",
           ".wsr-toggle{width:100%;height:28px;padding:0 12px 0 calc(28px + var(--dsh-workspace-indent,0px));cursor:pointer;text-align:left;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;font-size:12px}",
           ".wsr-toggle:hover{color:var(--dsw-alias-label-secondary)}",
           '[' + STATE_ATTR + '="running"] [class*="_title"]{color:#4f8ef7}',
@@ -358,12 +368,15 @@
           "stats.col.source": "\u6765\u6e90",
           "stats.col.calls": "\u8c03\u7528",
           "stats.callsShort": "{n} 次",
+          "stats.col.tokensShort": "token",
+          "stats.col.shareShort": "占比",
           "stats.col.args": "\u53c2\u6570",
           "stats.col.results": "\u7ed3\u679c",
           "stats.col.total": "\u4f30\u7b97",
           "stats.col.share": "\u5360\u6bd4",
           "stats.note": "\u5408\u8ba1\u6765\u81ea\u6bcf\u6b65\u8bb0\u5f55\u7684\u771f\u5b9e usage\uff08\u7f13\u5b58\u547d\u4e2d + \u8f93\u5165 + \u8f93\u51fa\uff09\uff1b\u672c\u8868\u6309\u6765\u6e90\u7684\u62c6\u5206\u662f\u6309\u5185\u5bb9\u957f\u5ea6\u4f30\u7b97\uff08\u4e2d\u6587\u7ea6 1 token/\u5b57\uff0c\u82f1\u6587\u7ea6 4 \u5b57\u7b26/token\uff09\uff0c\u7528\u4e8e\u6bd4\u8f83\u5360\u6bd4\uff0c\u4e0d\u662f\u8ba1\u8d39\u53e3\u5f84\u3002",
           "stats.agentDetail": "主 agent 构成：思考 {reasoning} · 回复 {text} · 用户消息 {user} · 系统提示 {system}",
+          "stats.split": "输入 {input} · 缓存命中 {cache} · 输出 {output}",
           "stats.diagnose.unmounted": "\n\n（宿主半已加载，但统计路由没挂上——重启应用再试）",
           "stats.diagnose.noHost": "\n\n（宿主半未加载：需要重启应用加载新版本）",
           "menu.move": "移动到工作区…",
@@ -464,9 +477,16 @@
           "archive.workspace": "工作区",
           "move.failed": "移动失败：",
           "stats.chart": "消耗分布",
+          "stats.family.shell": "命令执行",
+          "stats.family.files": "文件操作",
+          "stats.family.web": "网络检索",
+          "stats.family.agents": "子代理/协作",
+          "stats.family.misc": "其它工具",
+          "stats.family.other": "未归类",
           "composer.analysis": "用量分析",
           "stats.legend.args": "参数（模型写的）",
           "stats.legend.results": "结果（环境返回的）",
+          "stats.barTooltip": "{name} 共 {total}：参数 {args}（{argsShare}），结果 {results}（{resultsShare}）",
           "stats.argModeNote": "当前把工具参数计入主 agent：每个工具只算返回结果，表格里「参数」列显示为淡色（那些 token 记在主 agent 那一行）。",
           "stats.amplified.title": "放大成本（账单归因）",
           "stats.amplified.summary": "账单 {bill} token；可归因内容经重读放大后占 {share}（{attributed}）",
@@ -528,12 +548,15 @@
           "stats.col.source": "source",
           "stats.col.calls": "calls",
           "stats.callsShort": "{n}x",
+          "stats.col.tokensShort": "tokens",
+          "stats.col.shareShort": "share",
           "stats.col.args": "args",
           "stats.col.results": "results",
           "stats.col.total": "estimate",
           "stats.col.share": "share",
           "stats.note": "Totals come from the recorded per-step usage (cache read + input + output). The per-source split is estimated from content length (about 1 token per CJK character, 4 characters per token otherwise) so the shares are comparable, not billable.",
           "stats.agentDetail": "Agent composition: reasoning {reasoning} \u00b7 reply {text} \u00b7 user messages {user} \u00b7 system prompt {system}",
+          "stats.split": "input {input} \u00b7 cache hit {cache} \u00b7 output {output}",
           "stats.diagnose.unmounted": "\n\n(the host half is loaded but the statistics route did not mount - restart the app and retry)",
           "stats.diagnose.noHost": "\n\n(the host half is not loaded: restart the app to pick up the new version)",
           "menu.move": "Move to workspace\u2026",
@@ -633,9 +656,16 @@
           "archive.workspace": "workspace",
           "move.failed": "Move failed: ",
           "stats.chart": "Where the tokens went",
+          "stats.family.shell": "shell",
+          "stats.family.files": "files",
+          "stats.family.web": "web",
+          "stats.family.agents": "subagents",
+          "stats.family.misc": "other tools",
+          "stats.family.other": "unclassified",
           "composer.analysis": "Usage analysis",
           "stats.legend.args": "arguments (written by the model)",
           "stats.legend.results": "results (returned by the environment)",
+          "stats.barTooltip": "{name}: {total} total - arguments {args} ({argsShare}), results {results} ({resultsShare})",
           "stats.argModeNote": "Tool arguments currently count towards the agent: each tool shows only its results, and the table's \"args\" column is faded because those tokens sit on the agent's row.",
           "stats.amplified.title": "Amplified cost (what the bill pays for)",
           "stats.amplified.summary": "Bill {bill} tokens; attributable content amplifies to {share} ({attributed})",
@@ -1951,7 +1981,14 @@
          */
         function chartBar(entry, largest) {
           var line = statsDiv("wsr-chart-row");
-          line.appendChild(statsDiv("wsr-chart-label", entry.name));
+          var labelCell = statsDiv("wsr-chart-label", entry.name);
+          /* The colour now means a family, so the name cell says which one: a
+             colour without a caption is a riddle, not an encoding. It lives in
+             the name cell so the five-column grid stays intact. */
+          if (typeof entry.family === "string" && entry.family !== "") {
+            labelCell.appendChild(statsDiv("wsr-chart-family", t("stats.family." + entry.family)));
+          }
+          line.appendChild(labelCell);
           var track = statsDiv("wsr-chart-track");
           var group = statsDiv("wsr-chart-group");
           var width = largest > 0 ? (entry.value / largest) * 100 : 0;
@@ -1963,75 +2000,85 @@
           if (argsPart > 0) {
             var argsSeg = statsDiv("wsr-chart-fill wsr-bar-args");
             argsSeg.style.width = argsPart.toFixed(2) + "%";
-            argsSeg.style.background = sourceColorDim(entry.hue, entry.rank);
+            argsSeg.style.background = sourceColorDim(entry.hue);
             group.appendChild(argsSeg);
           }
           var resultsSeg = statsDiv("wsr-chart-fill wsr-bar-results");
           resultsSeg.style.width = (100 - argsPart).toFixed(2) + "%";
-          resultsSeg.style.background = sourceColor(entry.hue, entry.rank);
+          resultsSeg.style.background = sourceColor(entry.hue);
           group.appendChild(resultsSeg);
+          /* What the two shades mean, on the thing that has them: the legend is
+             a row away and reads like a second chart header. */
+          if (argsPart > 0) {
+            group.setAttribute("title", t("stats.barTooltip", {
+              name: entry.name,
+              total: formatTokens(entry.value),
+              args: formatTokens(entry.args || 0),
+              argsShare: formatShare((entry.value > 0 ? (entry.args || 0) / entry.value : 0)),
+              results: formatTokens(entry.results || 0),
+              resultsShare: formatShare((entry.value > 0 ? (entry.results || 0) / entry.value : 0)),
+            }));
+          }
           track.appendChild(group);
           line.appendChild(track);
           line.appendChild(statsDiv("wsr-chart-value", formatTokens(entry.value)));
           line.appendChild(statsDiv("wsr-chart-share", formatShare(entry.share)));
           /* The count the chart cannot draw: a bar says how heavy a source is,
              the call count says how often it got there. The details table used to
-             be the only place for it. */
-          if (typeof entry.calls === "number" && entry.calls > 0) {
-            line.appendChild(statsDiv("wsr-chart-calls", t("stats.callsShort", { n: String(entry.calls) })));
-          }
+             be the only place for it. It always renders (empty for rows without
+             a count) so the five-column grid stays aligned. */
+          line.appendChild(statsDiv(
+            "wsr-chart-calls",
+            typeof entry.calls === "number" && entry.calls > 0 ? t("stats.callsShort", { n: String(entry.calls) }) : "",
+          ));
           return line;
         }
 
         /**
-         * Colour identity for a source.
+         * Colour identity for a source, by tool family.
          *
-         * The tool set is open - every plugin and MCP server adds tools - so it
-         * cannot be enumerated. A curated hue for the common tools plus a stable
-         * hash for everything else keeps one name on one hue across sessions, and
-         * the rank only modulates how vivid it is: the heaviest source reads
-         * strongest, the tail fades back.
+         * The colour answers one question - what kind of work is this - so the
+         * hue is the family, not the tool: five named families with a fixed
+         * vividness, and unknown tools fall back to the same neutral instead of a
+         * hash. Ranking no longer modulates anything: a faded tail colour told the
+         * reader nothing they could act on.
          */
-        var TOOL_HUES = {
-          pwsh: 32, powershell: 32, shell: 32, bash: 32, command: 32,
-          read: 152, write: 217, edit: 268, grep: 190, glob: 88,
-          todo_write: 292, todo_read: 292, todo: 292,
-          job_output: 330, job_list: 330, job_kill: 330,
-          web_fetch: 205, web_search: 205, platform_search: 205, multi_search: 205, advanced_search: 205,
-          subagent: 250, subagent_fork: 250, workflow: 250, spawn_teammate: 250, send_message: 250, wait_agent: 250,
-          ask_user_question: 12, present: 12,
-          skill: 60, create_goal: 60, update_goal: 60,
-        };
-        var TOOL_PREFIX_HUES = [
-          ["mcp__", 235],
-          ["browser_", 0],
-          ["univer_", 175],
-          ["weknora_", 300],
-          ["job_", 330],
-          ["team_", 250],
+        var TOOL_FAMILIES = [
+          { key: "shell", hue: 32, tools: ["pwsh", "powershell", "shell", "bash", "command", "cmd", "run_code"], prefixes: [] },
+          { key: "files", hue: 152, tools: ["read", "write", "edit", "grep", "glob", "str_replace_editor", "ls", "delete", "move_file"], prefixes: ["univer_"] },
+          { key: "web", hue: 205, tools: ["web_fetch", "web_search", "platform_search", "multi_search", "advanced_search", "domain_search", "video_search", "browser_"], prefixes: ["browser_"] },
+          { key: "agents", hue: 268, tools: ["subagent", "subagent_fork", "workflow", "spawn_teammate", "send_message", "wait_agent", "task"], prefixes: ["team_"] },
+          { key: "misc", hue: 330, tools: ["todo_write", "todo_read", "todo", "job_output", "job_list", "job_kill", "skill", "create_goal", "update_goal", "ask_user_question", "present", "weknora_"], prefixes: ["job_", "weknora_", "mcp__"] },
         ];
+        /** The neutral an unknown tool gets: no family, no claim of one. */
+        var TOOL_FAMILY_NEUTRAL = { key: "other", hue: 210 };
 
-        function hashHue(name) {
-          var hash = 0;
-          for (var i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) % 360;
-          return hash;
+        function toolFamily(name) {
+          if (typeof name !== "string" || name === "") return TOOL_FAMILY_NEUTRAL;
+          var key = name.toLowerCase();
+          for (var i = 0; i < TOOL_FAMILIES.length; i += 1) {
+            var family = TOOL_FAMILIES[i];
+            if (family.tools.indexOf(key) !== -1) return family;
+            for (var p = 0; p < family.prefixes.length; p += 1) {
+              if (key.indexOf(family.prefixes[p]) === 0) return family;
+            }
+          }
+          return TOOL_FAMILY_NEUTRAL;
         }
 
         function sourceHue(name) {
-          if (typeof name !== "string" || name === "") return 210;
-          var key = name.toLowerCase();
-          if (TOOL_HUES[key] !== undefined) return TOOL_HUES[key];
-          for (var i = 0; i < TOOL_PREFIX_HUES.length; i += 1) {
-            if (key.indexOf(TOOL_PREFIX_HUES[i][0]) === 0) return TOOL_PREFIX_HUES[i][1];
-          }
-          return hashHue(key);
+          return toolFamily(name).hue;
         }
 
-        /** Rank 0 is the heaviest source; later ranks fade towards grey. */
-        function sourceColor(hue, rank) {
-          var saturation = Math.max(40, 88 - rank * 8);
-          var lightness = Math.min(64, 50 + rank * 2);
-          return "hsl(" + hue + ", " + saturation + "%, " + lightness + "%)";
+        /** The hue of a family key, for the legend swatches. */
+        function hueOfFamily(key) {
+          for (var i = 0; i < TOOL_FAMILIES.length; i += 1) if (TOOL_FAMILIES[i].key === key) return TOOL_FAMILIES[i].hue;
+          return TOOL_FAMILY_NEUTRAL.hue;
+        }
+
+        /** One vividness for every family bar: colour means "which family", not "how big". */
+        function sourceColor(hue) {
+          return "hsl(" + hue + ", 72%, 58%)";
         }
 
         /**
@@ -2039,12 +2086,12 @@
          *
          * It has to be a real colour rather than an opacity: the segment sits on a
          * solid bar of the same hue, so a translucent copy of it would composite
-         * back to exactly the same colour and the split would be invisible.
+         * back to exactly the same colour and the split would be invisible. The
+         * gap between the two is deliberately wide - a 20-point lightness step read
+         * as one smudged bar in the reported panel.
          */
-        function sourceColorDim(hue, rank) {
-          var saturation = Math.max(28, 62 - rank * 6);
-          var lightness = Math.min(76, 66 + rank * 2);
-          return "hsl(" + hue + ", " + saturation + "%, " + lightness + "%)";
+        function sourceColorDim(hue) {
+          return "hsl(" + hue + ", 32%, 84%)";
         }
 
         var AMPLIFIED_KIND = {
@@ -2063,6 +2110,48 @@
          * block's tokens times the number of later steps that re-read it. The
          * host half computes that attribution; this only draws it.
          */
+        /** Chart/list pairs whose jump markers highlight together on hover. */
+        var jumpHoverHosts = [];
+        /** Document-level listener for jump hover; registered once per panel open. */
+        var jumpHoverBound = false;
+
+        /**
+         * Highlight one jump: the bar, its dot and the row that spells it out.
+         *
+         * Both the chart and the list live under the same section, so the pairing
+         * is by `data-wsr-jump*` attributes rather than by DOM position (the chart
+         * is downsampled and a bar may cover several steps).
+         */
+        function highlightJumpRow(event) {
+          var target = event !== undefined && event.currentTarget !== undefined ? event.currentTarget : null;
+          if (target === null || typeof target.getAttribute !== "function") return;
+          var step = target.getAttribute("data-wsr-jump-hit");
+          if (step === null) return;
+          for (var i = 0; i < jumpHoverHosts.length; i += 1) {
+            var host = jumpHoverHosts[i];
+            if (host.chart === null || typeof host.chart.querySelectorAll !== "function") continue;
+            var rows = host.chart.querySelectorAll("[data-wsr-jump-row]");
+            for (var r = 0; r < rows.length; r += 1) {
+              rows[r].className = "wsr-context-jump-row" + (rows[r].getAttribute("data-wsr-jump-row") === step ? " wsr-context-jump-row-hot" : "");
+            }
+            var hits = host.chart.querySelectorAll("[data-wsr-jump-hit]");
+            for (var h = 0; h < hits.length; h += 1) {
+              hits[h].className = "wsr-context-jump-hit" + (hits[h].getAttribute("data-wsr-jump-hit") === step ? " wsr-context-jump-hit-hot" : "");
+            }
+          }
+        }
+
+        function clearJumpHighlight() {
+          for (var i = 0; i < jumpHoverHosts.length; i += 1) {
+            var host = jumpHoverHosts[i];
+            if (host.chart === null || typeof host.chart.querySelectorAll !== "function") continue;
+            var rows = host.chart.querySelectorAll("[data-wsr-jump-row]");
+            for (var r = 0; r < rows.length; r += 1) rows[r].className = "wsr-context-jump-row";
+            var hits = host.chart.querySelectorAll("[data-wsr-jump-hit]");
+            for (var h = 0; h < hits.length; h += 1) hits[h].className = "wsr-context-jump-hit";
+          }
+        }
+
         /** The three steepest rises in the context curve, with the block behind each. */
         function contextJumps(amplified) {
           var series = Array.isArray(amplified.series) ? amplified.series : [];
@@ -2142,8 +2231,15 @@
               bar.className = "wsr-context-bar wsr-context-jump";
               bar.setAttribute("data-wsr-jump", String(jump.step));
               bar.setAttribute("title", jump.label);
-              var marker = statsDiv("wsr-context-jump-dot");
-              bar.appendChild(marker);
+              /* A hover target that is big enough to hit: a 5px dot on a 3px bar
+                 is unraisable without aiming, and the label lives in the row
+                 below, so hovering the bar also lifts that row. */
+              var hit = statsDiv("wsr-context-jump-hit");
+              hit.setAttribute("data-wsr-jump-hit", String(jump.step));
+              hit.appendChild(statsDiv("wsr-context-jump-dot"));
+              hit.addEventListener("mouseenter", highlightJumpRow);
+              hit.addEventListener("mouseleave", clearJumpHighlight);
+              bar.appendChild(hit);
             } else {
               bar.setAttribute("title", t("stats.amplified.point", { step: String(series[j].step), context: formatTokens(series[j].context) }));
             }
@@ -2154,10 +2250,15 @@
           if (jumps.length > 0) {
             var jumpList = statsDiv("wsr-context-jumps");
             for (var jl = 0; jl < jumps.length; jl += 1) {
-              jumpList.appendChild(statsDiv("wsr-context-jump-row", jumps[jl].label));
+              var jumpRow = statsDiv("wsr-context-jump-row", jumps[jl].label);
+              jumpRow.setAttribute("data-wsr-jump-row", String(jumps[jl].step));
+              jumpList.appendChild(jumpRow);
             }
             section.appendChild(jumpList);
           }
+          /* The rows only make sense while the chart is on screen; hovering a
+             bar or its row lifts both, which is what "挪上去更明显" means here. */
+          jumpHoverHosts.push({ chart: chart, list: section });
 
           var kinds = amplified.byKind || [];
           if (kinds.length > 0) {
@@ -2193,37 +2294,34 @@
             row.appendChild(main);
             row.appendChild(statsDiv("wsr-amplified-value", formatTokens(block.amplified)));
             row.appendChild(statsDiv("wsr-amplified-share", formatShare(block.share || 0)));
-            if (Number(block.remaining) > 0 && Number(block.saving) > 0) {
-              row.appendChild(statsDiv("wsr-amplified-if", t("stats.amplified.whatIf", {
-                save: formatTokens(block.saving),
-                share: formatShare(Number(block.saving) / (bill > 0 ? bill : 1)),
-              })));
-            }
             list.appendChild(row);
           }
           section.appendChild(list);
-          section.appendChild(statsDiv("wsr-stats-note", t("stats.amplified.note")));
           return section;
         }
 
         function renderStats(body, stats) {
           body.textContent = "";
           while (body.firstChild !== null) body.removeChild(body.firstChild);
+          /* A re-render replaces the DOM the hover handlers pointed at. */
+          jumpHoverHosts.length = 0;
           var totals = stats.totals || {};
           var estimate = stats.estimate || {};
           var agent = estimate.agent || {};
 
+          /* Five cards as before, bill first: it is the number the rest of the
+             panel explains, so it leads and carries the accent. */
           var grid = document.createElement("div");
           grid.className = "wsr-stats-grid";
           var cards = [
-            [t("stats.steps"), formatTokens(stats.steps)],
-            [t("stats.input"), formatTokens(totals.inputTokens)],
-            [t("stats.cache"), formatTokens(totals.cacheReadTokens)],
-            [t("stats.output"), formatTokens(totals.outputTokens)],
-            [t("stats.total"), formatTokens(totals.totalTokens)],
+            [t("stats.total"), formatTokens(totals.totalTokens), true],
+            [t("stats.steps"), formatTokens(stats.steps), false],
+            [t("stats.input"), formatTokens(totals.inputTokens), false],
+            [t("stats.cache"), formatTokens(totals.cacheReadTokens), false],
+            [t("stats.output"), formatTokens(totals.outputTokens), false],
           ];
           for (var i = 0; i < cards.length; i += 1) {
-            var card = statsDiv("wsr-stats-card");
+            var card = statsDiv("wsr-stats-card" + (cards[i][2] === true ? " wsr-stats-card-primary" : ""));
             card.appendChild(statsDiv("wsr-stats-value", cards[i][1]));
             card.appendChild(statsDiv("wsr-stats-label", cards[i][0]));
             grid.appendChild(card);
@@ -2271,19 +2369,51 @@
               value: value,
               share: shareOf(value),
               hue: sourceHue(tool.name),
+              family: toolFamily(tool.name).key,
               rank: j + 1,
               calls: tool.calls || 0,
               args: args,
+              results: results,
               split: mode !== "agent" && args > 0 && results > 0,
             });
           }
 
           /* The picture first: one bar per source, split into args and results. */
-          var chart = statsDiv("wsr-chart");
+          var chart = document.createElement("div");
+          chart.className = "wsr-chart";
+          var familyOrder = [];
+          var familySeen = {};
+          for (var f = 0; f < entries.length; f += 1) {
+            var fam = entries[f].family;
+            if (typeof fam === "string" && fam !== "" && familySeen[fam] !== true) {
+              familySeen[fam] = true;
+              familyOrder.push(fam);
+            }
+          }
+          if (familyOrder.length > 0) {
+            var familyLegend = statsDiv("wsr-kind-legend wsr-family-legend");
+            for (var fl = 0; fl < familyOrder.length; fl += 1) {
+              var famItem = statsDiv("wsr-kind");
+              var famDot = statsDiv("wsr-kind-dot");
+              famDot.style.background = sourceColor(hueOfFamily(familyOrder[fl]));
+              famItem.appendChild(famDot);
+              famItem.appendChild(statsDiv("", t("stats.family." + familyOrder[fl])));
+              familyLegend.appendChild(famItem);
+            }
+            chart.appendChild(familyLegend);
+          }
           var chartHead = statsDiv("wsr-chart-head");
           chartHead.appendChild(statsDiv("wsr-chart-title", t("stats.chart")));
           if (mode !== "agent") chartHead.appendChild(chartLegend());
           chart.appendChild(chartHead);
+          /* A header row keeps the count column from reading as a stray number. */
+          var callHead = statsDiv("wsr-chart-row wsr-chart-headrow");
+          callHead.appendChild(statsDiv("wsr-chart-label", ""));
+          callHead.appendChild(statsDiv("wsr-chart-track-head", ""));
+          callHead.appendChild(statsDiv("wsr-chart-value-head", t("stats.col.tokensShort")));
+          callHead.appendChild(statsDiv("wsr-chart-share-head", t("stats.col.shareShort")));
+          callHead.appendChild(statsDiv("wsr-chart-calls-head", t("stats.col.calls")));
+          chart.appendChild(callHead);
           var largest = 1;
           for (var m = 0; m < entries.length; m += 1) if (entries[m].value > largest) largest = entries[m].value;
           for (var k = 0; k < entries.length; k += 1) chart.appendChild(chartBar(entries[k], largest));
@@ -2298,7 +2428,6 @@
             user: formatTokens(agent.user),
             system: formatTokens(agent.system),
           })));
-          distributionPanel.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
 
           var tabs = statsDiv("wsr-stats-tabs");
           tabs.setAttribute("role", "tablist");
@@ -2345,6 +2474,9 @@
           selectTab(initialTab);
           body.appendChild(tabs);
           body.appendChild(panels);
+          /* One口径 note for the whole dialog: both views are estimates over the
+             same logs, and repeating it under each view crowded out the numbers. */
+          body.appendChild(statsDiv("wsr-stats-note wsr-stats-footnote", t("stats.note")));
         }
 
         function openStatsPanel(sessionId) {
