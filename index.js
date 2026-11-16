@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.27.1";
+export const HOST_VERSION = "0.28.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -130,6 +130,10 @@ async function moveWithRetry(source, target) {
       await rename(source, target);
       return true;
     } catch (error) {
+      /* Only a momentary lock is worth retrying; "not there" means the move
+         cannot happen at all, and treating it as success would leave the caller
+         with an empty trash entry and no error. */
+      if (error?.code === "ENOENT") return false;
       if (attempt === RENAME_RETRY - 1) throw error;
       await new Promise((resolve) => setTimeout(resolve, RENAME_GAP_MS));
     }
@@ -187,8 +191,17 @@ export async function trashSession(ctx, sessionId) {
   }
   await new Promise((resolve) => setTimeout(resolve, STOP_SETTLE_MS));
 
-  try { await ctx.workspaceRegistry.unarchiveSession(sessionId); } catch { /* not archived */ }
   try { await ctx.workspaceRegistry.unpinSession(sessionId); } catch { /* not pinned */ }
+
+  /* Keep the archive flag instead of clearing it. A trashed session whose log
+     moved out of `sessions/` is invisible to the Host's listing, and the flag is
+     the only state other plugins can read; dropping it is what made a deleted
+     session look alive on boards that keep their own cache. The move below is
+     undone with the flag when it fails, so the session returns to its place. */
+  const wasArchived = archivedSessionIds(ctx).includes(sessionId);
+  if (!wasArchived) {
+    try { await ctx.workspaceRegistry.archiveSession(sessionId); } catch { /* an older Host may not offer it */ }
+  }
 
   /* Same filtered-view trap as the move: the workspace's own sessionIds may
      already hide the id while the stored record still lists it. */
@@ -215,24 +228,36 @@ export async function trashSession(ctx, sessionId) {
   let moved;
   try {
     moved = await trashSessionLog(ctx, meta, trashRoot);
-    if (moved !== undefined) {
-      /* Card facts are captured now, while the log is still on this machine:
-         the list only has to read the sidecar afterwards. */
-      const card = await trashEntryMetadata(moved);
-      await writeTrashSidecar(moved, {
-        sessionId: meta.id,
-        cwd: typeof meta.cwd === "string" ? meta.cwd : null,
-        reason: "delete",
-        at: Date.now(),
-        ...(card === null ? {} : { meta: card }),
-      });
+    if (moved === undefined) {
+      /* Nothing was parked and nothing was lost: the session could not even be
+         listed, so it may have been erased out of band. Roll the flag back. */
+      if (!wasArchived) {
+        try { await ctx.workspaceRegistry.unarchiveSession(sessionId); } catch { /* best effort */ }
+      }
+      return { ok: false, error: "the session's log is not on disk" };
     }
+    /* Card facts are captured now, while the log is still on this machine:
+       the list only has to read the sidecar afterwards. */
+    const card = await trashEntryMetadata(moved);
+    await writeTrashSidecar(moved, {
+      sessionId: meta.id,
+      cwd: typeof meta.cwd === "string" ? meta.cwd : null,
+      reason: "delete",
+      at: Date.now(),
+      /* Restore has to know it owes the Host an unarchive. */
+      archived: true,
+      ...(card === null ? {} : { meta: card }),
+    });
   } catch (error) {
+    /* The flag would otherwise hide a session whose log never left the disk. */
+    if (!wasArchived) {
+      try { await ctx.workspaceRegistry.unarchiveSession(sessionId); } catch { /* best effort */ }
+    }
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 
   ctx.emit("api-session/removed", sessionId);
-  return { ok: true, trash: moved };
+  return { ok: true, trash: moved, archivedKept: true };
 }
 
 /** POST { sessionId } -> move that session into the trash folder. */
@@ -1486,6 +1511,14 @@ export async function restoreTrashEntry(ctx, name) {
   } catch (error) {
     return { ok: false, error: `could not move the files back: ${error instanceof Error ? error.message : String(error)}` };
   }
+  /* The archive flag the delete kept is dropped only now: with the log back in
+     place but the flag still set, the archive panel would show a record-only
+     row for a session that has its log again. */
+  try {
+    await ctx.workspaceRegistry.unarchiveSession(sidecar.sessionId);
+  } catch {
+    /* not archived (older entries) or the Host refused; the attach below still runs */
+  }
   const workspaces = ctx.workspaceRegistry.list();
   const owner = workspaces.find((workspace) => workspace.path === sidecar.cwd);
   let attached = false;
@@ -1521,13 +1554,31 @@ export async function restoreTrashEntry(ctx, name) {
   return { ok: true, sessionId: sidecar.sessionId, cwd: sidecar.cwd, attached };
 }
 
-/** Delete one trash entry for good. */
-export async function purgeTrashEntry(name) {
+/**
+ * Erase one trash entry for good.
+ *
+ * A trashed session keeps the Host's archive flag (that flag is how the rest of
+ * the app knows it is put away), so purging has to drop it first - otherwise the
+ * archive set would keep an id whose log no longer exists.
+ */
+export async function purgeTrashEntry(name, ctx = null) {
   const root = await trashRoot();
   if (name === "" || name.indexOf("..") !== -1 || name.indexOf("/") !== -1 || name.indexOf("\\") !== -1) {
     return { ok: false, error: "invalid entry name" };
   }
-  await rm(join(root, name), { recursive: true, force: true });
+  const directory = join(root, name);
+  if (ctx !== null && ctx !== undefined) {
+    const sidecar = await readTrashSidecar(directory);
+    const sessionId = sidecar !== null && typeof sidecar.sessionId === "string" ? sidecar.sessionId : "";
+    if (sessionId !== "") {
+      try {
+        await ctx.workspaceRegistry.unarchiveSession(sessionId);
+      } catch {
+        /* not archived, or the Host refused; erasing the files still proceeds */
+      }
+    }
+  }
+  await rm(directory, { recursive: true, force: true });
   return { ok: true };
 }
 
@@ -1826,9 +1877,9 @@ export async function detachMissingArchive(ctx, sessionId) {
 /**
  * Delete an archived session for good.
  *
- * The normal delete already unarchives, detaches and moves the log into the
- * plugin's trash - erasing it is then the trash's own purge, so the two paths
- * cannot drift apart.
+ * The normal delete detaches, keeps the archive flag and moves the log into the
+ * plugin's trash - erasing it is then the trash's own purge (which drops the
+ * flag before the files), so the two paths cannot drift apart.
  */
 export async function forgetArchivedSession(ctx, sessionId) {
   const result = await trashSession(ctx, sessionId);
@@ -1838,7 +1889,7 @@ export async function forgetArchivedSession(ctx, sessionId) {
     const name = result.trash.split(/[/\\]/).filter((part) => part !== "").pop();
     if (typeof name === "string" && name !== "") {
       try {
-        purged = (await purgeTrashEntry(name)).ok === true;
+        purged = (await purgeTrashEntry(name, ctx)).ok === true;
       } catch {
         purged = false;
       }
@@ -1999,7 +2050,7 @@ export async function handleTrashListRequest(ctx, req, res) {
       return;
     }
     if (action === "purge") {
-      sendJson(res, 200, await purgeTrashEntry(name));
+      sendJson(res, 200, await purgeTrashEntry(name, ctx));
       return;
     }
     sendJson(res, 400, { ok: false, error: "unknown action" });

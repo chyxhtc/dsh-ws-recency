@@ -82,6 +82,70 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   assert.strictEqual(announced.projections.values.title, "restored", "the title comes from the log when the cache has no record");
   assert.ok(announced.projections.values.lastPromptAt > 0, "the last prompt time comes with it");
 
+  /* ---------- delete keeps the archive flag; restore clears it ----------- */
+  /* A trashed log leaves `sessions/`, so only the archive flag tells the rest of
+     the app (dsh-context included) that the session is put away. */
+  const flags = [];
+  let archived = new Set();
+  const liveCtx = {
+    workspaceRegistry: {
+      get archivedSessionIds() { return [...archived]; },
+      list: () => [{ id: "w2", path: "D:\\keep", sessionIds: ["session-live"], attachSession: async () => {}, detachSession: async () => {} }],
+      archiveSession: async (id) => { archived.add(id); flags.push(["archive", id]); },
+      unarchiveSession: async (id) => { archived.delete(id); flags.push(["unarchive", id]); },
+      unpinSession: async () => {},
+    },
+    get: () => undefined,
+    sessionPersistence: {
+      stat: async (id) => (fs.existsSync(path.join(home, "sessions", "--D-keep--", id)) ? { header: { id, cwd: "D:\\keep", createdAt: 1 }, sizeBytes: 1 } : undefined),
+    },
+    sessions: { get: () => undefined },
+    parallel: async () => {},
+    emit: () => {},
+  };
+  const liveDir = path.join(home, "sessions", "--D-keep--", "session-live");
+  fs.mkdirSync(liveDir, { recursive: true });
+  fs.writeFileSync(path.join(liveDir, "session.v4.jsonl.zstd"), "live");
+
+  const deletedLive = await mod.trashSession(liveCtx, "session-live");
+  assert.strictEqual(deletedLive.ok, true, deletedLive.error);
+  assert.strictEqual(archived.has("session-live"), true, "a deleted session keeps its archive flag");
+  assert.deepStrictEqual(flags.filter(([kind]) => kind === "archive"), [["archive", "session-live"]], "the flag is set once, before the move");
+  assert.strictEqual(fs.existsSync(liveDir), false, "the log left its directory");
+  const deletedEntry = fs.readdirSync(path.join(home, ".trash", "ws-recency")).find((name) => name.startsWith("session-live-"));
+  const deletedSidecar = JSON.parse(fs.readFileSync(path.join(home, ".trash", "ws-recency", deletedEntry, ".wsr-trash.json"), "utf8"));
+  assert.strictEqual(deletedSidecar.archived, true, "the sidecar records that an unarchive is owed");
+
+  const restoredLive = await mod.restoreTrashEntry(liveCtx, deletedEntry);
+  assert.strictEqual(restoredLive.ok, true, restoredLive.error);
+  const order = flags.map(([kind]) => kind);
+  assert.deepStrictEqual(order, ["archive", "unarchive"], "restore clears the flag after the files are back");
+  assert.strictEqual(archived.has("session-live"), false, "the session is no longer archived");
+
+  /* Purging a trashed entry drops the flag before the files go. */
+  const purgedLive = await mod.trashSession(liveCtx, "session-live");
+  const purgedEntry = fs.readdirSync(path.join(home, ".trash", "ws-recency")).find((name) => name.startsWith("session-live-"));
+  assert.strictEqual(archived.has("session-live"), true, "still archived while it sits in the trash");
+  assert.strictEqual((await mod.purgeTrashEntry(purgedEntry, liveCtx)).ok, true);
+  assert.strictEqual(archived.has("session-live"), false, "purging drops the flag");
+
+  /* A failed move puts the flag back, so the session is not hidden by accident. */
+  let failedArchived = new Set();
+  const failingCtx = {
+    ...liveCtx,
+    workspaceRegistry: {
+      get archivedSessionIds() { return [...failedArchived]; },
+      list: () => [{ id: "w3", path: "D:\\fails", sessionIds: ["session-fails"], attachSession: async () => {}, detachSession: async () => {} }],
+      archiveSession: async (id) => { failedArchived.add(id); },
+      unarchiveSession: async (id) => { failedArchived.delete(id); },
+      unpinSession: async () => {},
+    },
+    sessionPersistence: { stat: async () => ({ header: { id: "session-fails", cwd: "D:\\missing-on-purpose", createdAt: 1 }, sizeBytes: 1 }) },
+  };
+  const failed = await mod.trashSession(failingCtx, "session-fails");
+  assert.strictEqual(failed.ok, false, "a log that is not on disk fails the delete");
+  assert.strictEqual(failedArchived.has("session-fails"), false, "the flag is rolled back");
+
   /* ---------- purge ----------------------------------------------------- */
   assert.strictEqual((await mod.purgeTrashEntry("session-b-move-123")).ok, true);
   assert.strictEqual(fs.existsSync(backup), false);

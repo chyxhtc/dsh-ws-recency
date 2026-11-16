@@ -80,7 +80,8 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 **不是物理删除**：目录只是被改名搬走。每个条目在 `.trash/ws-recency/` 下带一份 `.wsr-trash.json`（会话 id、原 cwd、时间、来源），回收站面板会列出它们：
 
-- 「恢复」：按记录的 cwd 算回 `sessions/<project>/<id>/`，并重新挂到对应工作区；
+- 「恢复」：按记录的 cwd 算回 `sessions/<project>/<id>/`，重新挂到对应工作区，最后摘掉删除时打上的归档标记；
+- 删除会**保留归档标记**（原来没有的会补上）：日志已经离开 `sessions/`，宿主的列表里没有它，而归档是唯一一个其它插件都认识的“已收起来”状态——dsh-context 之类的看板就是靠它把已删会话显示成不可点。恢复时摘标记、彻底删除时先摘标记再删文件（0.28.0 起）；
 - 「彻底删除」：真正删掉这份日志（二次确认）；
 - 每条记录是一张**卡片**：标题、来源（已删除 / 移动前的旧副本 / 已归档）、轮次、步骤、token 总量、日志大小、时间、原目录（归档的统计按日志大小缓存，第一次读完后不再重算）；
   已删除会话的标题与统计在删除时就写进 `.wsr-trash.json`，旧条目则在第一次打开面板时从日志里补算并缓存；
@@ -199,7 +200,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.27.1/dsh-ws-recency-0.27.1.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.28.0/dsh-ws-recency-0.28.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

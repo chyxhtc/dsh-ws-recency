@@ -1,4 +1,4 @@
-# dsh-ws-recency — 交接说明（截至 0.26.2）
+# dsh-ws-recency — 交接说明（截至 0.28.0）
 
 > 给下一个会话用的现状快照。先读这一页，再按需看代码。
 
@@ -12,8 +12,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，已发布 `0.27.1`（0.26.0 内容搜索；0.27.1 恢复会话即时出现在分组；0.27.0 归档记录失效可移出） |
-| 最新已发布 tag / Release | `v0.27.1`；此前 `v0.27.0`、`v0.26.2`（84,081）、`v0.26.1`（84,045）、`v0.26.0`（82,851）的 Release 都已建好带附件 |
+| npm | `dsh-ws-recency`，已发布 `0.28.0`（0.28.0 删除保留归档标记；0.27.1 恢复即时显示；0.27.0 记录失效可移出；0.26.0 内容搜索） |
+| 最新已发布 tag / Release | `v0.28.0`；此前 `v0.27.1`、`v0.27.0`、`v0.26.x` 的 Release 都已建好带附件 |
 | GitHub 凭据 | SSH key 负责 `git push`；API（Release/附件）用 Windows 凭据管理器里的 fine-grained PAT（`github_pat_…`），`git credential fill`（`protocol=https`/`host=github.com`/`username=chyxhtc`）能取到。**别再每次要 token**，`tools/release.mjs` 已封装建 Release + 传附件 |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |
@@ -147,6 +147,8 @@ node tests/handoff.cjs
 
 ## 已知遗留 / 可做
 
+- **删除 = 摘归属 + 搬日志 + 保留归档标记（0.28.0）**：`trashSession` 不再 `unarchiveSession`，没归档的会补 `archiveSession`；日志照旧搬进 `.trash/ws-recency/`，sidecar 里写 `archived: true`。恢复时把文件搬回、attach、**最后**才 `unarchiveSession`（顺序反了面板会出现“记录失效”）；彻底删除（`purgeTrashEntry(name, ctx)`）先摘标记再删文件。搬日志失败或落点找不到（日志在外部被删）时回滚标记。这样 dsh-context 这类读 `archivedSessionIds` 的看板会把已删会话显示成归档不可点。代价：宿主的「仅显示已归档」里能看到已删会话。
+- **`moveWithRetry` 的 ENOENT 语义（0.28.0 修）**：源不存在时立即返回 false，不再重试三次后返回 false 被上层当成成功——旧行为会给一条日志已不在的会话写侧车、留一个空回收站条目。
 - **issue #2 的闭环（0.27.0）**：归档记录比日志活得久 → 面板里每一行都调 `stat`，会话已不在磁盘上的标 `missing: true`，客户端换成「记录失效」徽章 + 唯一的 **移出归档**（`action: "detach"` → `detachMissingArchive`，只清归档标记/工作区槽位/投影缓存，不删文件；会话还在就拒绝）。复现脚本 `tools/simulate-ghost.mjs` 在真实 home 上跑过：旧路径仍报 `session not found`，新动作能清掉记录。
 - **issue #1（dsh-context）**：dsh-context 不监听 `api-session/removed`，客户端留着旧快照；点开已删 id 会被宿主当成"新会话"重新 attach，凭空出现空会话。插件侧能做的只是删会话时广播 `api-session/removed`（`forget` 已发，`delete` 没发），要不要补广播等 dsh-context 那边确认在听。
 - 发布链路已理顺：`git push` 走 SSH（`~/.ssh/config` 里 `github.com` → `ssh.github.com:443` + 代理），Release 走凭据管理器里的 PAT + `tools/release.mjs`，npm 用 `~/.npmrc` 的代理与登录态。三者都不再需要人给东西。
