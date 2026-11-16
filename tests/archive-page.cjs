@@ -244,6 +244,7 @@ const ARCHIVED = [
     workspaceId: null,
     workspacePath: null,
     listed: false,
+    missing: true,
   },
 ];
 
@@ -301,6 +302,27 @@ fetchAnswer = (body) => {
   await expectAction("Move to trash", "delete");
   await expectAction("Delete for good", "forget");
 
+  /* ---------- a record whose log is gone gets one honest action ---------- */
+  /* Every other action would answer "session not found", which is exactly what
+     the reported ghost row did. */
+  assert.ok(buttonInRow(tree, "session-archived-b", "Unarchive") === null, "a record-only row offers no unarchive");
+  assert.ok(buttonInRow(tree, "session-archived-b", "Delete for good") === null, "and no destructive action");
+  const detachBefore = fetchCalls.length;
+  lastDialog = null;
+  const detachButton = buttonInRow(tree, "session-archived-b", "Remove from archive");
+  assert.ok(detachButton !== null, "it offers to remove the record");
+  /* The label says files are untouched, and the dialog repeats it. */
+  detachButton.props.onClick();
+  assert.strictEqual(fetchCalls.length, detachBefore, "nothing is sent before the confirmation");
+  const detachAccept = findDom(lastDialog, (node) => node.attrs !== undefined && node.attrs["data-wsr-confirm-ok"] === "true");
+  assert.ok(detachAccept !== null, "the record removal confirms in the page");
+  detachAccept.click();
+  await view.settle();
+  const detachHit = fetchCalls.slice(detachBefore).map((call) => call.body).find((body) => body.action === "detach");
+  assert.ok(detachHit !== undefined, "it posts the detach action");
+  assert.strictEqual(detachHit.sessionId, "session-archived-b");
+  assert.ok(textOf(tree).indexOf("record only") !== -1, "the row is badged as a record without its log");
+
   /* ---------- an older host half degrades gracefully ------------------- */
   fetchAnswer = (body) => {
     if (body.action === "list") return { ok: true, entries: [] };
@@ -312,5 +334,5 @@ fetchAnswer = (body) => {
   assert.ok(legacyText.indexOf("Archived sessions") === -1, "no archive section when the host half cannot list it");
   assert.ok(legacyText.indexOf("The trash is empty.") !== -1, "the trash still renders");
 
-  console.log("archive page ok: two sections, titles, unarchive/delete/forget, legacy host");
+  console.log("archive page ok: two sections, titles, unarchive/delete/forget, record-only detach, legacy host");
 })();

@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.26.2";
+export const HOST_VERSION = "0.27.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -1602,6 +1602,19 @@ export async function listArchivedSessions(ctx) {
     let workspace = workspaces.find((candidate) => listedBy(candidate, raw, sessionId));
     if (workspace === undefined && cwd !== null) workspace = workspaces.find((candidate) => candidate.path === cwd);
 
+    /* Is the log still there? `stat` and the listing can disagree when the
+       directory was removed under a running Host, so ask directly once and
+       treat the answer as the authority for the row's actions. */
+    let available = header !== undefined;
+    if (!available) {
+      try {
+        const stat = await ctx.sessionPersistence.stat(sessionId);
+        available = stat !== undefined && stat !== null;
+      } catch {
+        available = false;
+      }
+    }
+
     entries.push({
       sessionId,
       title,
@@ -1617,6 +1630,8 @@ export async function listArchivedSessions(ctx) {
       workspacePath: workspace !== undefined ? workspace.path : null,
       /* Whether a Workspace still lists it: an unarchive without one has nowhere to show up. */
       listed: workspace !== undefined,
+      /* The archive flag outlived its log: the row can only be detached from the set. */
+      missing: !available,
     });
   }
   entries.sort((a, b) => b.lastAt - a.lastAt || (a.sessionId < b.sessionId ? -1 : 1));
@@ -1667,6 +1682,52 @@ export async function restoreArchivedSession(ctx, sessionId) {
 
   await announceSession(ctx, sessionId);
   return { ok: true, sessionId, cwd, createdAt, listed };
+}
+
+/**
+ * Detach an archive flag whose session is gone.
+ *
+ * Only bookkeeping is touched: the id leaves the registry's archive set, every
+ * Workspace listing it drops the slot, and the projection cache row goes. No
+ * directory is removed - the point is that after an out-of-band delete the flag
+ * is all that is left, and leaving it behind is worse than removing it.
+ *
+ * Refuses when the session still exists: this entry point must never be a
+ * second, quieter way to delete a live session.
+ */
+export async function detachMissingArchive(ctx, sessionId) {
+  if (!archivedSessionIds(ctx).includes(sessionId)) return { ok: false, error: "session is not archived" };
+  try {
+    const stat = await ctx.sessionPersistence.stat(sessionId);
+    if (stat !== undefined && stat !== null) return { ok: false, error: "session still exists" };
+  } catch {
+    /* a failed stat is the case this action is for */
+  }
+
+  try {
+    await ctx.workspaceRegistry.unarchiveSession(sessionId);
+  } catch (error) {
+    return { ok: false, error: `could not unarchive: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  const raw = await rawWorkspaceMembership();
+  for (const workspace of ctx.workspaceRegistry.list()) {
+    if (!listedBy(workspace, raw, sessionId)) continue;
+    try {
+      await workspace.detachSession(sessionId);
+    } catch {
+      /* keep going: the remaining holders are reported by the next listing */
+    }
+  }
+  try {
+    const domain = ctx.get("storageDomain");
+    const projcache = typeof domain?.get === "function" ? domain.get("session_projcache") : undefined;
+    if (projcache !== undefined) await projcache.table("sessions").delete(sessionId);
+  } catch {
+    /* derived data */
+  }
+  /* No `announceSession` here: with the log gone there is no summary to hand
+     the sidebar, and a failed stat would only leave a stale row in view. */
+  return { ok: true, sessionId, removedFromArchive: !archivedSessionIds(ctx).includes(sessionId) };
 }
 
 /**
@@ -1815,19 +1876,22 @@ export async function handleTrashListRequest(ctx, req, res) {
       sendJson(res, 200, await listArchivedSessions(ctx));
       return;
     }
-    if (action === "unarchive" || action === "forget" || action === "delete") {
+    if (action === "unarchive" || action === "forget" || action === "delete" || action === "detach") {
       const sessionId = sessionIdFrom(req, body);
       if (sessionId === "") {
         sendJson(res, 400, { ok: false, error: "sessionId required" });
         return;
       }
       /* `delete` is the archived row's way into the recoverable trash; the other
-         two either put the session back or erase it afterwards. */
+         two either put the session back or erase it afterwards. `detach` only
+         sheds an archive flag whose log is already gone. */
       const result = action === "unarchive"
         ? await restoreArchivedSession(ctx, sessionId)
-        : action === "forget"
-          ? await forgetArchivedSession(ctx, sessionId)
-          : await trashSession(ctx, sessionId);
+        : action === "detach"
+          ? await detachMissingArchive(ctx, sessionId)
+          : action === "forget"
+            ? await forgetArchivedSession(ctx, sessionId)
+            : await trashSession(ctx, sessionId);
       sendJson(res, result.ok ? 200 : 500, result);
       return;
     }

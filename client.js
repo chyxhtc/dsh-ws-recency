@@ -197,6 +197,7 @@
 ".wsr-card-badge{flex:none;font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;background:var(--dsw-alias-bg-layer-3,rgba(255,255,255,.08));color:var(--dsw-alias-label-secondary)}",
 ".wsr-card-badge-danger{color:var(--dsw-alias-state-error-primary,#d9534f);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 14%,transparent)}",
 ".wsr-card-badge-muted{color:var(--dsw-alias-label-tertiary)}",
+".wsr-card-badge-warning{color:#d99a2b}",
 ".wsr-card-title{flex:1;min-width:0;font-size:13px;font-weight:500;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 ".wsr-card-title-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--dsw-alias-label-tertiary)}",
 ".wsr-card-actions{flex:none;display:flex;gap:6px;align-items:center;white-space:nowrap}",
@@ -443,6 +444,10 @@
           "archive.confirmUnarchive": "把这个会话放回原工作区的原位置？",
           "archive.confirmDelete": "把这个会话移入回收站？之后仍可在上面一栏恢复。",
           "archive.confirmForget": "彻底删除这个会话的日志？不可恢复。",
+          "archive.badgeMissing": "记录失效",
+          "archive.detach": "移出归档",
+          "archive.detached": "已移出归档：只清理了归档记录，没有删除任何文件。",
+          "archive.confirmDetach": "这个会话的日志已经不在磁盘上，只剩一条归档记录。要把它移出归档列表吗？\n\n只清理记录，不会删除任何文件；如果日志以后又被恢复，需要重新归档。",
           "archive.unarchived": "已取消归档，会话回到原来的位置。",
           "archive.deleted": "已移入回收站，可在「已删除的会话」里恢复。",
           "archive.forgotten": "已彻底删除。",
@@ -606,6 +611,10 @@
           "archive.confirmUnarchive": "Put this session back where it was in its workspace?",
           "archive.confirmDelete": "Move this session into the trash? You can still restore it from the section above.",
           "archive.confirmForget": "Delete this session's log for good? This cannot be undone.",
+          "archive.badgeMissing": "record only",
+          "archive.detach": "Remove from archive",
+          "archive.detached": "Removed from the archive: only the archive record was cleared, no files were touched.",
+          "archive.confirmDetach": "This session's log is no longer on disk; only its archive record is left. Remove that record from the archive list?\n\nNo files are touched. If the log ever comes back, the session has to be archived again.",
           "archive.unarchived": "Unarchived: the session is back in its place.",
           "archive.deleted": "Moved into the trash; restore it from \"Deleted sessions\".",
           "archive.forgotten": "Deleted for good.",
@@ -3697,8 +3706,9 @@
 
           var actArchived = function (entry, action) {
             var question = action === "unarchive" ? t("archive.confirmUnarchive")
-              : action === "forget" ? t("archive.confirmForget")
-                : t("archive.confirmDelete");
+              : action === "detach" ? t("archive.confirmDetach")
+                : action === "forget" ? t("archive.confirmForget")
+                  : t("archive.confirmDelete");
             askConfirm(question, function () {
               load(t("trash.working"));
               trashPost({ action: action, sessionId: entry.sessionId }).then(function (result) {
@@ -3708,6 +3718,8 @@
                 }
                 if (action === "unarchive") {
                   load(t("archive.unarchived") + (result.json.listed === false ? t("archive.noWorkspace") : ""));
+                } else if (action === "detach") {
+                  load(t("archive.detached"));
                 } else if (action === "forget") {
                   load(t("archive.forgotten"));
                 } else {
@@ -3770,20 +3782,25 @@
               if (when !== "") chips.push(when);
               if (entry.blank === true) chips.push(t("archive.blank"));
               var hasTitle = typeof entry.title === "string" && entry.title !== "";
+              /* A log that is gone can only be detached from the archive set;
+                 the other three actions would all fail with "session not found". */
+              var missing = entry.missing === true;
               archivedRows.push(entryCard({
                 key: entry.sessionId,
-                badge: t("archive.badge"),
-                badgeClass: "wsr-card-badge-muted",
+                badge: missing ? t("archive.badgeMissing") : t("archive.badge"),
+                badgeClass: missing ? "wsr-card-badge-warning" : "wsr-card-badge-muted",
                 titleClass: hasTitle ? "wsr-card-title" : "wsr-card-title wsr-card-title-id",
                 title: hasTitle ? entry.title : entry.sessionId,
                 titleAttr: entry.sessionId,
                 chips: chips,
                 path: typeof entry.workspacePath === "string" && entry.workspacePath !== "" ? entry.workspacePath : entry.cwd,
-                actions: [
-                  h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "unarchive"); } }, t("archive.unarchive")),
-                  h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "delete"); } }, t("archive.delete")),
-                  h("button", { type: "button", className: "wsr-btn wsr-btn-danger", onClick: function () { actArchived(entry, "forget"); } }, t("archive.forget")),
-                ],
+                actions: missing
+                  ? [h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "detach"); } }, t("archive.detach"))]
+                  : [
+                    h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "unarchive"); } }, t("archive.unarchive")),
+                    h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "delete"); } }, t("archive.delete")),
+                    h("button", { type: "button", className: "wsr-btn wsr-btn-danger", onClick: function () { actArchived(entry, "forget"); } }, t("archive.forget")),
+                  ],
               }));
             })(archivedList[j]);
           }

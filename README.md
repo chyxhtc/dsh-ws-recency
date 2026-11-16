@@ -65,6 +65,7 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
   - **移到回收站**：走下面那套正常删除，日志改名搬进 `.trash/ws-recency/`，之后仍可恢复；
   - **彻底删除**：先移进回收站再立即清空，和回收站的「彻底删除」是同一条路径（二次确认）；
 - 宿主的归档集合变动会通过它的 workspace feed 推到浏览器，所以取消归档后侧栏会自己把行放回去，不用刷新界面。
+- **记录失效的行（0.27.0）**：如果日志目录被外部删掉（手工删除、磁盘清理、别的工具清理），归档标记会留下来。这时这一行会标「记录失效」，三个常规动作全部隐藏——它们都会报 session not found——只留一个 **移出归档**：只清掉归档标记、工作区槽位和投影缓存，**不删除任何文件**，确认框里也写明了这一点。日志还存在的会话不会出现这个按钮。
 
 ### 删除（宿主没有的，本插件补上）
 
@@ -196,7 +197,7 @@ dsh plugin --profile <profile> add github:chyxhtc/dsh-ws-recency
 或固定版本的预构建包：
 
 ```powershell
-dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.26.2/dsh-ws-recency-0.26.2.tgz
+dsh plugin --profile <profile> add https://github.com/chyxhtc/dsh-ws-recency/releases/download/v0.27.0/dsh-ws-recency-0.27.0.tgz
 ```
 
 装完把 `dsh-ws-recency` 加进 `~/.hypers-work/profiles/<profile>/package.json` 的 `dsh.profile.bundles`，重启应用。

@@ -224,6 +224,41 @@ function fakeResponse() {
   await mod.handleTrashListRequest(ctx, fakeRequest({ action: "purge", name: trashed.entries[0].name }), purged);
   assert.strictEqual(purged.json().ok, true);
 
+  /* ---------- an archive record whose log is gone ------------------------ */
+  /* The reported bug: the log directory was removed out of band, the id stayed
+     in `archivedSessionIds`, and every row action answered "session not found".
+     The listing has to say so, and only a record-only action may clear it. */
+  headers["session-lost"] = undefined;
+  delete headers["session-lost"];
+  archived.add("session-lost");
+  const detachCalls = [];
+  const registryDetach = registry.list;
+  registry.list = () => registryDetach().map((workspace) => ({
+    ...workspace,
+    sessionIds: ["session-new", "session-lost"],
+    detachSession: async (id) => { detachCalls.push(id); },
+  }));
+  const withLost = await mod.listArchivedSessions(ctx);
+  const lost = withLost.entries.find((entry) => entry.sessionId === "session-lost");
+  assert.ok(lost !== undefined, "a record without its log is still listed");
+  assert.strictEqual(lost.missing, true, "and it is flagged as a record only");
+  assert.strictEqual(withLost.entries.filter((entry) => entry.missing === true).length, 1, "live sessions are not flagged");
+
+  const stillThere = await mod.detachMissingArchive(ctx, "session-new");
+  assert.strictEqual(stillThere.ok, false, "a session that still exists is never detached through this path");
+  assert.strictEqual(archived.has("session-new"), true, "its flag survives");
+
+  const detached = await mod.detachMissingArchive(ctx, "session-lost");
+  assert.strictEqual(detached.ok, true, detached.error);
+  assert.strictEqual(detached.removedFromArchive, true);
+  assert.strictEqual(archived.has("session-lost"), false, "the durable flag is dropped");
+  assert.deepStrictEqual(detachCalls, ["session-lost"], "the workspace slot is dropped too");
+
+  const routeDetach = fakeResponse();
+  await mod.handleTrashListRequest(ctx, fakeRequest({ action: "detach", sessionId: "session-untitled" }), routeDetach);
+  assert.strictEqual(routeDetach.status, 500, "detach refuses a session that still has its log");
+  assert.strictEqual(routeDetach.json().ok, false);
+
   fs.rmSync(home, { recursive: true, force: true });
-  console.log("archive ok: list, titles, unarchive, delete for good, route dispatch");
+  console.log("archive ok: list, titles, unarchive, delete for good, route dispatch, record-only rows");
 })();
