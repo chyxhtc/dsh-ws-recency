@@ -42,13 +42,45 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
 
   /* ---------- restore --------------------------------------------------- */
   const attached = [];
-  const ctx = { workspaceRegistry: { list: () => [{ id: "w", path: "D:\\proj", attachSession: async (id) => { attached.push(id); } }] } };
+  const emitted = [];
+  const ctx = {
+    workspaceRegistry: { list: () => [{ id: "w", path: "D:\\proj", attachSession: async (id) => { attached.push(id); } }] },
+    emit: (event, payload) => emitted.push([event, payload]),
+    /* The Host reads messages through the same seam the sidebar uses; the
+       restore needs one for its first line, so give it a tiny real log file. */
+    sessionPersistence: {
+      stat: async (id) => {
+        const file = path.join(home, "sessions", "--D-proj--", id, "session.v4.jsonl.zstd");
+        return fs.existsSync(file) ? { header: { id, cwd: "D:\\proj", createdAt: 1000 }, sizeBytes: 10 } : undefined;
+      },
+      open: async (id) => {
+        const events = [
+          { type: "session", id, cwd: "D:\\proj" },
+          { type: "session/title", data: { title: "restored" } },
+          { type: "turn/start", time: 1100, data: { turn: 1 } },
+          { type: "user/message", time: 1100, data: { turn: 1, message: { content: [{ type: "text", text: "first prompt" }] } } },
+        ];
+        return { read: async (offset) => ({ events: offset === 0 ? events : [] }), close: async () => {} };
+      },
+    },
+  };
   const restored = await mod.restoreTrashEntry(ctx, "session-a-2026-11-02T06-42-47-578Z");
   assert.strictEqual(restored.ok, true, restored.error);
   assert.deepStrictEqual(attached, ["session-a"], "the session is re-attached to its workspace");
   const restoredFile = path.join(home, "sessions", "--D-proj--", "session-a", "session.v4.jsonl.zstd");
   assert.strictEqual(fs.readFileSync(restoredFile, "utf8"), "0123456789", "the log is back under its project key");
   assert.strictEqual(fs.existsSync(deleted), false, "the trash entry is gone");
+  /* A restored session is unknown to the running Host, so the browser only gets
+     a row if the summary is broadcast (otherwise it appeared after a restart). */
+  assert.strictEqual(emitted.some(([event, payload]) => event === "api-session/added" && payload.sessionId === "session-a"), true, "the sidebar is told about the restored row");
+  assert.strictEqual(emitted.length, 1, "one announce, not a stream of them");
+  /* The sidebar groups rows through list-surface projections: without them the
+     summary lands in the list but never inside a workspace group, which is what
+     made a restored session look invisible until the next restart. */
+  const announced = emitted[0][1];
+  assert.strictEqual(announced.projections.kind, "cached", "the announce carries list-surface projections");
+  assert.strictEqual(announced.projections.values.title, "restored", "the title comes from the log when the cache has no record");
+  assert.ok(announced.projections.values.lastPromptAt > 0, "the last prompt time comes with it");
 
   /* ---------- purge ----------------------------------------------------- */
   assert.strictEqual((await mod.purgeTrashEntry("session-b-move-123")).ok, true);

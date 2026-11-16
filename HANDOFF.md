@@ -12,8 +12,8 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 |---|---|
 | 本地目录 | `C:\Users\Konka\Hypers Work\workspace\dsh-ws-recency` |
 | GitHub | https://github.com/chyxhtc/dsh-ws-recency |
-| npm | `dsh-ws-recency`，已发布 `0.27.0`（0.26.0 内容搜索；0.27.0 归档记录失效可移出；0.25.1–0.26.2 修置顶行状态色与图标） |
-| 最新已发布 tag / Release | `v0.27.0`；此前 `v0.26.2`（84,081）、`v0.26.1`（84,045）、`v0.26.0`（82,851）的 Release 都已建好带附件 |
+| npm | `dsh-ws-recency`，已发布 `0.27.1`（0.26.0 内容搜索；0.27.1 恢复会话即时出现在分组；0.27.0 归档记录失效可移出） |
+| 最新已发布 tag / Release | `v0.27.1`；此前 `v0.27.0`、`v0.26.2`（84,081）、`v0.26.1`（84,045）、`v0.26.0`（82,851）的 Release 都已建好带附件 |
 | GitHub 凭据 | SSH key 负责 `git push`；API（Release/附件）用 Windows 凭据管理器里的 fine-grained PAT（`github_pat_…`），`git credential fill`（`protocol=https`/`host=github.com`/`username=chyxhtc`）能取到。**别再每次要 token**，`tools/release.mjs` 已封装建 Release + 传附件 |
 | 市场收录 | 已合并（awesome-dsh-plugin PR #10791）；条目更新 PR #11532 已合并（11-04 nightly 目录已显示 0.24.1） |
 | 本机安装 | profile `desktop` 里 `link:C:/Users/Konka/Hypers Work/workspace/dsh-ws-recency`，`dsh.profile.bundles` 含 `dsh-ws-recency` |

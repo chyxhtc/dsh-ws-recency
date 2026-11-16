@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.27.0";
+export const HOST_VERSION = "0.27.1";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -1168,6 +1168,60 @@ export async function announceSession(ctx, sessionId) {
     const stat = await ctx.sessionPersistence.stat(sessionId);
     const header = stat !== undefined && stat !== null ? stat.header : undefined;
     if (header !== undefined && header !== null) {
+      /* The sidebar groups by workspace through list-surface projections; a
+         summary without them lands in the list but never in a workspace group.
+         Read them from the projection cache (cheap) and fall back to the first
+         prompt of the log (one page) when the cache has no record. */
+      let values = null;
+      const checkpoint = cachedCheckpoint(ctx, sessionId);
+      if (checkpoint !== undefined) {
+        const projections = {};
+        const title = checkpointValue(checkpoint, "title");
+        if (typeof title === "string" && title.trim() !== "") projections.title = title.trim();
+        const listMeta = checkpointValue(checkpoint, "sessionListMetadata");
+        if (listMeta !== null && typeof listMeta === "object") {
+          if (typeof listMeta.lastPromptAt === "number") projections.lastPromptAt = listMeta.lastPromptAt;
+          if (listMeta.blank === true) projections.blank = true;
+        }
+        if (Object.keys(projections).length > 0) values = projections;
+      }
+      if (values !== null) {
+        ctx.emit("api-session/added", {
+          sessionId: header.id,
+          updatedAt: typeof header.updatedAt === "number" ? header.updatedAt : Date.now(),
+          agentAvailable: false,
+          formatStatus: "current",
+          running: false,
+          blank: values.blank === true,
+          title: values.title ?? header.title,
+          cwd: header.cwd,
+          createdAt: header.createdAt,
+          projections: { kind: "cached", values },
+        });
+        return true;
+      }
+      const first = await firstPromptOf(ctx, sessionId);
+      if (first.title !== "" || first.lastPromptAt > 0) {
+        ctx.emit("api-session/added", {
+          sessionId: header.id,
+          updatedAt: typeof header.updatedAt === "number" ? header.updatedAt : Date.now(),
+          agentAvailable: false,
+          formatStatus: "current",
+          running: false,
+          blank: first.title === "" && first.lastPromptAt === 0,
+          title: first.title !== "" ? first.title : header.title,
+          cwd: header.cwd,
+          createdAt: header.createdAt,
+          projections: {
+            kind: "cached",
+            values: {
+              ...(first.title !== "" ? { title: first.title } : {}),
+              ...(first.lastPromptAt > 0 ? { lastPromptAt: first.lastPromptAt } : {}),
+            },
+          },
+        });
+        return true;
+      }
       ctx.emit("api-session/added", {
         sessionId: header.id,
         updatedAt: typeof header.updatedAt === "number" ? header.updatedAt : Date.now(),
@@ -1185,6 +1239,45 @@ export async function announceSession(ctx, sessionId) {
     /* nothing to announce */
   }
   return false;
+}
+
+/** Title and first prompt time from the log's first page; empty when unreadable. */
+async function firstPromptOf(ctx, sessionId) {
+  let handle;
+  try {
+    handle = await ctx.sessionPersistence.open(sessionId, "read");
+  } catch {
+    return { title: "", lastPromptAt: 0 };
+  }
+  try {
+    const page = await handle.read(0, 500);
+    const events = page !== null && page !== undefined && Array.isArray(page.events) ? page.events : [];
+    let title = "";
+    let lastPromptAt = 0;
+    for (const event of events) {
+      if (event === null || typeof event !== "object") continue;
+      if (event.type === "session/title") {
+        const value = event.data?.title ?? event.data;
+        if (typeof value === "string" && value.trim() !== "") title = value.trim();
+      } else if (event.type === "user/message" && lastPromptAt === 0 && typeof event.time === "number") {
+        lastPromptAt = event.time;
+        if (title === "") {
+          const text = conversationText(event.data?.message?.content ?? event.data?.content);
+          const line = text.trim().split("\n")[0];
+          if (line !== "") title = line.slice(0, 120);
+        }
+      }
+    }
+    return { title, lastPromptAt };
+  } catch {
+    return { title: "", lastPromptAt: 0 };
+  } finally {
+    try {
+      if (typeof handle.close === "function") await handle.close();
+    } catch {
+      /* closing is best effort */
+    }
+  }
 }
 
 /** The session root's project-directory key: separators collapse to `-`. */
