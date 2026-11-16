@@ -246,6 +246,7 @@
           ".wsr-chart-legend-text{white-space:nowrap}",
           ".wsr-chart-value{text-align:right;font-variant-numeric:tabular-nums}",
           ".wsr-chart-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
+          ".wsr-chart-calls{text-align:right;color:var(--dsw-alias-label-tertiary);font-size:10px;font-variant-numeric:tabular-nums}",
           ".wsr-stats-details{display:flex;flex-direction:column;gap:8px}",
           ".wsr-stats-table{display:flex;flex-direction:column}",
           ".wsr-stats-row{display:grid;grid-template-columns:1.4fr .6fr .8fr .8fr .8fr .6fr;gap:6px;padding:6px 4px;border-bottom:.5px solid rgba(255,255,255,.06)}",
@@ -271,6 +272,10 @@
           ".wsr-context-chart{display:flex;align-items:flex-end;gap:2px;height:54px;padding-top:4px;border-bottom:.5px solid rgba(255,255,255,.08)}",
           ".wsr-context-bar{flex:1;min-width:1px;border-radius:1px 1px 0 0;background:linear-gradient(180deg,rgba(79,124,255,.9),rgba(79,124,255,.3))}",
           ".wsr-context-caption{font-size:10px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-context-jump{position:relative}",
+          ".wsr-context-jump-dot{position:absolute;left:50%;top:-5px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#d99a2b}",
+          ".wsr-context-jumps{display:flex;flex-direction:column;gap:2px}",
+          ".wsr-context-jump-row{font-size:11px;color:var(--dsw-alias-label-secondary)}",
           ".wsr-kind-legend{display:flex;flex-wrap:wrap;gap:10px}",
           ".wsr-kind{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-kind-dot{width:8px;height:8px;border-radius:2px;flex:none}",
@@ -352,6 +357,7 @@
           "stats.agent": "\u4e3b agent",
           "stats.col.source": "\u6765\u6e90",
           "stats.col.calls": "\u8c03\u7528",
+          "stats.callsShort": "{n} 次",
           "stats.col.args": "\u53c2\u6570",
           "stats.col.results": "\u7ed3\u679c",
           "stats.col.total": "\u4f30\u7b97",
@@ -466,6 +472,8 @@
           "stats.amplified.summary": "账单 {bill} token；可归因内容经重读放大后占 {share}（{attributed}）",
           "stats.amplified.contextCaption": "每步上下文（面积≈账单）：越早进入的内容被重读越多",
           "stats.amplified.point": "第 {step} 步 · {context}",
+          "stats.amplified.jump": "第 {step} 步上下文涨了 {rise}",
+          "stats.amplified.jumpFrom": "（{name} 进来 {tokens}）",
           "stats.amplified.meta": "第 {entry} 步进入 · {tokens} token × {remaining} 次重读",
           "stats.amplified.whatIf": "若压到 20%，可省 {save}（{share}）",
           "stats.amplified.empty": "没有可归因的放大内容（压缩后或旧日志可能缺失）",
@@ -519,6 +527,7 @@
           "stats.agent": "main agent",
           "stats.col.source": "source",
           "stats.col.calls": "calls",
+          "stats.callsShort": "{n}x",
           "stats.col.args": "args",
           "stats.col.results": "results",
           "stats.col.total": "estimate",
@@ -632,6 +641,8 @@
           "stats.amplified.summary": "Bill {bill} tokens; attributable content amplifies to {share} ({attributed})",
           "stats.amplified.contextCaption": "Context per step (area ≈ bill): earlier content is re-read more",
           "stats.amplified.point": "step {step} · {context}",
+          "stats.amplified.jump": "step {step} grew by {rise}",
+          "stats.amplified.jumpFrom": "({name} brought {tokens})",
           "stats.amplified.meta": "entered at step {entry} · {tokens} tokens × {remaining} re-reads",
           "stats.amplified.whatIf": "at 20%, saves {save} ({share})",
           "stats.amplified.empty": "No amplifiable content (compacted or older logs may lack it)",
@@ -1963,6 +1974,12 @@
           line.appendChild(track);
           line.appendChild(statsDiv("wsr-chart-value", formatTokens(entry.value)));
           line.appendChild(statsDiv("wsr-chart-share", formatShare(entry.share)));
+          /* The count the chart cannot draw: a bar says how heavy a source is,
+             the call count says how often it got there. The details table used to
+             be the only place for it. */
+          if (typeof entry.calls === "number" && entry.calls > 0) {
+            line.appendChild(statsDiv("wsr-chart-calls", t("stats.callsShort", { n: String(entry.calls) })));
+          }
           return line;
         }
 
@@ -2046,6 +2063,49 @@
          * block's tokens times the number of later steps that re-read it. The
          * host half computes that attribution; this only draws it.
          */
+        /** The three steepest rises in the context curve, with the block behind each. */
+        function contextJumps(amplified) {
+          var series = Array.isArray(amplified.series) ? amplified.series : [];
+          var blocks = Array.isArray(amplified.blocks) ? amplified.blocks : [];
+          var rises = [];
+          for (var i = 1; i < series.length; i += 1) {
+            var rise = Number(series[i].context) - Number(series[i - 1].context);
+            if (rise > 0) rises.push({ step: Number(series[i].step), rise: rise });
+          }
+          rises.sort(function (a, b) { return b.rise - a.rise; });
+          var picked = [];
+          for (var r = 0; r < rises.length && picked.length < 3; r += 1) {
+            var rise2 = rises[r];
+            /* Two markers next to each other would read as one long jump; keep
+               the bars they sit on apart so each mark stays a single step. */
+            var close = false;
+            for (var p = 0; p < picked.length; p += 1) {
+              if (Math.abs(picked[p].step - rise2.step) < Math.max(2, Math.round(series.length / 10))) close = true;
+            }
+            if (close) continue;
+            /* The entering block: the biggest one whose entry step is this one,
+               or (downsampled curves) the last entry at or before it. */
+            var best = null;
+            for (var b = 0; b < blocks.length; b += 1) {
+              var block = blocks[b];
+              if (Number(block.entry) > rise2.step) continue;
+              if (best === null || Number(block.entry) > Number(best.entry)) best = block;
+            }
+            var label = t("stats.amplified.jump", {
+              step: String(rise2.step),
+              rise: formatTokens(rise2.rise),
+            });
+            if (best !== null && Number(best.entry) === rise2.step) {
+              label += " " + t("stats.amplified.jumpFrom", {
+                name: best.kind === "tool" ? String(best.name) : t("stats.agent"),
+                tokens: formatTokens(best.tokens),
+              });
+            }
+            picked.push({ step: rise2.step, rise: rise2.rise, label: label });
+          }
+          return picked;
+        }
+
         function buildAmplified(stats) {
           var amplified = stats.amplified;
           if (amplified === null || amplified === undefined || !Array.isArray(amplified.series)) return null;
@@ -2067,14 +2127,37 @@
             if (Number(series[i].context) > largest) largest = Number(series[i].context);
           }
           var chart = statsDiv("wsr-context-chart");
+          /* Mark the steps where the window grew the most. A single read of a
+             large file shows up here as one tall jump, which is the question the
+             whole amplified view exists to answer, so the jump gets a marker
+             instead of leaving the reader to compare 96 bars by eye. */
+          var jumps = contextJumps(amplified);
+          var jumpByStep = {};
+          for (var jj = 0; jj < jumps.length; jj += 1) jumpByStep[jumps[jj].step] = jumps[jj];
           for (var j = 0; j < series.length; j += 1) {
             var bar = statsDiv("wsr-context-bar");
             bar.style.height = Math.max(2, Math.round((Number(series[j].context) / largest) * 100)) + "%";
-            bar.setAttribute("title", t("stats.amplified.point", { step: String(series[j].step), context: formatTokens(series[j].context) }));
+            var jump = jumpByStep[Number(series[j].step)];
+            if (jump !== undefined) {
+              bar.className = "wsr-context-bar wsr-context-jump";
+              bar.setAttribute("data-wsr-jump", String(jump.step));
+              bar.setAttribute("title", jump.label);
+              var marker = statsDiv("wsr-context-jump-dot");
+              bar.appendChild(marker);
+            } else {
+              bar.setAttribute("title", t("stats.amplified.point", { step: String(series[j].step), context: formatTokens(series[j].context) }));
+            }
             chart.appendChild(bar);
           }
           section.appendChild(chart);
           section.appendChild(statsDiv("wsr-context-caption", t("stats.amplified.contextCaption")));
+          if (jumps.length > 0) {
+            var jumpList = statsDiv("wsr-context-jumps");
+            for (var jl = 0; jl < jumps.length; jl += 1) {
+              jumpList.appendChild(statsDiv("wsr-context-jump-row", jumps[jl].label));
+            }
+            section.appendChild(jumpList);
+          }
 
           var kinds = amplified.byKind || [];
           if (kinds.length > 0) {
@@ -2189,6 +2272,7 @@
               share: shareOf(value),
               hue: sourceHue(tool.name),
               rank: j + 1,
+              calls: tool.calls || 0,
               args: args,
               split: mode !== "agent" && args > 0 && results > 0,
             });
@@ -2205,33 +2289,16 @@
           for (var k = 0; k < entries.length; k += 1) chart.appendChild(chartBar(entries[k], largest));
           var distributionPanel = statsDiv("wsr-stats-panel");
           distributionPanel.appendChild(chart);
-          distributionPanel.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
-
-          /* The table is now its own tab instead of a folded section. */
-          var detailsPanel = statsDiv("wsr-stats-panel wsr-stats-details");
-
-          var table = statsDiv("wsr-stats-table");
-          var head = document.createElement("div");
-          head.className = "wsr-stats-row wsr-stats-head";
-          var columns = ["stats.col.source", "stats.col.calls", "stats.col.args", "stats.col.results", "stats.col.total", "stats.col.share"];
-          for (var n = 0; n < columns.length; n += 1) head.appendChild(statsDiv("wsr-td", t(columns[n])));
-          table.appendChild(head);
-          table.appendChild(statsRow(t("stats.agent"), stats.steps, null, null, agentValue, shareOf(agentValue)));
-          for (var q = 0; q < tools.length; q += 1) {
-            var toolRow = tools[q];
-            var toolArgs = toolRow.args || 0;
-            var toolResults = toolRow.results || 0;
-            var toolValue = mode === "agent" ? toolResults : (toolRow.total || toolArgs + toolResults);
-            table.appendChild(statsRow(toolRow.name, toolRow.calls, toolArgs, toolResults, toolValue, shareOf(toolValue), mode === "agent"));
-          }
-          detailsPanel.appendChild(table);
-          detailsPanel.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
+          /* The agent's own split is the one number the bars cannot show: the
+             rows for tools already name their source, so a whole table was
+             repeating the chart. It sits under the chart instead. */
+          distributionPanel.appendChild(statsDiv("wsr-stats-detail", t("stats.agentDetail", {
             reasoning: formatTokens(agent.reasoning),
             text: formatTokens(agent.text),
             user: formatTokens(agent.user),
             system: formatTokens(agent.system),
           })));
-          if (mode === "agent") detailsPanel.appendChild(statsDiv("wsr-stats-note", t("stats.argModeNote")));
+          distributionPanel.appendChild(statsDiv("wsr-stats-note", t("stats.note")));
 
           var tabs = statsDiv("wsr-stats-tabs");
           tabs.setAttribute("role", "tablist");
@@ -2242,7 +2309,7 @@
             amplifiedPanel.appendChild(amplifiedSection);
             defs.push(["amplified", "stats.tab.amplified", amplifiedPanel]);
           }
-          defs.push(["details", "stats.tab.details", detailsPanel]);
+          if (mode === "agent") defs[0][2].appendChild(statsDiv("wsr-stats-note", t("stats.argModeNote")));
           var tabButtons = {};
           var selectTab = function (id) {
             statsTab = id;
@@ -2271,7 +2338,10 @@
             })(defs[d]);
           }
           var initialTab = statsTab;
-          if (initialTab === "amplified" && amplifiedSection === null) initialTab = "distribution";
+          /* A remembered tab may name a view this build no longer has. */
+          var known = false;
+          for (var kt = 0; kt < defs.length; kt += 1) if (defs[kt][0] === initialTab) known = true;
+          if (!known) initialTab = "distribution";
           selectTab(initialTab);
           body.appendChild(tabs);
           body.appendChild(panels);

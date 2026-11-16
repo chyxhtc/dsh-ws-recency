@@ -672,6 +672,13 @@ function textOf(node) {
   assert.ok(amplified !== null, "the amplified cost section renders");
   assert.strictEqual(amplified.querySelector(".wsr-amplified-title").textContent, "Amplified cost (what the bill pays for)");
   assert.strictEqual(amplified.querySelectorAll(".wsr-context-bar").length, 3, "one bar per context point");
+  /* The steepest rises are marked: the question is "where did the window jump",
+     not "compare ninety-six bars by eye". */
+  const jumpBars = amplified.querySelectorAll(".wsr-context-jump");
+  assert.ok(jumpBars.length >= 1 && jumpBars.length <= 3, "the steepest rises are marked");
+  const jumpRows = amplified.querySelectorAll(".wsr-context-jump-row");
+  assert.ok(jumpRows.length >= 1, "each marked rise is spelled out");
+  assert.ok(textOf(jumpRows[0]).indexOf("step 3") !== -1, "the biggest rise names step 3");
   assert.strictEqual(amplified.querySelectorAll(".wsr-kind").length, 4, "the kind legend lists the parts");
   const amplifiedRows = amplified.querySelectorAll(".wsr-amplified-row");
   assert.strictEqual(amplifiedRows.length, 2, "the ranking lists the amplified blocks");
@@ -730,25 +737,24 @@ function textOf(node) {
   prefs.argMode = "tool";
   assert.strictEqual(prefs.argMode, "tool", "the default mode stays per-tool");
 
-  /* Three tabs keep the dialog short: distribution, amplified, details. */
+  /* Two tabs now: the old details table only repeated the chart, so its one
+     unique number (call counts) moved onto the bars and the agent split moved
+     under the chart. */
   const tabs = body.querySelectorAll(".wsr-stats-tab");
-  assert.strictEqual(tabs.length, 3, "three tabs");
-  assert.deepStrictEqual(tabs.map((button) => button.textContent), ["Distribution", "Amplified", "Details"]);
+  assert.strictEqual(tabs.length, 2, "two tabs");
+  assert.deepStrictEqual(tabs.map((button) => button.textContent), ["Distribution", "Amplified"]);
   const distributionPanel = body.querySelectorAll(".wsr-stats-panel")[0];
   const amplifiedPanel = body.querySelector(".wsr-amplified").parentElement;
-  const details = body.querySelector(".wsr-stats-details");
+  assert.strictEqual(body.querySelector(".wsr-stats-table"), null, "the redundant table is gone");
+  assert.ok(distributionPanel.querySelector(".wsr-chart-calls") !== null, "call counts ride on the bars");
+  assert.ok(distributionPanel.querySelector(".wsr-stats-detail") !== null, "the agent split stays under the chart");
   assert.strictEqual(distributionPanel.style.display, "", "distribution is the default tab");
   assert.strictEqual(amplifiedPanel.style.display, "none", "the amplified tab starts hidden");
-  assert.strictEqual(details.style.display, "none", "the details tab starts hidden");
   tabs[1].click();
   assert.strictEqual(amplifiedPanel.style.display, "", "the amplified tab shows its panel");
   assert.strictEqual(distributionPanel.style.display, "none", "the other panel is hidden");
-  tabs[2].click();
-  assert.strictEqual(details.style.display, "", "the details tab shows the table");
-  assert.ok(details.querySelector(".wsr-stats-table") !== null, "the table lives in the details tab");
   tabs[0].click();
   assert.strictEqual(distributionPanel.style.display, "", "back to distribution");
-  assert.strictEqual(details.style.display, "none", "details hidden again");
 
   panel.querySelector(".wsr-modal-close").click();
   assert.strictEqual(overlayRoot.children.indexOf(backdrop), -1, "closing removes the modal");
