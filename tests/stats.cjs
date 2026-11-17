@@ -93,10 +93,11 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   const compacted = mod.aggregateSession([
     { type: "user/message", data: { message: { content: [{ type: "text", text: "abcdefgh" }] } } },
     { type: "assistant/message", data: { usage: { inputTokens: 10, cacheReadTokens: 0, outputTokens: 1, totalTokens: 11 }, message: { content: [{ type: "text", text: "ok" }] } } },
-    { type: "context/compacted", data: {} },
+    { type: "compaction/end", data: {} },
     { type: "assistant/message", data: { usage: { inputTokens: 20, cacheReadTokens: 0, outputTokens: 1, totalTokens: 21 }, message: { content: [{ type: "text", text: "done" }] } } },
   ]);
   assert.strictEqual(compacted.amplified.bill, 30);
+  assert.deepStrictEqual(compacted.amplified.compactions, [1], "the rewrite point travels with the curve, so the client can segment it");
   assert.strictEqual(compacted.amplified.blocks[0].kind, "user");
   assert.strictEqual(compacted.amplified.blocks[0].entry, 1, "the user message entered before step 1");
   assert.strictEqual(compacted.amplified.blocks[0].remaining, 1, "the compaction limits it to the one step it was in");

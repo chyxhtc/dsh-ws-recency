@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.29.1";
+export const HOST_VERSION = "0.30.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -394,7 +394,11 @@ export function aggregateSession(events) {
   for (const event of events) {
     if (event === null || typeof event !== "object") continue;
     const data = event.data ?? {};
-    if (typeof event.type === "string" && event.type.toLowerCase().indexOf("compact") !== -1) {
+    const eventType = typeof event.type === "string" ? event.type.toLowerCase() : "";
+    /* Only a finished compaction rewrites the window. The same family also emits
+       start/summary/prune events, and a prune does not reset the context, so
+       counting every "compaction*" type would cut the curve at the wrong places. */
+    if (eventType === "compaction/end") {
       compactions.push(steps.length);
     }
     if (typeof event.time === "number") {
@@ -583,6 +587,9 @@ export function aggregateSession(events) {
     share: bill > 0 ? attributed / bill : 0,
     steps: totalSteps,
     series,
+    /* Steps after which the window was rewritten. The curve restarts there, so the
+       client reads each segment on its own instead of comparing across a rewrite. */
+    compactions: [...compactions],
     blocks: ranked,
     byKind: [...byKind.values()]
       .map((entry) => ({ ...entry, share: bill > 0 ? entry.amplified / bill : 0 }))

@@ -1,4 +1,4 @@
-# dsh-ws-recency — 交接说明（截至 0.28.0）
+# dsh-ws-recency — 交接说明（截至 0.30.0）
 
 > 给下一个会话用的现状快照。先读这一页，再按需看代码。
 
@@ -76,15 +76,42 @@ DSH 侧栏的会话管理插件：分组排序、历史折叠、三色标记、�
 
 - `bill`：Σ每步上下文（真实 usage）。
 - `series`：按步下采样到 ≤96 点的上下文曲线。
+- `compactions`（0.30.0）：压缩完成的步号数组，客户端据此把曲线切段。只认 `compaction/end`——同一族还有 `compaction/start`、`compaction/summary`、`compaction/prune`，其中 `prune` 只裁 token、不重置上下文，把它们一起算会把曲线切在错误的位置。
 - `byKind`：`results / args / agent / user / system` 的放大成本与占账单比例。
 - `blocks`：前 15 个内容块（工具调用为主），含 `entry`（第几步进入，1 基）、`remaining`（之后重读次数）、`tokens`、`amplified`、`share`、`saving`（压到 20% 可省）。
 - 思维链不计入：多数 provider 不回传，算了会虚高。
-- 压缩事件（事件名含 `compact`）会把早于压缩点的块截断；当前实现按「`at >= entry` 即被压缩」处理，偏保守。
+- 压缩事件会把早于压缩点的块截断；当前实现按「`at >= entry` 即被压缩」处理，偏保守。
+
+### 客户端的分段拐点（0.30.0）
+
+`contextJumps()` 按 `compactions` 切段，**每段各自取涨幅最大的三步**（段内排序，标记之间按 `series.length/10` 保持间距）。跨段相邻两点不参与比较：压缩后的第一点是新基线，拿它和压缩前比没有意义。
+
+- 颜色表示段内排名：第 1 红 `#f0553d`、第 2 黄 `#f5c542`、第 3 蓝 `#4f9df7`。多段时颜色会重复，靠行首的段号区分。
+- 排版：`.wsr-context-jumps` 是外层网格（段号列 44px + 3 个等分列），每段一个 `.wsr-context-jump-group` 且 `display:contents`，让它的子项直接落进外层网格——这是各段数字能对齐的原因。改动这里时别把 `display:contents` 换成 flex，否则又会变成字符长度不同就对不齐。
+- 悬停联动：`highlightJumpRow` / `clearJumpHighlight` 通过 `data-wsr-jump-hit` 与 `data-wsr-jump-row` 配对，重写 `className` 时只加 `-hot`，颜色来自 `data-wsr-rank`，所以不会被覆盖。
 
 实测（本会话 354 步，账单 94.8M）：工具结果放大后占 42.7%，参数 11.1%；最贵的是同一份 `index.js` 被 read 两次（9,221 和 8,753 token，分别放大成 3.22M / 3.05M），两笔合计 6.6% 账单——这就是「小数字 × 剩余步数」的解释力。
 
-## 代码结构
+## 回收站面板的卡片网格（0.30.0）
 
+两个分区（已删除 / 已归档）从整行铺满改成 `auto-fill` 网格（最小 300px，窄面板退回单列）。卡片结构：
+
+```
+标题
+chips（轮次 / 步骤 / token / 体积 / 时间）
+路径
+                      [✕] [↻] [🗑]   ← 底部一行，右对齐，悬停或聚焦才浮现
+```
+
+- 徽章去掉了：分区标题已经写明「已删除 / 已归档」，卡片上再标一遍是重复信息。
+- 操作全部是图标按钮（24×24，`wsr-icon-btn`），名称放在 `title` / `aria-label`；图标缺失时 `iconButton` 自动退回文字按钮。
+- 踩过的坑：
+  - `.wsr-card-danger` 曾带 `margin-left:auto`（把叉号钉在标题行最右时加的）。叉号移到按钮行后这条规则还在，把它推到整行最右、和另外两个按钮分开。移动按钮位置时记得连定位规则一起改。
+  - 给卡片加 `height:100%` 撑满网格行会把内容少的卡片拉成长条，已否掉。按钮行是卡片正常流的一行（`margin-top:auto`），不拉伸卡片。
+  - 按钮行三条 CSS 缺一不可：`justify-content:flex-end`（右对齐）、`min-height:24px`（隐藏时也占位，同行卡片高度一致）、`opacity` 过渡 + `:hover / :focus-within` 显示。
+  - 不要在 `TrashPanelPage` 里新增 `useEffect`：之前加过一个「点击外部关闭菜单」的 effect，删掉后就恢复正常——这类 hook 变动在宿主里报错时表现为整块白页，而该环境没有可用的控制台。
+
+## 代码结构
 - `index.js`（宿主半，~68KB）：路由、回收站、归档集合的列表/取消归档/彻底删除、移动、统计聚合与放大归因、交接 tail/save、`announceSession`、`projectKey`、`rawWorkspaceMembership`、`cachedCheckpoint`。
 - `client.js`（客户端半，~200KB）：DOM pass（排序/折叠/标记/置顶）、菜单项、统计面板（含放大排行与上下文曲线）、移动面板、回收站页面（卡片）、设置行、交接（状态 observable + 官方 prompt 发送 + 轮询 + 问询卡）、`t()` 本地字典回退。
 - `tests/selfcheck.cjs`（客户端 DOM：排序/折叠/标记/置顶/统计与放大面板/交接卡/交接块切分/官方发送与降级/搜索页与跳转）、`tests/archive-page.cjs`（回收站页面渲染 + 动作）、`tests/handoff.cjs`（宿主 tail/save/守卫）、`tests/stats.cjs`（聚合 + 放大归因 + 压缩截断 + 持久层）、`tests/search.cjs`（正文提取 + 多词匹配 + 片段 + 轮次/工作区 + 缓存失效 + 路由守卫）、`tests/move.cjs`、`tests/trash.cjs`、`tests/archive.cjs`（宿主）。

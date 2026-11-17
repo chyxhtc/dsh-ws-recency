@@ -193,6 +193,33 @@
 ".wsr-page-head{display:flex;align-items:center;gap:8px}",
 ".wsr-page-heading{flex:1;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary)}",
 ".wsr-page-list{display:flex;flex-direction:column;gap:6px}",
+".wsr-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}",
+".wsr-card-grid .wsr-card-head{flex-wrap:wrap}",
+".wsr-card-grid .wsr-card-actions{flex-wrap:wrap}",
+/* Icon actions: 24px instead of a text button, so the title keeps its width. */
+".wsr-icon-btn{width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));border-radius:6px;background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}",
+".wsr-icon-btn:hover{background:var(--dsw-alias-bg-layer-3,rgba(255,255,255,.08));color:var(--dsw-alias-label-primary)}",
+/* The destructive action keeps the same frame as the others and only its glyph is
+   red: a red border made one icon in a row of three shout louder than its size. */
+".wsr-icon-btn-danger{color:var(--dsw-alias-state-error-primary,#d9534f)}",
+".wsr-icon-btn-danger:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 14%,transparent);color:var(--dsw-alias-state-error-primary,#d9534f)}",
+".wsr-card-glyph{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px}",
+".wsr-card-glyph-danger{color:var(--dsw-alias-state-error-primary,#d9534f)}",
+".wsr-card-glyph-muted{color:var(--dsw-alias-label-tertiary)}",
+".wsr-card-glyph-warning{color:#d99a2b}",
+".wsr-card-danger{flex:none;display:flex;align-items:center}",
+/* Every icon button is the same 24px frame; the glyph inside keeps a 14px box
+   so differing artwork aspects cannot change the button's size. */
+".wsr-icon-btn-glyph{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px}",
+".wsr-icon-btn-glyph>svg{display:block}",
+/* The actions are one flex row on the title line, so a single layout does the
+   alignment: no second right edge to reconcile. They keep out of the way until
+   the card is hovered or holds focus. */
+/* Every action is one right-aligned row pinned to the card's bottom edge: it is a
+   real row in the card's column flow (so it never covers the path) and
+   `margin-top:auto` keeps it against the bottom when the card has spare height. */
+".wsr-card .wsr-card-actions-row{display:flex;justify-content:flex-end;align-items:center;gap:6px;min-height:24px;margin-top:auto;opacity:0;transition:opacity .12s}",
+".wsr-card:hover .wsr-card-actions-row,.wsr-card:focus-within .wsr-card-actions-row{opacity:1}",
 ".wsr-page-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
 ".wsr-card{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:.5px solid var(--dsw-alias-border-l1,rgba(255,255,255,.08));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04))}",
 ".wsr-card-head{display:flex;align-items:center;gap:10px;min-width:0}",
@@ -279,12 +306,31 @@
           ".wsr-context-bar{flex:1;min-width:1px;border-radius:1px 1px 0 0;background:linear-gradient(180deg,rgba(79,124,255,.9),rgba(79,124,255,.3))}",
           ".wsr-context-caption{font-size:10px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-context-jump{position:relative;cursor:pointer}",
+          /* Where a compaction rewrote the window: the curve restarts, and the
+             divider keeps that drop from reading as a rendering glitch. */
+          ".wsr-context-break{box-shadow:-1px 0 0 rgba(255,255,255,.35)}",
           ".wsr-context-jump-hit{position:absolute;left:50%;top:-9px;width:22px;height:22px;margin-left:-11px;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer}",
           ".wsr-context-jump-dot{width:6px;height:6px;border-radius:50%;background:#d99a2b;transition:transform .12s,box-shadow .12s}",
+          ".wsr-context-jump-hit[data-wsr-rank=\"1\"] .wsr-context-jump-dot{background:#f0553d}",
+          ".wsr-context-jump-hit[data-wsr-rank=\"2\"] .wsr-context-jump-dot{background:#f5c542}",
+          ".wsr-context-jump-hit[data-wsr-rank=\"3\"] .wsr-context-jump-dot{background:#4f9df7}",
           ".wsr-context-jump-hit-hot .wsr-context-jump-dot{transform:scale(1.8);box-shadow:0 0 0 4px rgba(217,154,43,.25)}",
           ".wsr-context-jump:hover .wsr-context-bar-inner{filter:brightness(1.15)}",
-          ".wsr-context-jumps{display:flex;flex-direction:column;gap:2px}",
-          ".wsr-context-jump-row{font-size:11px;color:var(--dsw-alias-label-secondary);padding:1px 4px;border-radius:4px;transition:background .12s,color .12s}",
+          ".wsr-context-jumps{display:grid;grid-template-columns:44px repeat(3,minmax(0,1fr));column-gap:16px;row-gap:3px;font-size:11px;color:var(--dsw-alias-label-secondary)}",
+          ".wsr-context-jumps-single{grid-template-columns:repeat(3,minmax(0,1fr))}",
+          /* The segment wrapper dissolves into the list grid, so every marker sits
+             in a real column and the step/rise edges line up across segments
+             whatever the numbers are. */
+          ".wsr-context-jump-group{display:contents}",
+          ".wsr-context-jump-segment{grid-column:1;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-context-jump-row{display:grid;grid-template-columns:8px auto 1fr;align-items:center;gap:5px;padding:1px 5px;border-radius:4px;transition:background .12s,color .12s}",
+          ".wsr-context-jump-rank{display:inline-flex;align-items:center}",
+          ".wsr-context-jump-rank-dot{width:6px;height:6px;border-radius:50%;background:#d99a2b}",
+          ".wsr-context-jump-row[data-wsr-rank=\"1\"] .wsr-context-jump-rank-dot{background:#f0553d}",
+          ".wsr-context-jump-row[data-wsr-rank=\"2\"] .wsr-context-jump-rank-dot{background:#f5c542}",
+          ".wsr-context-jump-row[data-wsr-rank=\"3\"] .wsr-context-jump-rank-dot{background:#4f9df7}",
+          ".wsr-context-jump-step{white-space:nowrap}",
+          ".wsr-context-jump-rise{text-align:right;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}",
           ".wsr-context-jump-row-hot{background:rgba(217,154,43,.16);color:var(--dsw-alias-label-primary)}",
           ".wsr-kind-legend{display:flex;flex-wrap:wrap;gap:10px}",
           ".wsr-kind{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
@@ -493,6 +539,8 @@
           "stats.amplified.contextCaption": "每步上下文（面积≈账单）：越早进入的内容被重读越多",
           "stats.amplified.point": "第 {step} 步 · {context}",
           "stats.amplified.jump": "第 {step} 步上下文涨了 {rise}",
+          "stats.amplified.jumpStep": "第 {step} 步",
+          "stats.amplified.segment": "第 {segment} 段",
           "stats.amplified.jumpFrom": "（{name} 进来 {tokens}）",
           "stats.amplified.meta": "第 {entry} 步进入 · {tokens} token × {remaining} 次重读",
           "stats.amplified.whatIf": "若压到 20%，可省 {save}（{share}）",
@@ -672,6 +720,8 @@
           "stats.amplified.contextCaption": "Context per step (area ≈ bill): earlier content is re-read more",
           "stats.amplified.point": "step {step} · {context}",
           "stats.amplified.jump": "step {step} grew by {rise}",
+          "stats.amplified.jumpStep": "step {step}",
+          "stats.amplified.segment": "seg {segment}",
           "stats.amplified.jumpFrom": "({name} brought {tokens})",
           "stats.amplified.meta": "entered at step {entry} · {tokens} tokens × {remaining} re-reads",
           "stats.amplified.whatIf": "at 20%, saves {save} ({share})",
@@ -2152,45 +2202,92 @@
           }
         }
 
-        /** The three steepest rises in the context curve, with the block behind each. */
+        /**
+         * The steepest rise in each compaction segment.
+         *
+         * A compaction rewrites the window, so a rise measured across that boundary
+         * compares two different conversations: each segment has to be ranked on its
+         * own. One marker per segment answers "where did this segment start growing",
+         * and it keeps the chart readable when a session compacted several times.
+         */
         function contextJumps(amplified) {
           var series = Array.isArray(amplified.series) ? amplified.series : [];
           var blocks = Array.isArray(amplified.blocks) ? amplified.blocks : [];
-          var rises = [];
+          var compactions = Array.isArray(amplified.compactions)
+            ? amplified.compactions.map(Number).sort(function (a, b) { return a - b; })
+            : [];
+          var segmentOf = function (step) {
+            var segment = 1;
+            for (var c = 0; c < compactions.length; c += 1) if (step > compactions[c]) segment += 1;
+            return segment;
+          };
+          /* Rises grouped per segment; the step that starts a new segment has no
+             rise to compare against the step before the rewrite. */
+          var bySegment = {};
           for (var i = 1; i < series.length; i += 1) {
+            var from = Number(series[i - 1].step);
+            var to = Number(series[i].step);
+            if (segmentOf(from) !== segmentOf(to)) continue;
             var rise = Number(series[i].context) - Number(series[i - 1].context);
-            if (rise > 0) rises.push({ step: Number(series[i].step), rise: rise });
+            if (rise <= 0) continue;
+            var segment = segmentOf(to);
+            if (bySegment[segment] === undefined) bySegment[segment] = [];
+            bySegment[segment].push({ step: to, rise: rise });
           }
-          rises.sort(function (a, b) { return b.rise - a.rise; });
+          var total = compactions.length + 1;
           var picked = [];
-          for (var r = 0; r < rises.length && picked.length < 3; r += 1) {
-            var rise2 = rises[r];
-            /* Two markers next to each other would read as one long jump; keep
-               the bars they sit on apart so each mark stays a single step. */
-            var close = false;
-            for (var p = 0; p < picked.length; p += 1) {
-              if (Math.abs(picked[p].step - rise2.step) < Math.max(2, Math.round(series.length / 10))) close = true;
+          /* Three markers per segment, not three for the whole session: after a
+             rewrite the earlier segment cannot crowd out the later ones. The
+             spacing only matters when many steps share one bar; on a short curve
+             each bar is wide enough for neighbouring marks. */
+          var spacing = Math.max(1, Math.round(series.length / 10));
+          for (var s = 1; s <= total; s += 1) {
+            var rises = bySegment[s];
+            if (rises === undefined || rises.length === 0) continue;
+            rises.sort(function (a, b) { return b.rise - a.rise; });
+            var chosen = [];
+            for (var r = 0; r < rises.length && chosen.length < 3; r += 1) {
+              /* Two markers side by side read as one wide jump. */
+              var close = false;
+              for (var p = 0; p < chosen.length; p += 1) {
+                if (Math.abs(chosen[p].step - rises[r].step) < spacing) close = true;
+              }
+              if (close) continue;
+              chosen.push(rises[r]);
             }
-            if (close) continue;
-            /* The entering block: the biggest one whose entry step is this one,
-               or (downsampled curves) the last entry at or before it. */
-            var best = null;
-            for (var b = 0; b < blocks.length; b += 1) {
-              var block = blocks[b];
-              if (Number(block.entry) > rise2.step) continue;
-              if (best === null || Number(block.entry) > Number(best.entry)) best = block;
-            }
-            var label = t("stats.amplified.jump", {
-              step: String(rise2.step),
-              rise: formatTokens(rise2.rise),
-            });
-            if (best !== null && Number(best.entry) === rise2.step) {
-              label += " " + t("stats.amplified.jumpFrom", {
-                name: best.kind === "tool" ? String(best.name) : t("stats.agent"),
-                tokens: formatTokens(best.tokens),
+            for (var k = 0; k < chosen.length; k += 1) {
+              var best = chosen[k];
+              /* The entering block: the biggest one whose entry step is this one,
+                 or (downsampled curves) the last entry at or before it. */
+              var block = null;
+              for (var b = 0; b < blocks.length; b += 1) {
+                var candidate = blocks[b];
+                if (Number(candidate.entry) > best.step) continue;
+                if (block === null || Number(candidate.entry) > Number(block.entry)) block = candidate;
+              }
+              var label = t("stats.amplified.jump", {
+                step: String(best.step),
+                rise: formatTokens(best.rise),
+              });
+              var blockName = "";
+              if (block !== null && Number(block.entry) === best.step) {
+                blockName = block.kind === "tool" ? String(block.name) : t("stats.agent");
+                label += " " + t("stats.amplified.jumpFrom", {
+                  name: blockName,
+                  tokens: formatTokens(block.tokens),
+                });
+              }
+              picked.push({
+                step: best.step,
+                rise: best.rise,
+                segment: s,
+                /* Rank is within the segment; the row's segment number keeps two
+                   "first" markers apart when a session compacted more than once. */
+                rank: k + 1,
+                blockName: blockName,
+                label: label,
               });
             }
-            picked.push({ step: rise2.step, rise: rise2.rise, label: label });
           }
           return picked;
         }
@@ -2216,19 +2313,35 @@
             if (Number(series[i].context) > largest) largest = Number(series[i].context);
           }
           var chart = statsDiv("wsr-context-chart");
-          /* Mark the steps where the window grew the most. A single read of a
-             large file shows up here as one tall jump, which is the question the
-             whole amplified view exists to answer, so the jump gets a marker
-             instead of leaving the reader to compare 96 bars by eye. */
+          /* Mark the steepest step of every compaction segment: a single read of a
+             large file shows up as one tall rise, and after a rewrite the window
+             starts over, so each segment is read on its own. */
           var jumps = contextJumps(amplified);
           var jumpByStep = {};
           for (var jj = 0; jj < jumps.length; jj += 1) jumpByStep[jumps[jj].step] = jumps[jj];
+          /* Where the window was rewritten: a faint divider makes the drop on the
+             curve legible instead of looking like a glitch. */
+          var breaks = {};
+          var compactionAt = Array.isArray(amplified.compactions) ? amplified.compactions.map(Number) : [];
+          for (var cb = 0; cb < compactionAt.length; cb += 1) breaks[compactionAt[cb]] = true;
+          var openBreak = false;
           for (var j = 0; j < series.length; j += 1) {
             var bar = statsDiv("wsr-context-bar");
             bar.style.height = Math.max(2, Math.round((Number(series[j].context) / largest) * 100)) + "%";
-            var jump = jumpByStep[Number(series[j].step)];
+            /* A compaction recorded at step N ends the segment at N: the first bar
+               whose step is past it opens the next one. */
+            var step = Number(series[j].step);
+            var startsSegment = false;
+            for (var cb2 = 0; cb2 < compactionAt.length; cb2 += 1) {
+              if (step > compactionAt[cb2] && !openBreak) startsSegment = true;
+            }
+            if (startsSegment) {
+              bar.className = "wsr-context-bar wsr-context-break";
+              openBreak = true;
+            }
+            var jump = jumpByStep[step];
             if (jump !== undefined) {
-              bar.className = "wsr-context-bar wsr-context-jump";
+              bar.className = "wsr-context-bar wsr-context-jump" + (startsSegment ? " wsr-context-break" : "");
               bar.setAttribute("data-wsr-jump", String(jump.step));
               bar.setAttribute("title", jump.label);
               /* A hover target that is big enough to hit: a 5px dot on a 3px bar
@@ -2236,23 +2349,47 @@
                  below, so hovering the bar also lifts that row. */
               var hit = statsDiv("wsr-context-jump-hit");
               hit.setAttribute("data-wsr-jump-hit", String(jump.step));
+              hit.setAttribute("data-wsr-rank", String(jump.rank));
               hit.appendChild(statsDiv("wsr-context-jump-dot"));
               hit.addEventListener("mouseenter", highlightJumpRow);
               hit.addEventListener("mouseleave", clearJumpHighlight);
               bar.appendChild(hit);
             } else {
-              bar.setAttribute("title", t("stats.amplified.point", { step: String(series[j].step), context: formatTokens(series[j].context) }));
+              bar.setAttribute("title", t("stats.amplified.point", { step: String(step), context: formatTokens(series[j].context) }));
             }
             chart.appendChild(bar);
           }
           section.appendChild(chart);
           section.appendChild(statsDiv("wsr-context-caption", t("stats.amplified.contextCaption")));
           if (jumps.length > 0) {
-            var jumpList = statsDiv("wsr-context-jumps");
-            for (var jl = 0; jl < jumps.length; jl += 1) {
-              var jumpRow = statsDiv("wsr-context-jump-row", jumps[jl].label);
-              jumpRow.setAttribute("data-wsr-jump-row", String(jumps[jl].step));
-              jumpList.appendChild(jumpRow);
+            /* One line per segment, its three rises inline. A row per rise took
+               nine lines for a twice-compacted session and made the panel look
+               like a table of numbers nobody compares row by row. */
+            var segments = [];
+            for (var js = 0; js < jumps.length; js += 1) {
+              if (segments.indexOf(jumps[js].segment) === -1) segments.push(jumps[js].segment);
+            }
+            var multiSegment = segments.length > 1;
+            var jumpList = statsDiv("wsr-context-jumps" + (multiSegment ? "" : " wsr-context-jumps-single"));
+            for (var sg = 0; sg < segments.length; sg += 1) {
+              var group = statsDiv("wsr-context-jump-group");
+              if (multiSegment) {
+                group.appendChild(statsDiv("wsr-context-jump-segment", t("stats.amplified.segment", { segment: String(segments[sg]) })));
+              }
+              for (var jl = 0; jl < jumps.length; jl += 1) {
+                if (jumps[jl].segment !== segments[sg]) continue;
+                var jumpRow = statsDiv("wsr-context-jump-row");
+                jumpRow.setAttribute("data-wsr-jump-row", String(jumps[jl].step));
+                jumpRow.setAttribute("data-wsr-rank", String(jumps[jl].rank));
+                jumpRow.setAttribute("title", jumps[jl].label);
+                var rankCell = statsDiv("wsr-context-jump-rank");
+                rankCell.appendChild(statsDiv("wsr-context-jump-rank-dot"));
+                jumpRow.appendChild(rankCell);
+                jumpRow.appendChild(statsDiv("wsr-context-jump-step", t("stats.amplified.jumpStep", { step: String(jumps[jl].step) })));
+                jumpRow.appendChild(statsDiv("wsr-context-jump-rise", "+" + formatTokens(jumps[jl].rise)));
+                group.appendChild(jumpRow);
+              }
+              jumpList.appendChild(group);
             }
             section.appendChild(jumpList);
           }
@@ -3836,14 +3973,54 @@
          * below. Both are "put away", so both are managed from here.
          */
         /** One entry as a card: badge, title, the numbers that matter, and actions. */
+        /**
+         * An action as an icon button.
+         *
+         * Text buttons in the card header squeezed the title to an ellipsis; an
+         * icon says the same thing in 24px, and the label moves into the title
+         * attribute so it is still discoverable on hover.
+         */
+        function iconButton(options) {
+          var Icon = ui[options.icon];
+          var label = options.label;
+          var className = "wsr-icon-btn" + (options.danger === true ? " wsr-icon-btn-danger" : "");
+          if (typeof Icon !== "function") {
+            /* An older UI package without this glyph: keep the action usable. */
+            return h("button", {
+              type: "button",
+              className: (options.danger === true ? "wsr-btn wsr-btn-danger" : "wsr-btn") + " wsr-icon-fallback",
+              title: label,
+              onClick: options.onClick,
+            }, label);
+          }
+          /* One frame for every icon. The glyph artwork has its own intrinsic
+             aspect (archive, trash and refresh outlines differ), so a raw `size`
+             made neighbouring buttons look different sizes. */
+          return h("button", {
+            type: "button",
+            className: className,
+            title: label,
+            "aria-label": label,
+            onClick: options.onClick,
+          }, h("span", { className: "wsr-icon-btn-glyph" }, h(Icon, { size: 14 })));
+        }
+
+        /**
+         * One entry as a card.
+         *
+         * The section heading already says "deleted" or "archived", so no badge
+         * repeats it. Every action lives in one row at the bottom of the card,
+         * right-aligned: one row is one right edge, so nothing can drift, and the
+         * title keeps the full width.
+         */
         function entryCard(options) {
+          var safeActions = options.actions === null || options.actions === undefined ? [] : options.actions;
+          var actions = [];
+          for (var i = 0; i < safeActions.length; i += 1) actions.push(safeActions[i]);
+          if (options.danger !== null && options.danger !== undefined) actions.push(options.danger);
           return h("div", { className: "wsr-card", key: options.key, title: options.titleAttr || "" },
             h("div", { className: "wsr-card-head" },
-              options.badge !== null && options.badge !== undefined
-                ? h("span", { className: "wsr-card-badge " + (options.badgeClass || "") }, options.badge)
-                : null,
               h("div", { className: options.titleClass || "wsr-card-title" }, options.title),
-              h("div", { className: "wsr-card-actions" }, options.actions),
             ),
             options.chips.length > 0
               ? h("div", { className: "wsr-chips" }, options.chips.map(function (text, index) {
@@ -3852,6 +4029,9 @@
               : null,
             typeof options.path === "string" && options.path !== ""
               ? h("div", { className: "wsr-card-path" }, options.path)
+              : null,
+            actions.length > 0
+              ? h("div", { className: "wsr-card-actions wsr-card-actions-row" }, actions)
               : null,
           );
         }
@@ -3945,27 +4125,26 @@
               if (when !== "") chips.push(when);
               var actions = [];
               if (entry.restorable === true) {
-                actions.push(h("button", {
-                  type: "button",
-                  className: "wsr-btn",
+                actions.push(iconButton({
+                  icon: "IconRefreshOutlineRegular",
+                  label: t("trash.restore"),
                   onClick: function () { act(entry, "restore"); },
-                }, t("trash.restore")));
+                }));
               }
-              actions.push(h("button", {
-                type: "button",
-                className: "wsr-btn wsr-btn-danger",
-                onClick: function () { act(entry, "purge"); },
-              }, t("trash.purge")));
               var hasTitle = typeof entry.title === "string" && entry.title !== "";
               rows.push(entryCard({
                 key: entry.name,
-                badge: entry.reason === "move" ? t("trash.reason.move") : t("trash.reason.delete"),
-                badgeClass: entry.reason === "move" ? "wsr-card-badge-muted" : "wsr-card-badge-danger",
                 titleClass: hasTitle ? "wsr-card-title" : "wsr-card-title wsr-card-title-id",
                 title: hasTitle ? entry.title : (entry.sessionId === null ? entry.name : entry.sessionId),
                 titleAttr: entry.sessionId === null ? entry.name : entry.sessionId,
                 chips: chips,
                 path: entry.cwd,
+                danger: iconButton({
+                  icon: "IconCloseOutlineRegular",
+                  label: t("trash.purge"),
+                  danger: true,
+                  onClick: function () { act(entry, "purge"); },
+                }),
                 actions: actions,
               }));
             })(view.entries[i]);
@@ -3989,19 +4168,38 @@
               var missing = entry.missing === true;
               archivedRows.push(entryCard({
                 key: entry.sessionId,
-                badge: missing ? t("archive.badgeMissing") : t("archive.badge"),
-                badgeClass: missing ? "wsr-card-badge-warning" : "wsr-card-badge-muted",
                 titleClass: hasTitle ? "wsr-card-title" : "wsr-card-title wsr-card-title-id",
                 title: hasTitle ? entry.title : entry.sessionId,
                 titleAttr: entry.sessionId,
                 chips: chips,
                 path: typeof entry.workspacePath === "string" && entry.workspacePath !== "" ? entry.workspacePath : entry.cwd,
+                /* The destructive action stays alone on the title line; the safe
+                   ones sit in the corner with the rest of the card actions. */
+                danger: missing
+                  ? null
+                  : iconButton({
+                    icon: "IconCloseOutlineRegular",
+                    label: t("archive.forget"),
+                    danger: true,
+                    onClick: function () { actArchived(entry, "forget"); },
+                  }),
                 actions: missing
-                  ? [h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "detach"); } }, t("archive.detach"))]
+                  ? [iconButton({
+                    icon: "IconArchiveOffOutlineRegular",
+                    label: t("archive.detach"),
+                    onClick: function () { actArchived(entry, "detach"); },
+                  })]
                   : [
-                    h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "unarchive"); } }, t("archive.unarchive")),
-                    h("button", { type: "button", className: "wsr-btn", onClick: function () { actArchived(entry, "delete"); } }, t("archive.delete")),
-                    h("button", { type: "button", className: "wsr-btn wsr-btn-danger", onClick: function () { actArchived(entry, "forget"); } }, t("archive.forget")),
+                    iconButton({
+                      icon: "IconRefreshOutlineRegular",
+                      label: t("archive.unarchive"),
+                      onClick: function () { actArchived(entry, "unarchive"); },
+                    }),
+                    iconButton({
+                      icon: "IconTrashOutlineRegular",
+                      label: t("archive.delete"),
+                      onClick: function () { actArchived(entry, "delete"); },
+                    }),
                   ],
               }));
             })(archivedList[j]);
@@ -4014,7 +4212,7 @@
             ),
             archivedList.length === 0
               ? h("div", { className: "wsr-page-note", key: "archive-empty" }, t("archive.empty"))
-              : h("div", { className: "wsr-page-list", key: "archive-list" }, archivedRows),
+              : h("div", { className: "wsr-card-grid", key: "archive-list" }, archivedRows),
             h("div", { className: "wsr-page-note", key: "archive-note" }, t("archive.description")),
           ];
 
@@ -4042,7 +4240,7 @@
                 ),
                 view.entries.length === 0
                   ? h("div", { className: "wsr-page-note", key: "trash-empty" }, t("trash.empty"))
-                  : h("div", { className: "wsr-page-list", key: "trash-list" }, rows),
+                  : h("div", { className: "wsr-card-grid", key: "trash-list" }, rows),
                 h("div", { className: "wsr-page-note", key: "trash-note" }, t("trash.note")),
                 archiveSection,
               ],

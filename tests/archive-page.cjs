@@ -163,7 +163,8 @@ function buttonInRow(root, rowText, label) {
   const rows = collect(root, []).filter((node) => node.type === "div" && node.props.className === "wsr-card");
   const row = rows.find((node) => textOf(node).indexOf(rowText) !== -1);
   if (row === undefined || row === null) return null;
-  return buttons(row).find((node) => textOf(node) === label) || null;
+  /* Icon buttons carry their label as an accessible name, not as text. */
+  return buttons(row).find((node) => textOf(node) === label || node.props["aria-label"] === label) || null;
 }
 
 /** Depth-first search in a real-DOM stub tree (the in-app dialog lives there). */
@@ -298,6 +299,22 @@ fetchAnswer = (body) => {
   /* The trash row keeps its own, differently-scoped buttons. */
   assert.ok(buttonInRow(tree, "session-trashed", "Restore") !== null, "the trashed session still has Restore");
 
+  /* Every action is one right-aligned row at the bottom: a single right edge, so
+     nothing can drift, and the title keeps the full width. */
+  const trashRow = collect(tree, []).find((node) => node.type === "div" && node.props.className === "wsr-card" && textOf(node).indexOf("session-trashed") !== -1);
+  const actionRow = trashRow.children.find((child) => child.props !== undefined && String(child.props.className).indexOf("wsr-card-actions-row") !== -1);
+  assert.ok(actionRow !== undefined, "the actions own a row at the bottom of the card");
+  assert.strictEqual(trashRow.children[trashRow.children.length - 1], actionRow, "that row is the card's last line");
+  assert.ok(buttons(actionRow).length >= 2, "the row holds every action");
+  const head = trashRow.children.find((child) => child.props !== undefined && child.props.className === "wsr-card-head");
+  assert.strictEqual(buttons(head).length, 0, "the title line is free of buttons");
+  const iconButtons = buttons(trashRow).map((node) => String(node.props.className));
+  assert.ok(iconButtons.length >= 2, "the card still offers its actions");
+  /* The test's UI package exposes no glyphs, so the fallback path is what runs
+     here; both paths have to stay keyboard-labelled and compact. */
+  assert.ok(iconButtons.every((name) => name.indexOf("wsr-icon") !== -1), "actions render through the icon path, fallback included");
+  assert.ok(buttons(trashRow).every((node) => typeof node.props.title === "string" && node.props.title !== ""), "each icon button names itself on hover");
+
   await expectAction("Unarchive", "unarchive");
   await expectAction("Move to trash", "delete");
   await expectAction("Delete for good", "forget");
@@ -321,7 +338,8 @@ fetchAnswer = (body) => {
   const detachHit = fetchCalls.slice(detachBefore).map((call) => call.body).find((body) => body.action === "detach");
   assert.ok(detachHit !== undefined, "it posts the detach action");
   assert.strictEqual(detachHit.sessionId, "session-archived-b");
-  assert.ok(textOf(tree).indexOf("record only") !== -1, "the row is badged as a record without its log");
+  assert.ok(textOf(tree).indexOf("record only") === -1, "the state badge is gone: the section heading already says it, so the card carries no glyph");
+  assert.strictEqual(collect(tree, []).filter((node) => node.type === "span" && typeof node.props.className === "string" && node.props.className.indexOf("wsr-card-glyph") !== -1).length, 0, "no state glyph on any card");
 
   /* ---------- an older host half degrades gracefully ------------------- */
   fetchAnswer = (body) => {

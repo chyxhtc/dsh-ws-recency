@@ -689,6 +689,20 @@ function textOf(node) {
   const jumpRows = amplified.querySelectorAll(".wsr-context-jump-row");
   assert.ok(jumpRows.length >= 1, "each marked rise is spelled out");
   assert.ok(textOf(jumpRows[0]).indexOf("step 3") !== -1, "the biggest rise names step 3");
+  /* Each row is a column layout carrying its rank, so the dot on the chart and
+     the line under it can be matched by colour instead of by reading prose. */
+  assert.ok(jumpRows[0].getAttribute("data-wsr-rank") !== null, "a row knows its rank");
+  const rankDots = jumpRows[0].querySelectorAll(".wsr-context-jump-rank-dot");
+  assert.strictEqual(rankDots.length, 1, "the row leads with its rank dot");
+  assert.ok(textOf(jumpRows[0]).indexOf("+") !== -1, "the rise is shown as a delta");
+  const jumpHits = amplified.querySelectorAll(".wsr-context-jump-hit");
+  assert.ok(jumpHits.length >= 1, "the chart marker has its own hit area");
+  /* The chart lists bars by step while the rows list rises by rank, so pair them
+     by step, not by position. */
+  const firstStep = jumpRows[0].getAttribute("data-wsr-jump-row");
+  const matchingHit = Array.from(jumpHits).find((hit) => hit.getAttribute("data-wsr-jump-hit") === firstStep);
+  assert.ok(matchingHit !== undefined, "every marked row has a marker on the curve");
+  assert.strictEqual(matchingHit.getAttribute("data-wsr-rank"), jumpRows[0].getAttribute("data-wsr-rank"), "marker and row share the rank");
   assert.strictEqual(amplified.querySelectorAll(".wsr-kind").length, 4, "the kind legend lists the parts");
   const amplifiedRows = amplified.querySelectorAll(".wsr-amplified-row");
   assert.strictEqual(amplifiedRows.length, 2, "the ranking lists the amplified blocks");
@@ -764,6 +778,40 @@ function textOf(node) {
   overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-close").click();
   prefs.argMode = "tool";
   assert.strictEqual(prefs.argMode, "tool", "the default mode stays per-tool");
+
+  /* A compaction restarts the window, so each segment ranks its own top three:
+     the steepest step before the rewrite cannot hide the ones after it. */
+  global.fetch.answer.stats.amplified.series = [
+    { step: 1, context: 1000 },
+    { step: 2, context: 2000 },
+    { step: 3, context: 4000 },
+    { step: 4, context: 9000 },
+    { step: 5, context: 100 },
+    { step: 6, context: 2000 },
+    { step: 7, context: 6000 },
+    { step: 8, context: 7000 },
+  ];
+  global.fetch.answer.stats.amplified.compactions = [4];
+  const itemSegmented = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
+  itemSegmented.props.onSelect();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const segmentedBody = overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-body");
+  const segmentedGroups = segmentedBody.querySelectorAll(".wsr-context-jump-group");
+  assert.strictEqual(segmentedGroups.length, 2, "one line per segment, not one per marker");
+  const seg1 = segmentedGroups[0].querySelectorAll(".wsr-context-jump-row");
+  const seg2 = segmentedGroups[1].querySelectorAll(".wsr-context-jump-row");
+  assert.strictEqual(seg1.length, 3, "the first segment keeps its own top three");
+  assert.strictEqual(seg2.length, 3, "the second segment gets its own top three");
+  assert.ok(textOf(segmentedGroups[0]).indexOf("seg 1") !== -1, "the line names its segment");
+  assert.ok(textOf(seg1[0]).indexOf("step 4") !== -1, "the first segment leads with its steepest step");
+  assert.ok(textOf(seg2[0]).indexOf("step 7") !== -1, "the second segment leads with its own steepest step");
+  assert.strictEqual(seg1[0].getAttribute("data-wsr-rank"), "1", "each segment ranks from the first hue");
+  assert.strictEqual(seg2[0].getAttribute("data-wsr-rank"), "1", "the next segment starts its own ranking");
+  assert.ok(segmentedBody.querySelector(".wsr-context-break") !== null, "the rewrite is drawn on the curve");
+  overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-close").click();
+  /* Back to the single-segment fixture for the remaining assertions. */
+  global.fetch.answer.stats.amplified.series = [{ step: 1, context: 1000 }, { step: 2, context: 3000 }, { step: 3, context: 6000 }];
+  delete global.fetch.answer.stats.amplified.compactions;
 
   /* Two tabs now: the old details table only repeated the chart, so its one
      unique number (call counts) moved onto the bars and the agent split moved
