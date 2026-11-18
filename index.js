@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.30.0";
+export const HOST_VERSION = "0.30.1";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -578,7 +578,28 @@ export function aggregateSession(events) {
       const end = Math.min(totalSteps, start + size);
       let sum = 0;
       for (let index = start; index < end; index += 1) sum += steps[index].input + steps[index].cacheRead;
-      series.push({ step: start + 1, context: Math.round(sum / (end - start)) });
+      /* What entered during this bucket: the biggest block that first appears
+         between these steps. The panel says "step 58 grew 33K" - this is the
+         content behind that number. The host is the only side that sees every
+         block (the payload carries the top 15), so the attribution is done here
+         and each curve point only carries one small label. */
+      let entered = null;
+      for (const block of blocks) {
+        if (block.entry < start || block.entry >= end) continue;
+        if (entered === null || block.tokens > entered.tokens) entered = block;
+      }
+      series.push({
+        step: start + 1,
+        context: Math.round(sum / (end - start)),
+        entered: entered === null
+          ? null
+          : {
+            kind: entered.kind,
+            name: entered.name,
+            detail: typeof entered.detail === "string" ? entered.detail.slice(0, 80) : "",
+            tokens: entered.tokens,
+          },
+      });
     }
   }
   summary.amplified = {

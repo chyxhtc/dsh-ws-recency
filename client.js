@@ -316,21 +316,19 @@
           ".wsr-context-jump-hit[data-wsr-rank=\"3\"] .wsr-context-jump-dot{background:#4f9df7}",
           ".wsr-context-jump-hit-hot .wsr-context-jump-dot{transform:scale(1.8);box-shadow:0 0 0 4px rgba(217,154,43,.25)}",
           ".wsr-context-jump:hover .wsr-context-bar-inner{filter:brightness(1.15)}",
-          ".wsr-context-jumps{display:grid;grid-template-columns:44px repeat(3,minmax(0,1fr));column-gap:16px;row-gap:3px;font-size:11px;color:var(--dsw-alias-label-secondary)}",
-          ".wsr-context-jumps-single{grid-template-columns:repeat(3,minmax(0,1fr))}",
-          /* The segment wrapper dissolves into the list grid, so every marker sits
-             in a real column and the step/rise edges line up across segments
-             whatever the numbers are. */
-          ".wsr-context-jump-group{display:contents}",
-          ".wsr-context-jump-segment{grid-column:1;color:var(--dsw-alias-label-tertiary)}",
-          ".wsr-context-jump-row{display:grid;grid-template-columns:8px auto 1fr;align-items:center;gap:5px;padding:1px 5px;border-radius:4px;transition:background .12s,color .12s}",
-          ".wsr-context-jump-rank{display:inline-flex;align-items:center}",
-          ".wsr-context-jump-rank-dot{width:6px;height:6px;border-radius:50%;background:#d99a2b}",
+          ".wsr-context-jumps{display:flex;flex-direction:column;gap:2px;margin-top:2px}",
+          ".wsr-context-jump-group{display:flex;flex-direction:column;gap:2px}",
+          /* Fixed columns on every row is what aligns them: each row is its own
+             grid, so `auto` widths would drift with the numbers they hold. */
+          ".wsr-context-jump-row{display:grid;grid-template-columns:40px 84px 62px minmax(0,1fr);align-items:center;gap:10px;font-size:11px;color:var(--dsw-alias-label-secondary);padding:1px 5px;border-radius:4px;transition:background .12s,color .12s}",
+          ".wsr-context-jump-segment{color:var(--dsw-alias-label-tertiary);white-space:nowrap}",
+          ".wsr-context-jump-rank-dot{flex:none;width:6px;height:6px;border-radius:50%;background:#d99a2b}",
           ".wsr-context-jump-row[data-wsr-rank=\"1\"] .wsr-context-jump-rank-dot{background:#f0553d}",
           ".wsr-context-jump-row[data-wsr-rank=\"2\"] .wsr-context-jump-rank-dot{background:#f5c542}",
           ".wsr-context-jump-row[data-wsr-rank=\"3\"] .wsr-context-jump-rank-dot{background:#4f9df7}",
-          ".wsr-context-jump-step{white-space:nowrap}",
+          ".wsr-context-jump-step{display:flex;align-items:center;gap:6px;white-space:nowrap}",
           ".wsr-context-jump-rise{text-align:right;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}",
+          ".wsr-context-jump-what{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-context-jump-row-hot{background:rgba(217,154,43,.16);color:var(--dsw-alias-label-primary)}",
           ".wsr-kind-legend{display:flex;flex-wrap:wrap;gap:10px}",
           ".wsr-kind{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
@@ -344,6 +342,8 @@
           ".wsr-amplified-value{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px}",
           ".wsr-amplified-share{text-align:right;color:var(--dsw-alias-label-tertiary);font-size:11px;font-variant-numeric:tabular-nums}",
           ".wsr-amplified-empty{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-amplified-subtitle{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-top:4px}",
+          ".wsr-amplified-lead{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-stats-footnote{padding-top:6px;border-top:.5px solid rgba(255,255,255,.06)}",
           ".wsr-toggle{width:100%;height:28px;padding:0 12px 0 calc(28px + var(--dsh-workspace-indent,0px));cursor:pointer;text-align:left;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;font-size:12px}",
           ".wsr-toggle:hover{color:var(--dsw-alias-label-secondary)}",
@@ -414,7 +414,7 @@
           "stats.col.source": "\u6765\u6e90",
           "stats.col.calls": "\u8c03\u7528",
           "stats.callsShort": "{n} 次",
-          "stats.col.tokensShort": "token",
+          "stats.col.tokensShort": "内容估算",
           "stats.col.shareShort": "占比",
           "stats.col.args": "\u53c2\u6570",
           "stats.col.results": "\u7ed3\u679c",
@@ -535,14 +535,16 @@
           "stats.barTooltip": "{name} 共 {total}：参数 {args}（{argsShare}），结果 {results}（{resultsShare}）",
           "stats.argModeNote": "当前把工具参数计入主 agent：每个工具只算返回结果，表格里「参数」列显示为淡色（那些 token 记在主 agent 那一行）。",
           "stats.amplified.title": "放大成本（账单归因）",
+          "stats.amplified.kindTitle": "账单构成",
+          "stats.amplified.lead": "按「内容大小 × 之后重读次数」排序：一块内容读进来一次，之后每一步都会再发一遍，乘上重读次数才是它真正的开销。上面的分布统计只算内容本身多大，两个数不能直接比。",
           "stats.amplified.summary": "账单 {bill} token；可归因内容经重读放大后占 {share}（{attributed}）",
-          "stats.amplified.contextCaption": "每步上下文（面积≈账单）：越早进入的内容被重读越多",
+          "stats.amplified.contextCaption": "每步上下文（面积≈账单）：一步＝一次模型调用，越早进入的内容被重读越多",
           "stats.amplified.point": "第 {step} 步 · {context}",
           "stats.amplified.jump": "第 {step} 步上下文涨了 {rise}",
           "stats.amplified.jumpStep": "第 {step} 步",
           "stats.amplified.segment": "第 {segment} 段",
           "stats.amplified.jumpFrom": "（{name} 进来 {tokens}）",
-          "stats.amplified.meta": "第 {entry} 步进入 · {tokens} token × {remaining} 次重读",
+          "stats.amplified.meta": "{tokens} token × {remaining} 次重读 · 第 {entry} 步进入",
           "stats.amplified.whatIf": "若压到 20%，可省 {save}（{share}）",
           "stats.amplified.empty": "没有可归因的放大内容（压缩后或旧日志可能缺失）",
           "stats.amplified.note": "放大成本按内容长度估算；账单总量来自真实 usage。思维链通常不回传，故未计入。",
@@ -553,6 +555,7 @@
           "stats.amplified.system": "系统消息",
           "stats.tab.distribution": "分布统计",
           "stats.tab.amplified": "放大归因",
+          "stats.tab.ranking": "放大排行",
           "stats.tab.details": "明细",
           "trash.confirm": "\u5220\u9664\u8fd9\u4e2a\u4f1a\u8bdd\uff1f\n\n\u4f1a\u5148\u505c\u6b62\u5b83\u6b63\u5728\u8fdb\u884c\u7684\u5de5\u4f5c\uff0c\u518d\u628a\u65e5\u5fd7\u76ee\u5f55\u79fb\u5165\u56de\u6536\u7ad9\uff08\u4e0d\u662f\u7269\u7406\u5220\u9664\uff0c\u53ef\u4ee5\u624b\u52a8\u6062\u590d\uff09\u3002",
           "trash.failed": "\u5220\u9664\u5931\u8d25\uff1a",
@@ -596,7 +599,7 @@
           "stats.col.source": "source",
           "stats.col.calls": "calls",
           "stats.callsShort": "{n}x",
-          "stats.col.tokensShort": "tokens",
+          "stats.col.tokensShort": "content est.",
           "stats.col.shareShort": "share",
           "stats.col.args": "args",
           "stats.col.results": "results",
@@ -716,14 +719,16 @@
           "stats.barTooltip": "{name}: {total} total - arguments {args} ({argsShare}), results {results} ({resultsShare})",
           "stats.argModeNote": "Tool arguments currently count towards the agent: each tool shows only its results, and the table's \"args\" column is faded because those tokens sit on the agent's row.",
           "stats.amplified.title": "Amplified cost (what the bill pays for)",
+          "stats.amplified.kindTitle": "What the bill is made of",
+          "stats.amplified.lead": "Ranked by content size × the later steps that re-read it: content is re-sent on every step after it enters, so the multiplier is what the bill actually pays. The distribution tab measures only the content itself, so the two numbers do not compare directly.",
           "stats.amplified.summary": "Bill {bill} tokens; attributable content amplifies to {share} ({attributed})",
-          "stats.amplified.contextCaption": "Context per step (area ≈ bill): earlier content is re-read more",
+          "stats.amplified.contextCaption": "Context per step (area ≈ bill): one step is one model call; earlier content is re-read more",
           "stats.amplified.point": "step {step} · {context}",
           "stats.amplified.jump": "step {step} grew by {rise}",
           "stats.amplified.jumpStep": "step {step}",
           "stats.amplified.segment": "seg {segment}",
           "stats.amplified.jumpFrom": "({name} brought {tokens})",
-          "stats.amplified.meta": "entered at step {entry} · {tokens} tokens × {remaining} re-reads",
+          "stats.amplified.meta": "{tokens} tokens × {remaining} re-reads · entered at step {entry}",
           "stats.amplified.whatIf": "at 20%, saves {save} ({share})",
           "stats.amplified.empty": "No amplifiable content (compacted or older logs may lack it)",
           "stats.amplified.note": "Amplified cost is estimated from content length; the bill total comes from real usage. Reasoning is usually not resent, so it is excluded.",
@@ -734,6 +739,7 @@
           "stats.amplified.system": "system messages",
           "stats.tab.distribution": "Distribution",
           "stats.tab.amplified": "Amplified",
+          "stats.tab.ranking": "Ranking",
           "stats.tab.details": "Details",
           "trash.confirm": "Delete this session?\n\nIt stops whatever the session is running, then moves the log directory into the trash folder (a move, not an erase: you can restore it by hand).",
           "trash.failed": "Delete failed: ",
@@ -2071,9 +2077,10 @@
           }
           track.appendChild(group);
           line.appendChild(track);
-          line.appendChild(statsDiv("wsr-chart-value", formatTokens(entry.value)));
-          line.appendChild(statsDiv("wsr-chart-share", formatShare(entry.share)));
-          /* The count the chart cannot draw: a bar says how heavy a source is,
+          var valueCell = statsDiv("wsr-chart-value", formatTokens(entry.value));
+          valueCell.setAttribute("title", String(Math.round(entry.value)) + " tokens");
+          line.appendChild(valueCell);
+          line.appendChild(statsDiv("wsr-chart-share", formatShare(entry.share)));          /* The count the chart cannot draw: a bar says how heavy a source is,
              the call count says how often it got there. The details table used to
              be the only place for it. It always renders (empty for rows without
              a count) so the five-column grid stays aligned. */
@@ -2203,6 +2210,23 @@
         }
 
         /**
+         * A short "what entered" label for a jump row.
+         *
+         * The detail is often a full path or a whole command; the row has one
+         * narrow cell. Keep the tool name and the last path segment, and let the
+         * tooltip carry the rest.
+         */
+        function jumpWhatOf(name, detail) {
+          if (typeof name !== "string" || name === "") return "";
+          if (typeof detail !== "string" || detail === "") return name;
+          var text = detail.trim();
+          var cut = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+          if (cut !== -1 && cut < text.length - 1) text = text.slice(cut + 1);
+          if (text.length > 22) text = text.slice(0, 21) + "…";
+          return name + " " + text;
+        }
+
+        /**
          * The steepest rise in each compaction segment.
          *
          * A compaction rewrites the window, so a rise measured across that boundary
@@ -2232,7 +2256,10 @@
             if (rise <= 0) continue;
             var segment = segmentOf(to);
             if (bySegment[segment] === undefined) bySegment[segment] = [];
-            bySegment[segment].push({ step: to, rise: rise });
+            /* `from` is the previous bar's step: on a downsampled curve one bar
+               stands for several steps, and the content that entered during that
+               span is what made it rise. The host labels each point with it. */
+            bySegment[segment].push({ step: to, from: from, rise: rise, entered: series[i].entered || null });
           }
           var total = compactions.length + 1;
           var picked = [];
@@ -2257,24 +2284,42 @@
             }
             for (var k = 0; k < chosen.length; k += 1) {
               var best = chosen[k];
-              /* The entering block: the biggest one whose entry step is this one,
-                 or (downsampled curves) the last entry at or before it. */
+              /* The host labels each curve point with the biggest content block
+                 that first appeared inside it. That is the honest attribution: a
+                 bar spans several steps, so `entry === step` almost never holds,
+                 and guessing "the most recent entrant" pointed at the system
+                 prompt instead of the file that actually landed. */
               var block = null;
-              for (var b = 0; b < blocks.length; b += 1) {
-                var candidate = blocks[b];
-                if (Number(candidate.entry) > best.step) continue;
-                if (block === null || Number(candidate.entry) > Number(block.entry)) block = candidate;
+              var blockName = "";
+              var blockDetail = "";
+              var blockTokens = 0;
+              if (best.entered !== null && best.entered !== undefined) {
+                blockName = best.entered.kind === "tool" ? String(best.entered.name) : t("stats.agent");
+                blockDetail = typeof best.entered.detail === "string" ? best.entered.detail : "";
+                blockTokens = Number(best.entered.tokens) || 0;
+              } else {
+                /* An older host half sends no labels: fall back to the block that
+                   entered inside this span, and never to an unrelated older one. */
+                for (var b = 0; b < blocks.length; b += 1) {
+                  var candidate = blocks[b];
+                  var entry = Number(candidate.entry);
+                  if (entry > best.step || entry <= best.from) continue;
+                  if (block === null || Number(candidate.tokens) > Number(block.tokens)) block = candidate;
+                }
+                if (block !== null) {
+                  blockName = block.kind === "tool" ? String(block.name) : t("stats.agent");
+                  if (typeof block.detail === "string" && block.detail !== "") blockDetail = block.detail;
+                  blockTokens = Number(block.tokens) || 0;
+                }
               }
               var label = t("stats.amplified.jump", {
                 step: String(best.step),
                 rise: formatTokens(best.rise),
               });
-              var blockName = "";
-              if (block !== null && Number(block.entry) === best.step) {
-                blockName = block.kind === "tool" ? String(block.name) : t("stats.agent");
+              if (blockName !== "") {
                 label += " " + t("stats.amplified.jumpFrom", {
-                  name: blockName,
-                  tokens: formatTokens(block.tokens),
+                  name: blockDetail === "" ? blockName : blockName + " " + blockDetail,
+                  tokens: formatTokens(blockTokens),
                 });
               }
               picked.push({
@@ -2285,6 +2330,7 @@
                    "first" markers apart when a session compacted more than once. */
                 rank: k + 1,
                 blockName: blockName,
+                blockDetail: blockDetail,
                 label: label,
               });
             }
@@ -2362,31 +2408,40 @@
           section.appendChild(chart);
           section.appendChild(statsDiv("wsr-context-caption", t("stats.amplified.contextCaption")));
           if (jumps.length > 0) {
-            /* One line per segment, its three rises inline. A row per rise took
-               nine lines for a twice-compacted session and made the panel look
-               like a table of numbers nobody compares row by row. */
+            /* One row per rise, in fixed columns (segment / step / rise / what).
+               Packing three rises onto one line truncated every label, and a row
+               per rise with prose labels was too tall; four fixed columns give
+               both: aligned numbers and room for the file name. */
             var segments = [];
             for (var js = 0; js < jumps.length; js += 1) {
               if (segments.indexOf(jumps[js].segment) === -1) segments.push(jumps[js].segment);
             }
             var multiSegment = segments.length > 1;
-            var jumpList = statsDiv("wsr-context-jumps" + (multiSegment ? "" : " wsr-context-jumps-single"));
+            var jumpList = statsDiv("wsr-context-jumps");
             for (var sg = 0; sg < segments.length; sg += 1) {
               var group = statsDiv("wsr-context-jump-group");
-              if (multiSegment) {
-                group.appendChild(statsDiv("wsr-context-jump-segment", t("stats.amplified.segment", { segment: String(segments[sg]) })));
-              }
+              var firstOfSegment = true;
               for (var jl = 0; jl < jumps.length; jl += 1) {
                 if (jumps[jl].segment !== segments[sg]) continue;
                 var jumpRow = statsDiv("wsr-context-jump-row");
                 jumpRow.setAttribute("data-wsr-jump-row", String(jumps[jl].step));
                 jumpRow.setAttribute("data-wsr-rank", String(jumps[jl].rank));
                 jumpRow.setAttribute("title", jumps[jl].label);
-                var rankCell = statsDiv("wsr-context-jump-rank");
-                rankCell.appendChild(statsDiv("wsr-context-jump-rank-dot"));
-                jumpRow.appendChild(rankCell);
-                jumpRow.appendChild(statsDiv("wsr-context-jump-step", t("stats.amplified.jumpStep", { step: String(jumps[jl].step) })));
+                /* The segment is named once per group, not on every row. */
+                jumpRow.appendChild(statsDiv(
+                  "wsr-context-jump-segment",
+                  multiSegment && firstOfSegment ? t("stats.amplified.segment", { segment: String(segments[sg]) }) : "",
+                ));
+                firstOfSegment = false;
+                var stepCell = statsDiv("wsr-context-jump-step");
+                stepCell.appendChild(statsDiv("wsr-context-jump-rank-dot"));
+                stepCell.appendChild(statsDiv("wsr-context-jump-step-text", t("stats.amplified.jumpStep", { step: String(jumps[jl].step) })));
+                jumpRow.appendChild(stepCell);
                 jumpRow.appendChild(statsDiv("wsr-context-jump-rise", "+" + formatTokens(jumps[jl].rise)));
+                /* What entered: the tool and a short form of what it touched, so
+                   the row answers "which file" instead of only "read". The full
+                   detail stays in the tooltip. */
+                jumpRow.appendChild(statsDiv("wsr-context-jump-what", jumpWhatOf(jumps[jl].blockName, jumps[jl].blockDetail)));
                 group.appendChild(jumpRow);
               }
               jumpList.appendChild(group);
@@ -2397,8 +2452,13 @@
              bar or its row lifts both, which is what "挪上去更明显" means here. */
           jumpHoverHosts.push({ chart: chart, list: section });
 
+          /* The ranking is a separate tab: the curve answers "when", the ranking
+             answers "what", and stacking both in one scroll hid half of each. */
+          var ranking = statsDiv("wsr-amplified wsr-amplified-ranking");
+          ranking.appendChild(statsDiv("wsr-amplified-lead", t("stats.amplified.lead")));
           var kinds = amplified.byKind || [];
           if (kinds.length > 0) {
+            ranking.appendChild(statsDiv("wsr-amplified-subtitle", t("stats.amplified.kindTitle")));
             var legend = statsDiv("wsr-kind-legend");
             for (var k = 0; k < kinds.length; k += 1) {
               var kind = kinds[k];
@@ -2410,7 +2470,7 @@
               item.appendChild(statsDiv("", t(known === undefined ? kind.kind : known[0]) + " " + formatShare(kind.share || 0)));
               legend.appendChild(item);
             }
-            section.appendChild(legend);
+            ranking.appendChild(legend);
           }
 
           var list = statsDiv("wsr-amplified-list");
@@ -2429,12 +2489,16 @@
               remaining: String(block.remaining),
             })));
             row.appendChild(main);
-            row.appendChild(statsDiv("wsr-amplified-value", formatTokens(block.amplified)));
+            var valueCell = statsDiv("wsr-amplified-value", formatTokens(block.amplified));
+            /* The exact count, so a number here can be matched against the same
+               figure on the distribution tab without converting K/M by hand. */
+            valueCell.setAttribute("title", String(Math.round(Number(block.amplified) || 0)) + " tokens");
+            row.appendChild(valueCell);
             row.appendChild(statsDiv("wsr-amplified-share", formatShare(block.share || 0)));
             list.appendChild(row);
           }
-          section.appendChild(list);
-          return section;
+          ranking.appendChild(list);
+          return { top: section, ranking: ranking };
         }
 
         function renderStats(body, stats) {
@@ -2451,15 +2515,19 @@
           var grid = document.createElement("div");
           grid.className = "wsr-stats-grid";
           var cards = [
-            [t("stats.total"), formatTokens(totals.totalTokens), true],
-            [t("stats.steps"), formatTokens(stats.steps), false],
-            [t("stats.input"), formatTokens(totals.inputTokens), false],
-            [t("stats.cache"), formatTokens(totals.cacheReadTokens), false],
-            [t("stats.output"), formatTokens(totals.outputTokens), false],
+            [t("stats.total"), formatTokens(totals.totalTokens), true, Number(totals.totalTokens) || 0],
+            [t("stats.steps"), formatTokens(stats.steps), false, Number(stats.steps) || 0],
+            [t("stats.input"), formatTokens(totals.inputTokens), false, Number(totals.inputTokens) || 0],
+            [t("stats.cache"), formatTokens(totals.cacheReadTokens), false, Number(totals.cacheReadTokens) || 0],
+            [t("stats.output"), formatTokens(totals.outputTokens), false, Number(totals.outputTokens) || 0],
           ];
           for (var i = 0; i < cards.length; i += 1) {
             var card = statsDiv("wsr-stats-card" + (cards[i][2] === true ? " wsr-stats-card-primary" : ""));
-            card.appendChild(statsDiv("wsr-stats-value", cards[i][1]));
+            var valueCell = statsDiv("wsr-stats-value", cards[i][1]);
+            /* Numbers auto-scale to K/M/B; the exact count on hover is what makes
+               two tabs comparable without converting units in your head. */
+            valueCell.setAttribute("title", String(cards[i][3]));
+            card.appendChild(valueCell);
             card.appendChild(statsDiv("wsr-stats-label", cards[i][0]));
             grid.appendChild(card);
           }
@@ -2572,8 +2640,11 @@
           var defs = [["distribution", "stats.tab.distribution", distributionPanel]];
           if (amplifiedSection !== null) {
             var amplifiedPanel = statsDiv("wsr-stats-panel");
-            amplifiedPanel.appendChild(amplifiedSection);
+            amplifiedPanel.appendChild(amplifiedSection.top);
             defs.push(["amplified", "stats.tab.amplified", amplifiedPanel]);
+            var rankingPanel = statsDiv("wsr-stats-panel");
+            rankingPanel.appendChild(amplifiedSection.ranking);
+            defs.push(["ranking", "stats.tab.ranking", rankingPanel]);
           }
           if (mode === "agent") defs[0][2].appendChild(statsDiv("wsr-stats-note", t("stats.argModeNote")));
           var tabButtons = {};

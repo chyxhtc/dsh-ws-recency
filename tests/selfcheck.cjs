@@ -626,7 +626,11 @@ function textOf(node) {
         attributed: 6000,
         share: 0.6,
         steps: 3,
-        series: [{ step: 1, context: 1000 }, { step: 2, context: 3000 }, { step: 3, context: 6000 }],
+        series: [
+          { step: 1, context: 1000, entered: null },
+          { step: 2, context: 3000, entered: { kind: "tool", name: "pwsh", detail: "npm test", tokens: 3500 } },
+          { step: 3, context: 6000, entered: { kind: "tool", name: "read", detail: "src/app.js", tokens: 9200 } },
+        ],
         byKind: [
           { kind: "results", tokens: 500, amplified: 1500, share: 0.15 },
           { kind: "args", tokens: 100, amplified: 300, share: 0.03 },
@@ -695,6 +699,11 @@ function textOf(node) {
   const rankDots = jumpRows[0].querySelectorAll(".wsr-context-jump-rank-dot");
   assert.strictEqual(rankDots.length, 1, "the row leads with its rank dot");
   assert.ok(textOf(jumpRows[0]).indexOf("+") !== -1, "the rise is shown as a delta");
+  /* The row must say what entered: a step number and a delta alone leave the
+     reader guessing which file or tool caused it. */
+  const what = jumpRows[0].querySelector(".wsr-context-jump-what");
+  assert.ok(what !== null, "the row names what entered");
+  assert.ok(String(what.textContent).length > 0, "and it is not blank when the blocks are known");
   const jumpHits = amplified.querySelectorAll(".wsr-context-jump-hit");
   assert.ok(jumpHits.length >= 1, "the chart marker has its own hit area");
   /* The chart lists bars by step while the rows list rises by rank, so pair them
@@ -703,8 +712,15 @@ function textOf(node) {
   const matchingHit = Array.from(jumpHits).find((hit) => hit.getAttribute("data-wsr-jump-hit") === firstStep);
   assert.ok(matchingHit !== undefined, "every marked row has a marker on the curve");
   assert.strictEqual(matchingHit.getAttribute("data-wsr-rank"), jumpRows[0].getAttribute("data-wsr-rank"), "marker and row share the rank");
-  assert.strictEqual(amplified.querySelectorAll(".wsr-kind").length, 4, "the kind legend lists the parts");
-  const amplifiedRows = amplified.querySelectorAll(".wsr-amplified-row");
+  /* The ranking lives in its own tab now: the curve answers "when", the ranking
+     answers "what", and stacking both in one scroll hid half of each. */
+  const rankingPanel = body.querySelector(".wsr-amplified-ranking");
+  assert.ok(rankingPanel !== null, "the ranking renders in its own panel");
+  assert.strictEqual(amplified.querySelectorAll(".wsr-kind").length, 0, "the composition legend is not on the curve tab");
+  assert.strictEqual(rankingPanel.querySelectorAll(".wsr-kind").length, 4, "the kind legend lists the parts on the ranking tab");
+  /* The copy has to say why these numbers dwarf the distribution tab's. */
+  assert.ok(textOf(rankingPanel).indexOf("re-read") !== -1, "the ranking explains the multiplier");
+  const amplifiedRows = rankingPanel.querySelectorAll(".wsr-amplified-row");
   assert.strictEqual(amplifiedRows.length, 2, "the ranking lists the amplified blocks");
   const topRow = amplifiedRows[0];
   assert.ok(textOf(topRow).indexOf("read") !== -1, "the top block is the read");
@@ -712,7 +728,8 @@ function textOf(node) {
   assert.ok(textOf(topRow).indexOf("46.0K") !== -1, "the amplified total is shown");
   assert.ok(textOf(topRow).indexOf("46.0%") !== -1, "its share of the bill is shown");
   assert.ok(textOf(topRow).indexOf("36.8K") === -1, "the what-if saving line is gone: the jump markers carry the advice now");
-  assert.ok(textOf(amplified).indexOf("re-read") !== -1, "the meta says how often it is re-read");
+  assert.strictEqual(topRow.querySelector(".wsr-amplified-value").getAttribute("title"), "46000 tokens", "the exact count is on hover, so K/M units never need converting by hand");
+  assert.ok(textOf(rankingPanel).indexOf("re-read") !== -1, "the meta says how often it is re-read");
 
   /* The header row shares the grid, so the bar rows are one fewer than the rows
      in the DOM; every bar row must keep five cells or the columns drift. */
@@ -782,14 +799,14 @@ function textOf(node) {
   /* A compaction restarts the window, so each segment ranks its own top three:
      the steepest step before the rewrite cannot hide the ones after it. */
   global.fetch.answer.stats.amplified.series = [
-    { step: 1, context: 1000 },
-    { step: 2, context: 2000 },
-    { step: 3, context: 4000 },
-    { step: 4, context: 9000 },
-    { step: 5, context: 100 },
-    { step: 6, context: 2000 },
-    { step: 7, context: 6000 },
-    { step: 8, context: 7000 },
+    { step: 1, context: 1000, entered: null },
+    { step: 2, context: 2000, entered: { kind: "tool", name: "grep", detail: "docs", tokens: 1200 } },
+    { step: 3, context: 4000, entered: { kind: "tool", name: "read", detail: "a.md", tokens: 2200 } },
+    { step: 4, context: 9000, entered: { kind: "tool", name: "read", detail: "b.md", tokens: 6000 } },
+    { step: 5, context: 100, entered: null },
+    { step: 6, context: 2000, entered: { kind: "tool", name: "pwsh", detail: "npm test", tokens: 1800 } },
+    { step: 7, context: 6000, entered: { kind: "tool", name: "read", detail: "c.md", tokens: 4000 } },
+    { step: 8, context: 7000, entered: { kind: "tool", name: "edit", detail: "d.ts", tokens: 900 } },
   ];
   global.fetch.answer.stats.amplified.compactions = [4];
   const itemSegmented = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
@@ -813,22 +830,28 @@ function textOf(node) {
   global.fetch.answer.stats.amplified.series = [{ step: 1, context: 1000 }, { step: 2, context: 3000 }, { step: 3, context: 6000 }];
   delete global.fetch.answer.stats.amplified.compactions;
 
-  /* Two tabs now: the old details table only repeated the chart, so its one
-     unique number (call counts) moved onto the bars and the agent split moved
-     under the chart. */
+  /* Three tabs: distribution, the curve with its jumps, and the ranking. The old
+     details table only repeated the chart, so its one unique number (call counts)
+     moved onto the bars and the agent split moved under the chart. */
   const tabs = body.querySelectorAll(".wsr-stats-tab");
-  assert.strictEqual(tabs.length, 2, "two tabs");
-  assert.deepStrictEqual(tabs.map((button) => button.textContent), ["Distribution", "Amplified"]);
+  assert.strictEqual(tabs.length, 3, "three tabs");
+  assert.deepStrictEqual(tabs.map((button) => button.textContent), ["Distribution", "Amplified", "Ranking"]);
   const distributionPanel = body.querySelectorAll(".wsr-stats-panel")[0];
   const amplifiedPanel = body.querySelector(".wsr-amplified").parentElement;
+  const rankingTabPanel = body.querySelectorAll(".wsr-stats-panel")[2];
   assert.strictEqual(body.querySelector(".wsr-stats-table"), null, "the redundant table is gone");
   assert.ok(distributionPanel.querySelector(".wsr-chart-calls") !== null, "call counts ride on the bars");
   assert.ok(distributionPanel.querySelector(".wsr-stats-detail") !== null, "the agent split stays under the chart");
   assert.strictEqual(distributionPanel.style.display, "", "distribution is the default tab");
   assert.strictEqual(amplifiedPanel.style.display, "none", "the amplified tab starts hidden");
+  assert.strictEqual(rankingTabPanel.style.display, "none", "the ranking tab starts hidden");
   tabs[1].click();
   assert.strictEqual(amplifiedPanel.style.display, "", "the amplified tab shows its panel");
   assert.strictEqual(distributionPanel.style.display, "none", "the other panel is hidden");
+  assert.strictEqual(amplifiedPanel.querySelector(".wsr-amplified-row"), null, "the curve tab carries no ranking");
+  tabs[2].click();
+  assert.strictEqual(rankingTabPanel.style.display, "", "the ranking tab shows its panel");
+  assert.ok(rankingTabPanel.querySelector(".wsr-amplified-row") !== null, "and it holds the ranking rows");
   tabs[0].click();
   assert.strictEqual(distributionPanel.style.display, "", "back to distribution");
 
