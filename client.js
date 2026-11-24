@@ -362,6 +362,13 @@
           ".wsr-hit-context-toggle,.wsr-hit-context-jump{border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;cursor:pointer}",
           ".wsr-hit-context-toggle:hover,.wsr-hit-context-jump:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,rgba(255,255,255,.24))}",
           ".wsr-hit-context{max-height:38vh;overflow:auto;margin-top:4px;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.65;white-space:pre-wrap;word-break:break-word}",
+          ".wsr-search-filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-filter{display:inline-flex;align-items:center;gap:5px}",
+          ".wsr-filter-label{flex:none}",
+          ".wsr-filter-select,.wsr-filter-input{height:22px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.05));color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;padding:0 6px;max-width:180px}",
+          ".wsr-filter-input{width:130px}",
+          ".wsr-filter-chip{height:22px;padding:0 9px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer}",
+          ".wsr-filter-chip-on{color:var(--dsw-alias-label-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f9df7) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f9df7) 14%,transparent)}",
           ".wsr-search-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
           ".wsr-search-history{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-search-history-label{flex:none}",
@@ -512,7 +519,12 @@
           "search.contextShow": "看上下文",
           "search.contextHide": "收起",
           "search.openSession": "打开会话",
-          "search.hint": "空格=都要有 · \"词组\" · a|b 或 · -排除 · ws:工作区 · in:会话 · role:user",
+          "search.hint": "空格=都要有 · \"词组\" · a|b 或 · -排除",
+          "search.filterWorkspace": "工作区",
+          "search.filterSession": "会话标题",
+          "search.filterSessionPlaceholder": "包含…（回车）",
+          "search.filterRole": "角色",
+          "search.filterAll": "全部",
           "search.history": "最近搜索",
           "search.historyRun": "再搜一次：{query}",
           "search.historyDrop": "从历史里删除",
@@ -718,7 +730,12 @@
           "search.contextShow": "Show context",
           "search.contextHide": "Hide",
           "search.openSession": "Open session",
-          "search.hint": "space = all of them · \"phrase\" · a|b either · -exclude · ws:workspace · in:session · role:user",
+          "search.hint": "space = all of them · \"phrase\" · a|b either · -exclude",
+          "search.filterWorkspace": "Workspace",
+          "search.filterSession": "Session",
+          "search.filterSessionPlaceholder": "title contains… (Enter)",
+          "search.filterRole": "Role",
+          "search.filterAll": "All",
           "search.history": "Recent",
           "search.historyRun": "Search again: {query}",
           "search.historyDrop": "Remove from history",
@@ -3903,6 +3920,14 @@
 
         /* ---------- session content search -------------------------------- */
 
+        /**
+         * Narrowing chosen through controls rather than typed syntax.
+         *
+         * Typing `ws:` is a sentence to learn; a select is not. The typed forms
+         * still work, and both are merged on the host.
+         */
+        var searchFilters = { workspace: "", session: "", role: "" };
+
         /** How many recent queries the panel remembers. */
         var SEARCH_HISTORY_MAX = 12;
 
@@ -4666,6 +4691,12 @@
             setView(next);
           };
 
+          /* Changing a filter with a query on screen should show the effect at
+             once instead of waiting for another Enter. */
+          var rerun = function () {
+            if (view.query !== "") run(view.query, false);
+          };
+
           var run = function (text, refresh) {
             var query = typeof text === "string" ? text.trim() : "";
             searchGeneration += 1;
@@ -4677,7 +4708,13 @@
             if (typeof actions.pushSearch === "function") actions.pushSearch(query);
             commit({ loaded: true, query: query, hits: view.hits, terms: view.terms, scanned: view.scanned, total: view.total, pending: view.pending, took: view.took, busy: true, error: "" });
             var ask = function (needRefresh) {
-              searchPost({ query: query, refresh: needRefresh === true }).then(function (answer) {
+              searchPost({
+                query: query,
+                refresh: needRefresh === true,
+                workspace: searchFilters.workspace,
+                session: searchFilters.session,
+                role: searchFilters.role,
+              }).then(function (answer) {
                 if (generation !== searchGeneration) return;
                 var json = answer.json;
                 if (json === null || json.ok !== true) {
@@ -4773,6 +4810,78 @@
                   if (typeof actions.clearSearches === "function") actions.clearSearches();
                 },
               }, t("search.historyClear")),
+            ),
+            h("div", { className: "wsr-search-filters" },
+              h("label", { className: "wsr-filter" },
+                h("span", { className: "wsr-filter-label" }, t("search.filterWorkspace")),
+                h("select", {
+                  className: "wsr-filter-select",
+                  value: searchFilters.workspace,
+                  onChange: function (event) {
+                    searchFilters.workspace = event.target.value || "";
+                    rerun();
+                  },
+                },
+                  h("option", { value: "" }, t("search.filterAll")),
+                  (function () {
+                    var items = data.workspaces !== null && data.workspaces !== undefined
+                      && Array.isArray(data.workspaces.items) ? data.workspaces.items : [];
+                    var options = [];
+                    for (var wi = 0; wi < items.length; wi += 1) {
+                      var name = typeof items[wi].name === "string" && items[wi].name !== ""
+                        ? items[wi].name
+                        : String(items[wi].title || "");
+                      if (name === "") continue;
+                      options.push(h("option", { value: name, key: "ws:" + name }, name));
+                    }
+                    return options;
+                  })(),
+                ),
+              ),
+              h("label", { className: "wsr-filter" },
+                h("span", { className: "wsr-filter-label" }, t("search.filterSession")),
+                h("input", {
+                  type: "text",
+                  className: "wsr-filter-input",
+                  defaultValue: searchFilters.session,
+                  placeholder: t("search.filterSessionPlaceholder"),
+                  onChange: function (event) {
+                    searchFilters.session = String(event.target.value || "").trim();
+                  },
+                  onKeyDown: function (event) {
+                    if (event !== undefined && event.key === "Enter") {
+                      event.preventDefault();
+                      rerun();
+                    }
+                  },
+                }),
+              ),
+              h("span", { className: "wsr-filter" },
+                h("span", { className: "wsr-filter-label" }, t("search.filterRole")),
+                (function () {
+                  var roles = [
+                    ["", "search.filterAll"],
+                    ["user", "search.you"],
+                    ["assistant", "search.assistant"],
+                  ];
+                  var buttons = [];
+                  for (var ri = 0; ri < roles.length; ri += 1) {
+                    (function (value, label) {
+                      var active = searchFilters.role === value;
+                      buttons.push(h("button", {
+                        type: "button",
+                        key: "role:" + value,
+                        className: "wsr-filter-chip" + (active ? " wsr-filter-chip-on" : ""),
+                        onClick: function () {
+                          searchFilters.role = value;
+                          rerun();
+                        },
+                      }, t(label)));
+                    })(roles[ri][0], roles[ri][1]);
+                  }
+                  return buttons;
+                })(),
+              ),
             ),
             h("div", { className: "wsr-search-hint" }, t("search.hint")),
             h("div", { className: "wsr-search-bar" },

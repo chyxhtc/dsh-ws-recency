@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.31.0";
+export const HOST_VERSION = "0.31.1";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -966,6 +966,11 @@ function matchesQuery(parsed, haystack) {
 export async function searchSessions(ctx, query, options = {}) {
   const started = Date.now();
   const parsed = parseSearchQuery(query);
+  /* A control and a typed filter can both say something; the control wins because
+     it is the one on screen. */
+  if (typeof options.workspace === "string" && options.workspace.trim() !== "") parsed.filters.workspace = options.workspace.trim().toLowerCase();
+  if (typeof options.session === "string" && options.session.trim() !== "") parsed.filters.session = options.session.trim().toLowerCase();
+  if (typeof options.role === "string" && options.role.trim() !== "") parsed.filters.role = options.role.trim().toLowerCase();
   const terms = parsed.terms;
   const hasFilter = parsed.filters.workspace !== "" || parsed.filters.session !== ""
     || parsed.filters.role !== "";
@@ -2387,7 +2392,14 @@ export async function handleSearchRequest(ctx, req, res) {
   try {
     const body = await readJsonBody(req);
     const query = body !== null && typeof body.query === "string" ? body.query : "";
-    const result = await searchSessions(ctx, query, { refresh: body !== null && body.refresh === true });
+    /* The panel's controls arrive as fields; typed `ws:` / `in:` / `role:` still
+       work and the two are merged. */
+    const result = await searchSessions(ctx, query, {
+      refresh: body !== null && body.refresh === true,
+      workspace: body !== null && typeof body.workspace === "string" ? body.workspace : "",
+      session: body !== null && typeof body.session === "string" ? body.session : "",
+      role: body !== null && typeof body.role === "string" ? body.role : "",
+    });
     sendJson(res, 200, result);
   } catch (error) {
     sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });

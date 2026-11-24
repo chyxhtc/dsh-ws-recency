@@ -1179,6 +1179,22 @@ function textOf(node) {
   assert.ok(clearNode !== null, "the history row offers a clear button");
   clearNode.props.onClick();
   assert.deepStrictEqual(dropped[dropped.length - 1], ["clear"], "clear empties the list");
+
+  /* Narrowing is a control, not syntax: a workspace select, a title box and three
+     role chips, and the words in the box stay words. */
+  const filterRow = findNode(searchPage, (node) => node.props !== undefined && node.props.className === "wsr-search-filters");
+  assert.ok(filterRow !== null, "the search panel shows its filter controls");
+  const filterText = [];
+  (function walkFilters(node) {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) walkFilters(child);
+      return;
+    }
+    if (node.props !== undefined && typeof node.props.className === "string" && node.props.className.indexOf("wsr-filter-chip") === 0) filterText.push(node.children[0]);
+    for (const child of node.children || []) walkFilters(child);
+  })(filterRow);
+  assert.deepStrictEqual(filterText, ["All", "You", "Assistant"], "the role filter offers all three choices");
   searchInput.props.onChange({ target: { value: "build failed" } });
   assert.strictEqual(SEARCH.draft(), "build failed", "the draft follows the input");
 

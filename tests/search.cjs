@@ -136,6 +136,15 @@ function response() {
   assert.ok(phrase.hits.length >= 1, "a quoted phrase is matched whole");
   const brokenPhrase = await mod.searchSessions(ctx, '"failed build"');
   assert.strictEqual(brokenPhrase.hits.length, 0, "a phrase that does not appear in that order is not a match");
+
+  /* The panel sends its controls as fields; they behave like the typed filters. */
+  const byControl = await mod.searchSessions(ctx, "build", { workspace: "Work" });
+  assert.ok(byControl.hits.length >= 1, "a workspace chosen in a control filters the same way");
+  assert.ok(byControl.hits.every((hit) => hit.workspace === "Work"), "the control excludes the other workspaces");
+  const roleControl = await mod.searchSessions(ctx, "build", { role: "assistant" });
+  assert.ok(roleControl.hits.every((hit) => hit.role !== "user"), "the role control filters too");
+  const bothControls = await mod.searchSessions(ctx, "build ws:nowhere", { workspace: "Work" });
+  assert.ok(bothControls.hits.length >= 1, "the on-screen control wins over a stale typed filter");
   /* The transcript is markdown-free: a jump can only find the message if the
      fragment has the markers taken out. */
   assert.ok(Array.isArray(beta.hits[0].seeks) && beta.hits[0].seeks.length >= 1, "a hit carries text fragments to find it by");
