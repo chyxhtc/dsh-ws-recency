@@ -414,15 +414,15 @@ const hiddenCount = (group) => group.rows.filter((row) => row.getAttribute("data
 const toggleOf = (group) => group.section.querySelector('[data-wsr-fold="true"]');
 
 assert.strictEqual(hiddenCount(A), 3, "three sessions older than 3 days are folded");
-assert.strictEqual(hiddenCount(B), 2, "a fully stale workspace folds every row");
+assert.strictEqual(hiddenCount(B), 0, "a project that is all history shows its rows without a second click");
 assert.strictEqual(hiddenCount(C), 0, "fresh sessions stay visible");
 assert.strictEqual(blankRow.getAttribute("data-wsr-hidden"), null, "the New session row is never folded");
 
 assert.ok(toggleOf(A) !== null, "a group with folded rows gets its own history control");
 assert.strictEqual(toggleOf(A).textContent, "Show history (8)", "count covers folded rows plus rows the host has not rendered");
 assert.strictEqual(A.button.textContent, "\u5c55\u5f00\u5176\u4f59 5 \u6761\u4f1a\u8bdd", "the host's own button is left untouched");
-assert.ok(toggleOf(B) !== null, "a fully rendered group offers the history control");
-assert.strictEqual(toggleOf(B).textContent, "Show history (2)");
+assert.strictEqual(toggleOf(B), null, "nothing is folded there, so it offers no history control");
+
 assert.strictEqual(toggleOf(C), null, "a group with nothing folded gets no control");
 
 toggleOf(A).click();
@@ -443,9 +443,7 @@ flush();
 assert.strictEqual(hiddenCount(A), 3, "the same control folds them back");
 assert.strictEqual(toggleOf(A).textContent, "Show history (8)");
 
-toggleOf(B).click();
-flush();
-assert.strictEqual(hiddenCount(B), 0, "the group toggle reveals the folded rows");
+assert.strictEqual(hiddenCount(B), 0, "an all-history project stays open on its own");
 
 /* a session marked "needs follow-up" is exempt from folding, however stale */
 const staleRow = A.rows.find((row) => row.getAttribute("data-wsr-hidden") === "true");

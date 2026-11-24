@@ -362,6 +362,7 @@
           ".wsr-hit-context-toggle,.wsr-hit-context-jump{border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;cursor:pointer}",
           ".wsr-hit-context-toggle:hover,.wsr-hit-context-jump:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,rgba(255,255,255,.24))}",
           ".wsr-hit-context{max-height:38vh;overflow:auto;margin-top:4px;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.65;white-space:pre-wrap;word-break:break-word}",
+          ".wsr-search-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
           ".wsr-search-history{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-search-history-label{flex:none}",
           ".wsr-search-chip{display:inline-flex;align-items:center;border-radius:9px;background:var(--dsw-alias-bg-layer-3,rgba(255,255,255,.07));overflow:hidden}",
@@ -511,6 +512,7 @@
           "search.contextShow": "看上下文",
           "search.contextHide": "收起",
           "search.openSession": "打开会话",
+          "search.hint": "空格=都要有 · \"词组\" · a|b 或 · -排除 · ws:工作区 · in:会话 · role:user",
           "search.history": "最近搜索",
           "search.historyRun": "再搜一次：{query}",
           "search.historyDrop": "从历史里删除",
@@ -578,6 +580,10 @@
           "stats.argModeNote": "当前把工具参数计入主 agent：每个工具只算返回结果，表格里「参数」列显示为淡色（那些 token 记在主 agent 那一行）。",
           "stats.amplified.title": "放大成本（账单归因）",
           "stats.amplified.kindTitle": "账单构成",
+          "stats.amplified.repeatTitle": "重复读取合计",
+          "stats.amplified.repeatMeta": "{count} 次 · 合计 {tokens}",
+          "stats.amplified.repeatTitle": "Repeated reads",
+          "stats.amplified.repeatMeta": "{count} times · {tokens} total",
           "stats.amplified.lead": "按「内容大小 × 之后重读次数」排序：一块内容读进来一次，之后每一步都会再发一遍，乘上重读次数才是它真正的开销。上面的分布统计只算内容本身多大，两个数不能直接比。",
           "stats.amplified.summary": "账单 {bill} token；可归因内容经重读放大后占 {share}（{attributed}）",
           "stats.amplified.contextCaption": "每步上下文（面积≈账单）：一步＝一次模型调用，越早进入的内容被重读越多",
@@ -712,6 +718,7 @@
           "search.contextShow": "Show context",
           "search.contextHide": "Hide",
           "search.openSession": "Open session",
+          "search.hint": "space = all of them · \"phrase\" · a|b either · -exclude · ws:workspace · in:session · role:user",
           "search.history": "Recent",
           "search.historyRun": "Search again: {query}",
           "search.historyDrop": "Remove from history",
@@ -1168,7 +1175,20 @@
             var hostButton = overflowButtonOf(section);
             markHeader(entry.header, entry.key);
 
-            var expanded = expandedSections.has(entry.key);
+            /* Everything this project holds is history: no session inside it is
+               recent, so the user's expansion of the project is itself the
+               request to see its sessions. Folding here only adds a second click
+               for a group the user has already gone looking for. */
+            var onlyHistory = rows.length > 0;
+            for (var scan = 0; scan < rows.length; scan += 1) {
+              var scannedAt = updatedAtOf(rows[scan], sessions);
+              var covers = scannedAt === null || scannedAt >= cutoff;
+              if (covers && !isBlankRow(rows[scan], sessions)) {
+                onlyHistory = false;
+                break;
+              }
+            }
+            var expanded = expandedSections.has(entry.key) || onlyHistory;
             var hostHidden = hostButton === null ? 0 : labelNumber(hostButton);
             var hostExpanded = hostButton !== null
               && typeof hostButton.getAttribute === "function"
@@ -1217,7 +1237,9 @@
                folded. Expanding drives the hidden host button until nothing is left
                unrendered, so one click reveals the whole group. */
             var remaining = folded + hostHidden;
-            if (expanded) {
+            /* A project that is entirely history is open because opening it is the
+               request; there is nothing to offer to fold back. */
+            if (expanded && !onlyHistory) {
               (function (entryKey) {
                 ensureToggle(section, entryKey, t("fold.hide"), function () {
                   expandedSections.delete(entryKey);
@@ -2311,6 +2333,28 @@
         /** The neutral an unknown tool gets: no family, no claim of one. */
         var TOOL_FAMILY_NEUTRAL = { key: "other", hue: 210 };
 
+        /**
+         * A stable hue for a tool that belongs to no family.
+         *
+         * Every unknown tool used to share the neutral hue, so the chart showed
+         * several tools in one colour. A hash of the name spreads them out, and a
+         * nudge keeps the result clear of the family hues it would otherwise
+         * collide with.
+         */
+        function hueOfUnknown(name) {
+          var hash = 2166136261;
+          for (var i = 0; i < name.length; i += 1) {
+            hash ^= name.charCodeAt(i);
+            hash = Math.imul(hash, 16777619) >>> 0;
+          }
+          var hue = hash % 360;
+          for (var f = 0; f < TOOL_FAMILIES.length; f += 1) {
+            var distance = Math.abs(hue - TOOL_FAMILIES[f].hue);
+            if (distance < 16 || distance > 344) hue = (hue + 41) % 360;
+          }
+          return hue;
+        }
+
         function toolFamily(name) {
           if (typeof name !== "string" || name === "") return TOOL_FAMILY_NEUTRAL;
           var key = name.toLowerCase();
@@ -2699,6 +2743,31 @@
             list.appendChild(row);
           }
           ranking.appendChild(list);
+
+          /* Repetition is the actionable part: reading one file twice costs the
+             same as two files, and the list above shows it as two rows. */
+          var repeated = amplified.repeated || [];
+          if (repeated.length > 0) {
+            ranking.appendChild(statsDiv("wsr-amplified-subtitle", t("stats.amplified.repeatTitle")));
+            var repeats = statsDiv("wsr-amplified-list");
+            for (var rp = 0; rp < repeated.length; rp += 1) {
+              var item = repeated[rp];
+              var row = statsDiv("wsr-amplified-row");
+              var main = statsDiv("wsr-amplified-main");
+              main.appendChild(statsDiv("wsr-amplified-name", typeof item.detail === "string" ? item.detail : ""));
+              main.appendChild(statsDiv("wsr-amplified-meta", t("stats.amplified.repeatMeta", {
+                count: String(item.count),
+                tokens: formatTokens(item.tokens),
+              })));
+              row.appendChild(main);
+              var value = statsDiv("wsr-amplified-value", formatTokens(item.amplified));
+              value.setAttribute("title", String(Math.round(Number(item.amplified) || 0)) + " tokens");
+              row.appendChild(value);
+              row.appendChild(statsDiv("wsr-amplified-share", formatShare(item.share || 0)));
+              repeats.appendChild(row);
+            }
+            ranking.appendChild(repeats);
+          }
           return { top: section, ranking: ranking };
         }
 
@@ -3815,149 +3884,7 @@
           }
         }
 
-        /** Modal: list the plugin's trash, restore an entry or delete it for good. */
-        function openTrashPanel() {
-          if (typeof document === "undefined") return;
-          closeStatsPanel();
-          var backdrop = statsDiv("wsr-modal-backdrop");
-          var panel = statsDiv("wsr-modal");
-          backdrop.appendChild(panel);
-          var head = statsDiv("wsr-modal-head");
-          head.appendChild(statsDiv("wsr-modal-title", t("trash.title")));
-          var tools = statsDiv("wsr-modal-tools");
-          var adopt = document.createElement("button");
-          adopt.type = "button";
-          adopt.className = "wsr-btn";
-          adopt.title = t("adopt.description");
-          adopt.textContent = t("adopt.action");
-          tools.appendChild(adopt);
-          var close = document.createElement("button");
-          close.type = "button";
-          close.className = "wsr-modal-close";
-          close.textContent = "\u00d7";
-          close.addEventListener("click", closeStatsPanel);
-          tools.appendChild(close);
-          head.appendChild(tools);
-          panel.appendChild(head);
-          var body = statsDiv("wsr-modal-body");
-          panel.appendChild(body);
-          backdrop.addEventListener("click", function (event) {
-            if (event !== undefined && event.target === backdrop) closeStatsPanel();
-          });
-          document.body.appendChild(backdrop);
-          statsModal = backdrop;
-          document.addEventListener("keydown", onStatsKey);
-
-          var post = function (payload) {
-            return fetch("/ws-recency/trash", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify(payload),
-            }).then(function (response) {
-              return response.text().then(function (text) {
-                var parsed = null;
-                try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
-                return { status: response.status, text: text, json: parsed };
-              });
-            });
-          };
-
-          var load = function (note) {
-            body.textContent = t("trash.loading");
-            post({ action: "list" }).then(function (answer) {
-              body.textContent = "";
-              if (note !== undefined && note !== "") {
-                body.appendChild(statsDiv("wsr-stats-detail", note));
-                var noteActions = statsDiv("wsr-trash-actions");
-                noteActions.appendChild(reloadButton());
-                body.appendChild(noteActions);
-              }
-              if (answer.json === null || answer.json.ok !== true) {
-                body.appendChild(statsDiv("wsr-stats-note", t("trash.failed") + "HTTP " + answer.status + " \u00b7 " + (answer.text || "").slice(0, 120)));
-                return;
-              }
-              var entries = Array.isArray(answer.json.entries) ? answer.json.entries : [];
-              if (entries.length === 0) {
-                body.appendChild(statsDiv("wsr-stats-note", t("trash.empty")));
-                return;
-              }
-              var list = statsDiv("wsr-move-list");
-              for (var i = 0; i < entries.length; i += 1) {
-                (function (entry) {
-                  var row = document.createElement("div");
-                  row.className = "wsr-trash-row";
-                  var text = statsDiv("wsr-move-text");
-                  var title = entry.sessionId === null ? entry.name : entry.sessionId;
-                  text.appendChild(statsDiv("wsr-move-title", title));
-                  var meta = [];
-                  if (entry.reason === "delete") meta.push(t("trash.reason.delete"));
-                  else if (entry.reason === "move") meta.push(t("trash.reason.move"));
-                  meta.push(formatBytes(entry.sizeBytes));
-                  var when = formatWhen(entry.at);
-                  if (when !== "") meta.push(when);
-                  text.appendChild(statsDiv("wsr-move-path", meta.join(" \u00b7 ")));
-                  if (typeof entry.cwd === "string" && entry.cwd !== "") {
-                    text.appendChild(statsDiv("wsr-move-path", entry.cwd));
-                  }
-                  row.appendChild(text);
-
-                  var actions = statsDiv("wsr-trash-actions");
-                  if (entry.restorable === true) {
-                    var restore = document.createElement("button");
-                    restore.type = "button";
-                    restore.className = "wsr-btn";
-                    restore.textContent = t("trash.restore");
-                    restore.addEventListener("click", function () {
-                      askConfirm(t("trash.confirmRestore"), function () {
-                        load(t("trash.working"));
-                        post({ action: "restore", name: entry.name }).then(function (result) {
-                          var ok = result.json !== null && result.json.ok === true;
-                          load(ok ? t("trash.restored") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
-                        }).catch(function (error) {
-                          load(t("trash.failed") + (error && error.message ? error.message : error));
-                        });
-                      });
-                    });
-                    actions.appendChild(restore);
-                  }
-                  var purge = document.createElement("button");
-                  purge.type = "button";
-                  purge.className = "wsr-btn wsr-btn-danger";
-                  purge.textContent = t("trash.purge");
-                  purge.addEventListener("click", function () {
-                    askConfirm(t("trash.confirmPurge"), function () {
-                      load(t("trash.working"));
-                      post({ action: "purge", name: entry.name }).then(function (result) {
-                        var ok = result.json !== null && result.json.ok === true;
-                        load(ok ? t("trash.purged") : t("trash.failed") + (result.json && result.json.error ? result.json.error : result.text));
-                      }).catch(function (error) {
-                        load(t("trash.failed") + (error && error.message ? error.message : error));
-                      });
-                    });
-                  });
-                  actions.appendChild(purge);
-                  row.appendChild(actions);
-                  list.appendChild(row);
-                })(entries[i]);
-              }
-              body.appendChild(list);
-              body.appendChild(statsDiv("wsr-stats-note", t("trash.note")));
-            }).catch(function (error) {
-              body.textContent = t("trash.failed") + (error && error.message ? error.message : error);
-            });
-          };
-          adopt.addEventListener("click", function () {
-            adopt.disabled = true;
-            adopt.textContent = t("adopt.working");
-            adoptUnlistedSessions(function (message) {
-              adopt.disabled = false;
-              adopt.textContent = t("adopt.action");
-              load(message);
-            });
-          });
-          load("");
-        }
-
+        
         /* --------------------------- trash panel page ------------------------ */
 
         function trashPost(payload) {
@@ -4847,7 +4774,8 @@
                 },
               }, t("search.historyClear")),
             ),
-                        h("div", { className: "wsr-search-bar" },
+            h("div", { className: "wsr-search-hint" }, t("search.hint")),
+            h("div", { className: "wsr-search-bar" },
               input,
               h("button", { type: "button", className: "wsr-btn", onClick: function () { run(searchDraft, false); } }, t("search.run")),
             ),
@@ -5148,53 +5076,7 @@
           );
         }
 
-        /**
-         * Sidebar footer action: the trash, one click away from the account area.
-         *
-         * Geometry is the same house rule the official launchers follow
-         * (`dshUpdateLauncher` / `dshMarketLauncher`): full-width seat bled 2px
-         * per side, 42px tall, 12px radius. `wide` comes from the slot, so the
-         * narrow rail keeps its 36px circle instead of a stretched row.
-         */
-        function TrashFooterAction(props) {
-          var wide = props === undefined || props === null || props.wide !== false;
-          var label = t("trash.title");
-          var Icon = ui.IconTrashOutlineRegular;
-          return h("button", {
-            type: "button",
-            className: "wsr-footer-action",
-            title: label,
-            "aria-label": label,
-            "aria-haspopup": "dialog",
-            style: {
-              boxSizing: "border-box",
-              width: "100%",
-              alignSelf: "stretch",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-start",
-              gap: "10px",
-              minHeight: "40px",
-              padding: "0 10px",
-              border: "none",
-              background: "transparent",
-              color: "var(--dsw-alias-label-primary)",
-              borderRadius: "10px",
-              font: "inherit",
-              fontSize: "14px",
-              lineHeight: "22px",
-              cursor: "pointer",
-              textAlign: "left",
-            },
-            onClick: function () { openTrashPanel(); },
-          },
-            h("span", {
-              style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", flex: "none" },
-              "aria-hidden": "true",
-            }, typeof Icon === "function" ? h(Icon, { size: 18 }) : null),
-            wide ? h("span", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, label) : null);
-        }
-
+        
         /**
          * Re-attach sessions that belong to no workspace.
          *

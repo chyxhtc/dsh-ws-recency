@@ -118,6 +118,24 @@ function response() {
      none: the title event is captured while indexing, not read from the header. */
   const beta = await mod.searchSessions(ctx, "unrelated");
   assert.strictEqual(beta.hits[0].title, "Beta", "the provider title wins over the first-prompt prefix");
+
+  /* Filters narrow sessions instead of text, and the small syntax joins or
+     excludes terms: both are decided on the host, where matching happens. */
+  const byWorkspace = await mod.searchSessions(ctx, "build ws:work");
+  assert.ok(byWorkspace.hits.length >= 1, "a workspace filter keeps its own sessions");
+  assert.ok(byWorkspace.hits.every((hit) => hit.workspace === "Work"), "the workspace filter excludes the others");
+  const byOtherWorkspace = await mod.searchSessions(ctx, "build ws:nowhere");
+  assert.strictEqual(byOtherWorkspace.hits.length, 0, "a workspace filter that matches nothing returns nothing");
+  const byRole = await mod.searchSessions(ctx, "build role:assistant");
+  assert.ok(byRole.hits.every((hit) => hit.role !== "user"), "the role filter drops the other side");
+  const excluded = await mod.searchSessions(ctx, "build -unrelated");
+  assert.ok(excluded.hits.every((hit) => (hit.snippet + hit.context).toLowerCase().indexOf("unrelated") === -1), "a leading dash excludes");
+  const alternatives = await mod.searchSessions(ctx, "build or unrelated");
+  assert.ok(alternatives.hits.length >= 2, "or joins alternatives into one required group");
+  const phrase = await mod.searchSessions(ctx, '"build failed: ERROR"');
+  assert.ok(phrase.hits.length >= 1, "a quoted phrase is matched whole");
+  const brokenPhrase = await mod.searchSessions(ctx, '"failed build"');
+  assert.strictEqual(brokenPhrase.hits.length, 0, "a phrase that does not appear in that order is not a match");
   /* The transcript is markdown-free: a jump can only find the message if the
      fragment has the markers taken out. */
   assert.ok(Array.isArray(beta.hits[0].seeks) && beta.hits[0].seeks.length >= 1, "a hit carries text fragments to find it by");

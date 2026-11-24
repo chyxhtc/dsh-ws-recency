@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.30.2";
+export const HOST_VERSION = "0.31.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -551,6 +551,35 @@ export function aggregateSession(events) {
     }
   }
   const attributed = [...byKind.values()].reduce((sum, entry) => sum + entry.amplified, 0);
+  /* The same file read twice shows up as two entries, so a per-target total
+     answers "what content is actually costing me" better than a per-read list
+     does. Only repeats are interesting here: a single big read is already in
+     the ranking below. */
+  const byTarget = new Map();
+  for (const block of blocks) {
+    if (!(block.amplified > 0)) continue;
+    const detail = typeof block.detail === "string" ? block.detail.trim() : "";
+    if (detail === "") continue;
+    const key = block.kind + "\u0000" + block.name + "\u0000" + detail;
+    let entry = byTarget.get(key);
+    if (entry === undefined) {
+      entry = { kind: block.kind, name: block.name, detail, count: 0, tokens: 0, amplified: 0 };
+      byTarget.set(key, entry);
+    }
+    entry.count += 1;
+    entry.tokens += block.tokens;
+    entry.amplified += block.amplified;
+  }
+  const repeated = [...byTarget.values()]
+    .filter((entry) => entry.count > 1)
+    .sort((a, b) => b.amplified - a.amplified)
+    .slice(0, 10)
+    .map((entry) => ({
+      ...entry,
+      share: bill > 0 ? entry.amplified / bill : 0,
+      saving: Math.round(entry.amplified * 0.8),
+    }));
+
   const ranked = blocks
     .filter((block) => block.amplified > 0)
     .sort((a, b) => b.amplified - a.amplified)
@@ -611,6 +640,7 @@ export function aggregateSession(events) {
     /* Steps after which the window was rewritten. The curve restarts there, so the
        client reads each segment on its own instead of comparing across a rewrite. */
     compactions: [...compactions],
+    repeated,
     blocks: ranked,
     byKind: [...byKind.values()]
       .map((entry) => ({ ...entry, share: bill > 0 ? entry.amplified / bill : 0 }))
@@ -870,10 +900,78 @@ function searchSnippet(text, needle) {
  * `terms` are the whitespace-separated pieces of the query; all of them have to
  * appear in the same message, so a two-word query narrows instead of widening.
  */
+/**
+ * Turn a typed query into groups of alternatives plus filters.
+ *
+ * Plain words are ANDed, `or` (or `|`) joins alternatives inside one group, a
+ * quoted phrase stays whole, a leading `-` excludes, and `ws:` / `in:` / `role:`
+ * narrow the sessions rather than the text. Parsing lives on the host because
+ * that is where the transcript is matched; the client only shows the result.
+ */
+function parseSearchQuery(raw) {
+  const filters = { workspace: "", session: "", role: "" };
+  const groups = [[]];
+  const exclude = [];
+  const positive = [];
+  const tokens = String(raw ?? "").match(/"[^"]*"|\S+/g) || [];
+  let joinNext = false;
+  const closeGroup = () => {
+    if (groups[groups.length - 1].length > 0) groups.push([]);
+  };
+  for (const token of tokens) {
+    const quoted = token.length > 1 && token.startsWith('"') && token.endsWith('"');
+    const text = quoted ? token.slice(1, -1) : token;
+    if (text === "") continue;
+    const lower = text.toLowerCase();
+    const filter = lower.match(/^(ws|in|role|工作区|会话|角色):(.*)$/);
+    if (filter !== null && filter[2] !== "") {
+      const value = filter[2];
+      if (filter[1] === "ws" || filter[1] === "工作区") filters.workspace = value.toLowerCase();
+      else if (filter[1] === "in" || filter[1] === "会话") filters.session = value.toLowerCase();
+      else filters.role = value.toLowerCase();
+      continue;
+    }
+    if (!quoted && (lower === "or" || text === "|")) {
+      /* Reopen the group the previous term closed: `a or b` is one
+         requirement satisfied by either, not two requirements. */
+      if (groups.length > 0 && groups[groups.length - 1].length === 0) groups.pop();
+      joinNext = true;
+      continue;
+    }
+    if (!quoted && text.length > 1 && text.startsWith("-")) {
+      exclude.push(text.slice(1).toLowerCase());
+      continue;
+    }
+    const term = text.toLowerCase();
+    groups[groups.length - 1].push(term);
+    if (positive.indexOf(term) === -1) positive.push(term);
+    if (!joinNext) closeGroup();
+    joinNext = false;
+  }
+  const cleaned = groups.filter((group) => group.length > 0);
+  return { groups: cleaned, filters, exclude, terms: positive };
+}
+
+/** Whether a message satisfies the parsed query. */
+function matchesQuery(parsed, haystack) {
+  for (const group of parsed.groups) {
+    if (!group.some((term) => haystack.indexOf(term) !== -1)) return false;
+  }
+  for (const term of parsed.exclude) {
+    if (haystack.indexOf(term) !== -1) return false;
+  }
+  return true;
+}
+
 export async function searchSessions(ctx, query, options = {}) {
   const started = Date.now();
-  const terms = String(query ?? "").toLowerCase().split(/\s+/).filter((term) => term !== "");
-  if (terms.length === 0) return { ok: true, query: "", terms: [], hits: [], scanned: 0, total: 0, pending: 0, took: 0 };
+  const parsed = parseSearchQuery(query);
+  const terms = parsed.terms;
+  const hasFilter = parsed.filters.workspace !== "" || parsed.filters.session !== ""
+    || parsed.filters.role !== "";
+  if (terms.length === 0 && parsed.groups.length === 0 && !hasFilter) {
+    return { ok: true, query: "", terms: [], hits: [], scanned: 0, total: 0, pending: 0, took: 0 };
+  }
 
   const directory = await searchIndexDirectory();
   const workspaces = typeof ctx.workspaceRegistry?.list === "function" ? ctx.workspaceRegistry.list() : [];
@@ -934,6 +1032,20 @@ export async function searchSessions(ctx, query, options = {}) {
       cached = { key, messages, title };
     }
 
+    /* Filters narrow the sessions, so a filtered-out one costs nothing beyond
+       the snapshot it was listed in. */
+    if (parsed.filters.workspace !== "") {
+      const cwd = normalizedPath(session.header.cwd);
+      const name = String(workspaceByPath.get(cwd) ?? "").toLowerCase();
+      if (name.indexOf(parsed.filters.workspace) === -1) continue;
+    }
+    if (parsed.filters.session !== "") {
+      const headerTitle = typeof session.header.title === "string" ? session.header.title : "";
+      const cachedTitle = typeof cached.title === "string" ? cached.title : "";
+      const title = (headerTitle + " " + cachedTitle).toLowerCase();
+      if (title.indexOf(parsed.filters.session) === -1) continue;
+    }
+    scanned += 0;
     let found = 0;
     /* How far down the transcript the last turn sits: the client uses it to jump
        to an approximate scroll position before it looks for the text. */
@@ -946,9 +1058,19 @@ export async function searchSessions(ctx, query, options = {}) {
     for (const message of cached.messages) {
       if (message === null || typeof message !== "object" || typeof message.text !== "string") continue;
       const haystack = message.text.toLowerCase();
-      if (!terms.every((term) => haystack.indexOf(term) !== -1)) continue;
-      const { snippet, lead, tail } = searchSnippet(message.text, terms[0]);
-      const seeks = searchSeeks(message.text, terms[0]);
+      if (!matchesQuery(parsed, haystack)) continue;
+      if (parsed.filters.role !== "") {
+        const role = String(message.role || "").toLowerCase();
+        const wanted = parsed.filters.role;
+        const userish = wanted === "user" || wanted === "me" || wanted === "我";
+        const agentish = wanted === "assistant" || wanted === "agent" || wanted === "助手";
+        if (userish && role !== "user") continue;
+        if (agentish && role === "user") continue;
+      }
+      const needle = terms.length > 0 ? terms[0] : "";
+      const { snippet, lead, tail } = searchSnippet(message.text, needle);
+      const seeks = searchSeeks(message.text, needle);
+      const context = searchContext(message.text, needle);
       const headerTitle = typeof session.header.title === "string" ? session.header.title.trim() : "";
       const cachedTitle = typeof cached.title === "string" ? cached.title.trim() : "";
       const cwd = normalizedPath(session.header.cwd);
@@ -968,7 +1090,7 @@ export async function searchSessions(ctx, query, options = {}) {
         seek: seeks.length > 0 ? seeks[0] : "",
         seeks,
         /* The matched neighbourhood, so reading a hit never needs the chat. */
-        context: searchContext(message.text, terms[0]),
+        context,
         /* How many turns the session has, so the client can scroll to a rough
            position before looking for the text. */
         turns: maxTurn,
