@@ -362,15 +362,30 @@
           ".wsr-hit-context-toggle,.wsr-hit-context-jump{border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;cursor:pointer}",
           ".wsr-hit-context-toggle:hover,.wsr-hit-context-jump:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,rgba(255,255,255,.24))}",
           ".wsr-hit-context{max-height:38vh;overflow:auto;margin-top:4px;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.65;white-space:pre-wrap;word-break:break-word}",
-          ".wsr-search-filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
-          ".wsr-filter{display:inline-flex;align-items:center;gap:5px}",
-          ".wsr-filter-label{flex:none}",
-          ".wsr-filter-select,.wsr-filter-input{height:22px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.05));color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;padding:0 6px;max-width:180px}",
-          ".wsr-filter-input{width:130px}",
-          ".wsr-filter-chip{height:22px;padding:0 9px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer}",
-          ".wsr-filter-chip-on{color:var(--dsw-alias-label-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f9df7) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f9df7) 14%,transparent)}",
-          ".wsr-search-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
-          ".wsr-search-history{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          /* A column flex box with a fixed height shrinks its children once the
+             content is taller than the box, and the shortest row goes first - that
+             is how the recent-searches row vanished only after a search returned
+             many results. Chrome keeps its size; the lists scroll. */
+          ".wsr-search-page > *{flex:0 0 auto}",
+          ".wsr-search-page > .wsr-page-list{flex:1 1 auto;min-height:0;overflow-y:auto}",
+          ".wsr-search-toolbar{display:flex;align-items:center;gap:8px;min-width:0}",
+          ".wsr-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:1;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-filter{display:inline-flex;align-items:center;gap:4px;min-width:0}",
+          ".wsr-filter-label{flex:none;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-filter-select,.wsr-filter-input{height:24px;box-sizing:border-box;border-radius:6px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.05));color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;padding:0 6px;max-width:170px}",
+          ".wsr-filter-input{width:120px}",
+          ".wsr-seg{display:inline-flex;height:24px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));overflow:hidden}",
+          ".wsr-seg-item{height:100%;padding:0 8px;border:none;border-left:.5px solid rgba(255,255,255,.12);background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer}",
+          ".wsr-seg-item:first-child{border-left:none}",
+          ".wsr-seg-item:hover{color:var(--dsw-alias-label-primary)}",
+          ".wsr-seg-item-on{color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f9df7) 16%,transparent)}",
+          ".wsr-help{flex:none;width:24px;height:24px;border-radius:50%;border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.16));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer}",
+          ".wsr-help:hover,.wsr-help-on{color:var(--dsw-alias-label-primary);border-color:rgba(255,255,255,.3)}",
+          ".wsr-search-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-search-status{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;padding-top:3px;border-top:.5px solid rgba(255,255,255,.06)}",
+          ".wsr-search-group{font-size:11px;color:var(--dsw-alias-label-tertiary);padding:2px 0}",
+          ".wsr-btn-primary{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f9df7) 55%,transparent);color:var(--dsw-alias-label-primary)}",
+          ".wsr-search-history{display:flex;align-items:center;flex-wrap:nowrap;overflow-x:auto;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary);scrollbar-width:none}",
           ".wsr-search-history-label{flex:none}",
           ".wsr-search-chip{display:inline-flex;align-items:center;border-radius:9px;background:var(--dsw-alias-bg-layer-3,rgba(255,255,255,.07));overflow:hidden}",
           ".wsr-search-chip-run{border:none;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;padding:0 4px 0 8px;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
@@ -530,6 +545,8 @@
           "search.historyRun": "再搜一次：{query}",
           "search.historyDrop": "从历史里删除",
           "search.historyClear": "清空",
+
+          "search.historyEmpty": "还没有记录",
           "search.step": "第 {n} 步",
           "search.jumpTurn": "已定位：第 {turn} 轮 · 按轮次",
           "search.jumpText": "已定位：第 {turn} 轮 · 按文字",
@@ -742,6 +759,8 @@
           "search.historyRun": "Search again: {query}",
           "search.historyDrop": "Remove from history",
           "search.historyClear": "Clear",
+
+          "search.historyEmpty": "nothing yet",
           "search.step": "step {n}",
           "search.jumpTurn": "Landed on turn {turn} (by turn)",
           "search.jumpText": "Landed on turn {turn} (by text)",
@@ -3930,6 +3949,98 @@
          */
         var searchFilters = { workspace: "", session: "", role: "" };
 
+        /**
+         * Recent searches recorded since the plugin loaded.
+         *
+         * Shown merged with the store's own list. Freezing one copy of the store was
+         * wrong: when the panel rendered before the store hydrated, that copy stayed
+         * empty and every search looked like it wiped the history.
+         */
+        var searchHistoryMirror = [];
+
+        /** Keys removed here; hidden until the store drops them as well. */
+        var historyDropped = {};
+
+        /** Set by "clear", so a store that has not caught up cannot restore them. */
+        var historyCleared = false;
+
+        function mergedHistory(stored) {
+          var storedList = Array.isArray(stored) ? stored : [];
+          var out = [];
+          var seen = {};
+          var push = function (item) {
+            var key = historyKey(item);
+            if (seen[key] === true || historyDropped[key] === true) return;
+            seen[key] = true;
+            out.push(item);
+          };
+          for (var i = 0; i < searchHistoryMirror.length; i += 1) push(searchHistoryMirror[i]);
+          if (!historyCleared) {
+            for (var j = 0; j < storedList.length; j += 1) push(storedList[j]);
+          } else if (storedList.length === 0) {
+            historyCleared = false;
+          }
+          return out.slice(0, SEARCH_HISTORY_MAX);
+        }
+
+        /** Bumped when a stored query restores the controls, so the title box remounts. */
+        var filterEpoch = 0;
+
+        /**
+         * One stored search: the words plus the scope they were run with.
+         *
+         * A query without its scope is an incomplete memory - "CDP" under one
+         * workspace is not the same search as "CDP" everywhere - so both travel
+         * together. Entries written by older versions were plain strings.
+         */
+        /** Separator for the stored form; a control character cannot appear in a query. */
+        var HISTORY_SEP = "\u0001";
+
+        function historyEntry(item) {
+          if (typeof item === "string") {
+            var parts = item.split(HISTORY_SEP);
+            return {
+              query: parts[0] === undefined ? "" : parts[0],
+              workspace: parts[1] === undefined ? "" : parts[1],
+              session: parts[2] === undefined ? "" : parts[2],
+              role: parts[3] === undefined ? "" : parts[3],
+            };
+          }
+          if (item === null || typeof item !== "object") {
+            return { query: "", workspace: "", session: "", role: "" };
+          }
+          return {
+            query: typeof item.query === "string" ? item.query : "",
+            workspace: typeof item.workspace === "string" ? item.workspace : "",
+            session: typeof item.session === "string" ? item.session : "",
+            role: typeof item.role === "string" ? item.role : "",
+          };
+        }
+
+        /** The stored form: one string, so the store keeps handling it like it always did. */
+        function historyEncode(item) {
+          var entry = historyEntry(item);
+          return [entry.query, entry.workspace, entry.session, entry.role]
+            .map(function (part) { return String(part).split(HISTORY_SEP).join(" "); })
+            .join(HISTORY_SEP);
+        }
+
+        function historyKey(item) {
+          var entry = historyEntry(item);
+          return entry.query + "\u0000" + entry.workspace + "\u0000" + entry.session + "\u0000" + entry.role;
+        }
+
+        /** What a chip says: the words, plus whichever scope parts it carries. */
+        function historyLabel(item) {
+          var entry = historyEntry(item);
+          var parts = [];
+          if (entry.workspace !== "") parts.push(entry.workspace);
+          if (entry.session !== "") parts.push("in:" + entry.session);
+          if (entry.role !== "") parts.push(entry.role === "user" ? "me" : "assistant");
+          var scope = parts.length > 0 ? " (" + parts.join(" · ") + ")" : "";
+          return (entry.query === "" ? "(scope only)" : entry.query) + scope;
+        }
+
         /** How many recent queries the panel remembers. */
         var SEARCH_HISTORY_MAX = 12;
 
@@ -3976,6 +4087,9 @@
          * a synthetic scroll event is what lets the next page load.
          */
         function scrollTo(scroller, top) {
+          /* Only used on the turn rail. No synthetic scroll event: the rail
+             virtualises on scrollTop alone, and a fabricated event is one more
+             thing the host can read as the reader moving. */
           if (scroller === null || scroller === undefined) return;
           var target = Math.max(0, Number(top) || 0);
           try {
@@ -3992,13 +4106,7 @@
               /* an engine without createEvent still got the assignment */
             }
           };
-          fire();
-          try {
-            if (typeof requestAnimationFrame === "function") requestAnimationFrame(fire);
-            else window.setTimeout(fire, 16);
-          } catch (error) {
-            /* the first dispatch is usually enough */
-          }
+          void fire;
         }
         function conversationScroller() {
           if (typeof document === "undefined") return null;
@@ -4203,13 +4311,25 @@
         }
         
         
-        /** The rail mark for one turn, if the rail currently renders it. */
+        /**
+         * The rail mark for one turn, if that mark is actually on screen.
+         *
+         * The rail is part of the chat shell, and during a session switch two of
+         * them can be in the document at once. Matching by turn number alone could
+         * therefore click the departing session's rail and start a history load
+         * nobody asked for, so the mark has to be visible to qualify.
+         */
         function railMarkFor(turn) {
           var wanted = Number(turn);
           if (!isFinite(wanted)) return null;
           var marks = railMarks();
           for (var i = 0; i < marks.length; i += 1) {
-            if (turnOfRailMark(marks[i]) === wanted) return marks[i];
+            if (turnOfRailMark(marks[i]) !== wanted) continue;
+            var rect = typeof marks[i].getBoundingClientRect === "function"
+              ? marks[i].getBoundingClientRect()
+              : null;
+            if (rect === null || !(rect.height > 0) || !(rect.width > 0)) continue;
+            return marks[i];
           }
           return null;
         }
@@ -4714,15 +4834,17 @@
             : searchLast);
           var view = state[0];
           var setView = state[1];
+          /* The syntax hint is reference material, not a permanent line. */
+          var help = react.useState(false);
           /* The recent-query list lives in the shared store, so it survives a
              restart and is the same list on every panel. */
           var preferences = props !== undefined && props !== null && typeof props.useStore === "function"
             ? props.useStore(function (snapshot) { return snapshot; })
             : (data.settings || {});
           var actions = props !== undefined && props !== null && props.actions !== undefined ? props.actions : {};
-          var historyList = preferences !== null && preferences !== undefined && Array.isArray(preferences.searchHistory)
-            ? preferences.searchHistory
-            : [];
+          var storedHistory = preferences !== null && preferences !== undefined
+            && Array.isArray(preferences.searchHistory) ? preferences.searchHistory : [];
+          var historyList = mergedHistory(storedHistory);
           /* Every update also parks the answer outside the component, so coming
              back from a hit restores the list instead of asking for a new search. */
           var commit = function (next) {
@@ -4747,7 +4869,22 @@
               commit({ loaded: true, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" });
               return;
             }
-            if (query !== "" && typeof actions.pushSearch === "function") actions.pushSearch(query);
+            var entry = {
+              query: query,
+              workspace: searchFilters.workspace,
+              session: searchFilters.session,
+              role: searchFilters.role,
+            };
+            if (typeof actions.pushSearch === "function") actions.pushSearch(entry);
+            var entryKey = historyKey(entry);
+            if (historyDropped[entryKey] === true) delete historyDropped[entryKey];
+            var nextMirror = [historyEncode(entry)];
+            for (var hi = 0; hi < searchHistoryMirror.length && nextMirror.length < SEARCH_HISTORY_MAX; hi += 1) {
+              if (historyKey(searchHistoryMirror[hi]) === entryKey) continue;
+              nextMirror.push(searchHistoryMirror[hi]);
+            }
+            searchHistoryMirror = nextMirror;
+            historyCleared = false;
             commit({ loaded: true, query: query, hits: view.hits, terms: view.terms, scanned: view.scanned, total: view.total, pending: view.pending, took: view.took, busy: true, error: "" });
             var ask = function (needRefresh) {
               searchPost({
@@ -4830,97 +4967,115 @@
             h("div", { className: "wsr-page-head" },
               h("div", { className: "wsr-page-heading" }, t("search.title")),
             ),
-            h("div", { className: "wsr-search-bar" },
-              input,
-              h("button", { type: "button", className: "wsr-btn", onClick: function () { run(searchDraft, false); } }, t("search.run")),
-            ),
-            h("div", { className: "wsr-search-hint" }, t("search.hint")),
-            h("div", { className: "wsr-search-filters" },
-              h("label", { className: "wsr-filter" },
-                h("span", { className: "wsr-filter-label" }, t("search.filterWorkspace")),
-                h("select", {
-                  className: "wsr-filter-select",
-                  value: searchFilters.workspace,
-                  onChange: function (event) {
-                    searchFilters.workspace = event.target.value || "";
-                    rerun();
+            h("div", { className: "wsr-search-toolbar" },
+              h("div", { className: "wsr-filters" },
+                h("label", { className: "wsr-filter" },
+                  h("span", { className: "wsr-filter-label" }, t("search.filterWorkspace")),
+                  h("select", {
+                    className: "wsr-filter-select",
+                    value: searchFilters.workspace,
+                    onChange: function (event) {
+                      searchFilters.workspace = event.target.value || "";
+                      rerun();
+                    },
                   },
-                },
-                  h("option", { value: "" }, t("search.filterAll")),
-                  (function () {
-                    var items = data.workspaces !== null && data.workspaces !== undefined
-                      && Array.isArray(data.workspaces.items) ? data.workspaces.items : [];
-                    var options = [];
-                    for (var wi = 0; wi < items.length; wi += 1) {
-                      var name = typeof items[wi].name === "string" && items[wi].name !== ""
-                        ? items[wi].name
-                        : String(items[wi].title || "");
-                      if (name === "") continue;
-                      options.push(h("option", { value: name, key: "ws:" + name }, name));
-                    }
-                    return options;
-                  })(),
+                    h("option", { value: "" }, t("search.filterAll")),
+                    (function () {
+                      var items = data.workspaces !== null && data.workspaces !== undefined
+                        && Array.isArray(data.workspaces.items) ? data.workspaces.items : [];
+                      var options = [];
+                      for (var wi = 0; wi < items.length; wi += 1) {
+                        var name = typeof items[wi].name === "string" && items[wi].name !== ""
+                          ? items[wi].name
+                          : String(items[wi].title || "");
+                        if (name === "") continue;
+                        options.push(h("option", { value: name, key: "ws:" + name }, name));
+                      }
+                      return options;
+                    })(),
+                  ),
+                ),
+                h("label", { className: "wsr-filter" },
+                  h("span", { className: "wsr-filter-label" }, t("search.filterSession")),
+                  h("input", {
+                    type: "text",
+                    key: "wsr-filter-session:" + String(filterEpoch),
+                    className: "wsr-filter-input",
+                    defaultValue: searchFilters.session,
+                    placeholder: t("search.filterSessionPlaceholder"),
+                    onChange: function (event) {
+                      searchFilters.session = String(event.target.value || "").trim();
+                    },
+                    onKeyDown: function (event) {
+                      if (event !== undefined && event.key === "Enter") {
+                        event.preventDefault();
+                        rerun();
+                      }
+                    },
+                  }),
+                ),
+                h("span", { className: "wsr-filter" },
+                  h("span", { className: "wsr-filter-label" }, t("search.filterRole")),
+                  h("span", { className: "wsr-seg" },
+                    (function () {
+                      var roles = [
+                        ["", "search.filterAll"],
+                        ["user", "search.you"],
+                        ["assistant", "search.assistant"],
+                      ];
+                      var buttons = [];
+                      for (var ri = 0; ri < roles.length; ri += 1) {
+                        (function (value, label) {
+                          buttons.push(h("button", {
+                            type: "button",
+                            key: "role:" + value,
+                            className: "wsr-seg-item" + (searchFilters.role === value ? " wsr-seg-item-on" : ""),
+                            onClick: function () {
+                              searchFilters.role = value;
+                              rerun();
+                            },
+                          }, t(label)));
+                        })(roles[ri][0], roles[ri][1]);
+                      }
+                      return buttons;
+                    })(),
+                  ),
                 ),
               ),
-              h("label", { className: "wsr-filter" },
-                h("span", { className: "wsr-filter-label" }, t("search.filterSession")),
-                h("input", {
-                  type: "text",
-                  className: "wsr-filter-input",
-                  defaultValue: searchFilters.session,
-                  placeholder: t("search.filterSessionPlaceholder"),
-                  onChange: function (event) {
-                    searchFilters.session = String(event.target.value || "").trim();
-                  },
-                  onKeyDown: function (event) {
-                    if (event !== undefined && event.key === "Enter") {
-                      event.preventDefault();
-                      rerun();
-                    }
-                  },
-                }),
-              ),
-              h("span", { className: "wsr-filter" },
-                h("span", { className: "wsr-filter-label" }, t("search.filterRole")),
-                (function () {
-                  var roles = [
-                    ["", "search.filterAll"],
-                    ["user", "search.you"],
-                    ["assistant", "search.assistant"],
-                  ];
-                  var buttons = [];
-                  for (var ri = 0; ri < roles.length; ri += 1) {
-                    (function (value, label) {
-                      var active = searchFilters.role === value;
-                      buttons.push(h("button", {
-                        type: "button",
-                        key: "role:" + value,
-                        className: "wsr-filter-chip" + (active ? " wsr-filter-chip-on" : ""),
-                        onClick: function () {
-                          searchFilters.role = value;
-                          rerun();
-                        },
-                      }, t(label)));
-                    })(roles[ri][0], roles[ri][1]);
-                  }
-                  return buttons;
-                })(),
-              ),
+              h("button", {
+                type: "button",
+                className: "wsr-help" + (help[0] === true ? " wsr-help-on" : ""),
+                title: t("search.hint"),
+                "aria-label": t("search.hint"),
+                onClick: function () { help[1](help[0] !== true); },
+              }, "?"),
             ),
-            historyList.length === 0 ? null : h("div", { className: "wsr-search-history" },
+            help[0] === true ? h("div", { className: "wsr-search-hint" }, t("search.hint")) : null,
+            h("div", { className: "wsr-search-bar" },
+              input,
+              h("button", { type: "button", className: "wsr-btn wsr-btn-primary", onClick: function () { run(searchDraft, false); } }, t("search.run")),
+            ),
+            h("div", { className: "wsr-search-history" },
               h("span", { className: "wsr-search-history-label" }, t("search.history")),
               historyList.map(function (item, index) {
-                var text = String(item);
-                return h("span", { className: "wsr-search-chip", key: text + ":" + String(index) },
+                var entry = historyEntry(item);
+                var label = historyLabel(entry);
+                return h("span", { className: "wsr-search-chip", key: historyKey(entry) + ":" + String(index) },
                   h("button", {
                     type: "button",
                     className: "wsr-search-chip-run",
-                    title: t("search.historyRun", { query: text }),
+                    title: t("search.historyRun", { query: label }),
                     onClick: function () {
-                      searchDraft = text;
-                      run(text, false);
-                  },
-                  }, text),
+                      /* Restore the scope too: the words alone would answer a
+                         different question than the one that was asked. */
+                      searchFilters.workspace = entry.workspace;
+                      searchFilters.session = entry.session;
+                      searchFilters.role = entry.role;
+                      filterEpoch += 1;
+                      searchDraft = entry.query;
+                      run(entry.query, false);
+                    },
+                  }, label),
                   h("button", {
                     type: "button",
                     className: "wsr-search-chip-drop",
@@ -4928,27 +5083,46 @@
                     "aria-label": t("search.historyDrop"),
                     onClick: function (event) {
                       if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
-                      if (typeof actions.dropSearch === "function") actions.dropSearch(text);
+                      if (typeof actions.dropSearch === "function") actions.dropSearch(entry);
+                      var dropKey = historyKey(entry);
+                      historyDropped[dropKey] = true;
+                      searchHistoryMirror = searchHistoryMirror.filter(function (item) {
+                        return historyKey(item) !== dropKey;
+                      });
+                      commit(Object.assign({}, view));
                     },
                   }, "\u00d7"),
                 );
               }),
+              historyList.length === 0
+                ? h("span", { className: "wsr-search-history-empty" }, t("search.historyEmpty"))
+                : null,
               h("button", {
                 type: "button",
                 className: "wsr-search-history-clear",
                 onClick: function () {
                   if (typeof actions.clearSearches === "function") actions.clearSearches();
+                  searchHistoryMirror = [];
+                  historyDropped = {};
+                  historyCleared = true;
+                  commit(Object.assign({}, view));
                 },
               }, t("search.historyClear")),
             ),
-                                                            view.busy ? h("div", { className: "wsr-page-note" }, t("search.searching")) : null,
-            view.error !== "" ? h("div", { className: "wsr-page-note wsr-page-error" }, view.error) : null,
-            view.pending > 0 ? h("div", { className: "wsr-page-note" }, t("search.indexing", { n: String(view.pending) })) : null,
-            view.loaded && !view.busy ? h("div", { className: "wsr-page-note" }, t("search.summary", { hits: String(view.hits.length), sessions: String(view.total), ms: String(view.took) })) : null,
-            view.loaded && !view.busy && view.hits.length === 0 && sessionRows.length === 0 ? h("div", { className: "wsr-page-note" }, t("search.empty")) : null,
+            h("div", { className: "wsr-search-status" },
+              view.busy ? t("search.searching") : null,
+              view.error !== "" ? view.error : null,
+              view.pending > 0 ? t("search.indexing", { n: String(view.pending) }) : null,
+              view.loaded && !view.busy && view.error === ""
+                ? t("search.summary", { hits: String(view.hits.length), sessions: String(view.total), ms: String(view.took) })
+                : null,
+            ),
+            view.loaded && !view.busy && view.hits.length === 0 && sessionRows.length === 0
+              ? h("div", { className: "wsr-page-note" }, t("search.empty"))
+              : null,
             sessionRows.length > 0
               ? h("div", { className: "wsr-page-list" },
-                h("div", { className: "wsr-search-history-label" }, t("search.sessionResults", { n: String(sessionRows.length) })),
+                h("div", { className: "wsr-search-group" }, t("search.sessionResults", { n: String(sessionRows.length) })),
                 sessionRows,
               )
               : null,
@@ -5410,25 +5584,25 @@
                 if (draft.followUps === null || typeof draft.followUps !== "object") return;
                 if (draft.followUps[sessionId] !== undefined) delete draft.followUps[sessionId];
               },
-              /* Recent queries, newest first, case-insensitively de-duplicated. */
-              pushSearch: function (draft, query) {
-                var text = typeof query === "string" ? query.trim() : "";
-                if (text === "") return;
+              /* One entry per distinct search, newest first; identical searches
+                 move to the front instead of appearing twice. */
+              pushSearch: function (draft, entry) {
+                var item = historyEntry(entry);
+                if (item.query === "" && item.workspace === "" && item.session === "" && item.role === "") return;
                 var list = Array.isArray(draft.searchHistory) ? draft.searchHistory : [];
-                var lower = text.toLowerCase();
-                var next = [text];
+                var key = historyKey(item);
+                var next = [historyEncode(item)];
                 for (var i = 0; i < list.length && next.length < SEARCH_HISTORY_MAX; i += 1) {
-                  if (String(list[i]).toLowerCase() === lower) continue;
-                  next.push(list[i]);
+                  if (historyKey(list[i]) === key) continue;
+                  next.push(historyEncode(list[i]));
                 }
                 draft.searchHistory = next;
               },
-              dropSearch: function (draft, query) {
-                var text = typeof query === "string" ? query.trim().toLowerCase() : "";
-                if (text === "") return;
+              dropSearch: function (draft, entry) {
+                var key = historyKey(entry);
                 var list = Array.isArray(draft.searchHistory) ? draft.searchHistory : [];
                 draft.searchHistory = list.filter(function (item) {
-                  return String(item).trim().toLowerCase() !== text;
+                  return historyKey(item) !== key;
                 });
               },
               clearSearches: function (draft) {
@@ -5678,6 +5852,11 @@
           hitRow: searchHitRow,
           shortId: shortSessionId,
           resumePasses: function () { suppressedUntil = 0; },
+          filters: function () { return searchFilters; },
+          resetHistoryMirror: function () { searchHistoryMirror = []; historyDropped = {}; historyCleared = false; },
+          encodeSearch: historyEncode,
+          decodeSearch: historyEntry,
+          searchLabel: historyLabel,
         };
 
         /* The search feature ships disabled while its cost is being isolated;

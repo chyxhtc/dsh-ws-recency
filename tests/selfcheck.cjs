@@ -1122,6 +1122,7 @@ function textOf(node) {
   assert.ok(SearchIcon !== null, "the search panel glyph was registered");
   assert.ok(SearchIcon({ size: 16 }) !== null, "the search glyph renders");
   assert.ok(SearchPage !== null, "the search page was registered");
+  SEARCH.resetHistoryMirror();
   const searchPage = SearchPage({});
   assert.strictEqual(searchPage.props.className, "wsr-page wsr-search-page");
 
@@ -1141,8 +1142,10 @@ function textOf(node) {
 
   /* Recent queries: a chip re-runs one, its × removes it, and Clear empties the
      list. The list lives in the shared store, so it survives a restart. */
-  const historyStore = { searchHistory: ["build failed", "CDP"] };
+  /* One entry predates the scope change (a bare string), one carries it. */
+  const historyStore = { searchHistory: [{ query: "build failed", workspace: "Work", session: "", role: "assistant" }, "CDP"] };
   const dropped = [];
+  SEARCH.resetHistoryMirror();
   const searchPageWithHistory = SearchPage({
     useStore: () => historyStore,
     actions: {
@@ -1164,9 +1167,65 @@ function textOf(node) {
   assert.strictEqual(chips.length, 2, "each remembered query gets a chip");
   const chipButtons = chips[0].children.filter((node) => node.props !== undefined && typeof node.props.onClick === "function");
   assert.strictEqual(chipButtons.length, 2, "a chip carries a run button and a remove button");
-  assert.strictEqual(chipButtons[0].children[0], "build failed", "the chip shows the query");
+  assert.strictEqual(chipButtons[0].children[0], "build failed (Work · assistant)", "the chip shows the query together with its scope");
   chipButtons[1].props.onClick({ stopPropagation() {} });
-  assert.deepStrictEqual(dropped, [["drop", "build failed"]], "the × removes exactly that query");
+  assert.deepStrictEqual(dropped[0][0], "drop", "the × removes one entry");
+  assert.deepStrictEqual(dropped[0][1], { query: "build failed", workspace: "Work", session: "", role: "assistant" }, "it removes the entry with its scope, so the same words in another scope survive");
+
+  /* Clicking a chip restores the whole search, not just its words. */
+  const applied = [];
+  SEARCH.resetHistoryMirror();
+  const scopePage = SearchPage({
+    useStore: () => ({ searchHistory: [{ query: "CDP", workspace: "Bluegleam", session: "", role: "user" }] }),
+    actions: {
+      pushSearch: function (entry) { applied.push(entry); },
+      dropSearch: function () {},
+      clearSearches: function () {},
+    },
+  });
+  let scopeChip = null;
+  (function walk(node) {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    if (node.props !== undefined && node.props.className === "wsr-search-chip") scopeChip = node;
+    for (const child of node.children || []) walk(child);
+  })(scopePage);
+  assert.ok(scopeChip !== null, "the stored search has a chip");
+  const scopeRun = scopeChip.children.find((node) => node.props !== undefined && node.props.className === "wsr-search-chip-run");
+  assert.ok(String(scopeRun.children[0]).indexOf("Bluegleam") !== -1, "the chip names the scope it was run with");
+  scopeRun.props.onClick();
+  assert.strictEqual(SEARCH.filters().workspace, "Bluegleam", "clicking the chip restores the workspace it was run with");
+  assert.strictEqual(SEARCH.filters().role, "user", "and the role");
+  assert.strictEqual(SEARCH.draft(), "CDP", "and puts its words back in the field");
+
+  /* What the store keeps must be a plain string: an object did not survive its
+     write path, and the chips vanished after every search because of it. */
+  const pushed = [];
+  /* Start from an empty scope: the previous case left filters set. */
+  SEARCH.filters().workspace = "";
+  SEARCH.filters().session = "";
+  SEARCH.filters().role = "";
+  SEARCH.resetHistoryMirror();
+  const writePage = SearchPage({
+    useStore: () => ({ searchHistory: [] }),
+    actions: { pushSearch: function (entry) { pushed.push(entry); }, dropSearch() {}, clearSearches() {} },
+  });
+  const writeInput = findNode(writePage, (node) => node.props !== undefined && node.props.className === "wsr-search-input");
+  writeInput.props.onChange({ target: { value: "lulu" } });
+  const writeRun = findNode(writePage, (node) => node.props !== undefined && node.props.className === "wsr-btn wsr-btn-primary");
+  writeRun.props.onClick();
+  assert.strictEqual(pushed.length, 1, "running a search records one entry");
+  assert.deepStrictEqual(pushed[0], { query: "lulu", workspace: "", session: "", role: "" }, "the recorded entry carries the scope as well");
+
+  /* The store keeps one encoded string per search: objects did not survive its
+     write path, which is why the chips disappeared after every search. */
+  const encoded = SEARCH.encodeSearch({ query: "CDP", workspace: "Bluegleam", session: "", role: "user" });
+  assert.strictEqual(typeof encoded, "string", "an entry is stored as a string");
+  assert.deepStrictEqual(SEARCH.decodeSearch(encoded), { query: "CDP", workspace: "Bluegleam", session: "", role: "user" }, "and decodes back with its scope");
+  assert.deepStrictEqual(SEARCH.decodeSearch("old entry"), { query: "old entry", workspace: "", session: "", role: "" }, "an entry from an older version still reads");
   const clearNode = (function find(node) {
     if (node === null || typeof node !== "object") return null;
     if (node.props !== undefined && node.props.className === "wsr-search-history-clear") return node;
@@ -1182,7 +1241,7 @@ function textOf(node) {
 
   /* Narrowing is a control, not syntax: a workspace select, a title box and three
      role chips, and the words in the box stay words. */
-  const filterRow = findNode(searchPage, (node) => node.props !== undefined && node.props.className === "wsr-search-filters");
+  const filterRow = findNode(searchPage, (node) => node.props !== undefined && node.props.className === "wsr-filters");
   assert.ok(filterRow !== null, "the search panel shows its filter controls");
   const filterText = [];
   (function walkFilters(node) {
@@ -1191,10 +1250,13 @@ function textOf(node) {
       for (const child of node) walkFilters(child);
       return;
     }
-    if (node.props !== undefined && typeof node.props.className === "string" && node.props.className.indexOf("wsr-filter-chip") === 0) filterText.push(node.children[0]);
+    if (node.props !== undefined && typeof node.props.className === "string" && node.props.className.indexOf("wsr-seg-item") === 0) filterText.push(node.children[0]);
     for (const child of node.children || []) walkFilters(child);
   })(filterRow);
   assert.deepStrictEqual(filterText, ["All", "You", "Assistant"], "the role filter offers all three choices");
+  const helpButton = findNode(searchPage, (node) => node.props !== undefined && String(node.props.className || "").indexOf("wsr-help") === 0);
+  assert.ok(helpButton !== null, "the syntax hint is one click away, not a permanent line");
+  assert.strictEqual(findNode(searchPage, (node) => node.props !== undefined && node.props.className === "wsr-search-hint"), null, "the hint stays hidden until asked for");
   searchInput.props.onChange({ target: { value: "build failed" } });
   assert.strictEqual(SEARCH.draft(), "build failed", "the draft follows the input");
 
@@ -1299,6 +1361,9 @@ function textOf(node) {
   railMark.attrs["data-index"] = "7";
   railMark.attrs["aria-label"] = "Jump to turn 9";
   railMark.click = function () { railClicks.push(9); };
+  /* A mark only counts when it is on screen: the rail of a session being left
+     behind is still in the document for a moment. */
+  railMark.getBoundingClientRect = () => ({ top: 100, left: 900, height: 8, width: 10 });
   global.document.querySelectorAll = function (selector) {
     if (selector === "button[data-index]") return [railMark];
     return [];
