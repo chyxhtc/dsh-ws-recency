@@ -52,14 +52,17 @@ function response() {
     { type: "session/title", data: { title: "Alpha work" } },
     { type: "turn/start", time: 1010, data: { turn: 1 } },
     { type: "user/message", time: 1020, data: { turn: 1, message: { content: [{ type: "text", text: "please build the thing" }] } } },
-    { type: "assistant/message", time: 1030, data: { turn: 1, message: { content: [{ type: "text", text: "build failed: ERROR in place.ts" }] } } },
+    { type: "assistant/message", time: 1030, data: { turn: 1, step: 3, message: { content: [{ type: "text", text: "build failed: ERROR in place.ts" }] } } },
     { type: "turn/end", time: 1040, data: { turn: 1 } },
     { type: "turn/start", time: 1050, data: { turn: 2 } },
     { type: "user/message", time: 1060, data: { turn: 2, message: { content: [{ type: "text", text: "and then rebuild" }] } } },
   ];
   const s2 = [
     { type: "session", id: "s-2", time: 2000, data: {} },
-    { type: "session/title", data: { title: "Beta" } },
+    /* A session titles itself twice: the first-prompt prefix, then the provider's
+       name. The second one is what the sidebar shows. */
+    { type: "session/title", data: { title: "unrelated topi", source: { kind: "fallback" } } },
+    { type: "session/title", data: { title: "Beta", source: { kind: "provider" } } },
     { type: "turn/start", time: 2010, data: { turn: 1 } },
     { type: "user/message", time: 2020, data: { turn: 1, message: { content: [{ type: "text", text: "unrelated topic" }] } } },
     { type: "assistant/message", time: 2030, data: { turn: 1, message: { content: [{ type: "reasoning", text: "build build build" }, { type: "text", text: "nothing here" }] } } },
@@ -70,6 +73,9 @@ function response() {
     { type: "turn/start", time: 3010, data: { turn: 1 } },
     { type: "user/message", time: 3020, data: { turn: 1, message: { content: [{ type: "text", text: "gamma first line\nsecond line" }] } } },
     { type: "assistant/message", time: 3030, data: { turn: 1, message: { content: [{ type: "text", text: "a".repeat(200) + " marker " + "b".repeat(200) }] } } },
+    /* Markdown in the log, plain text on screen: the jump fragment has to match
+       what the renderer produces, not what the log stores. */
+    { type: "assistant/message", time: 3040, data: { turn: 2, step: 1, message: { content: [{ type: "text", text: "## Verdict\n\n**the docs say manual** and `code` lives here" }] } } },
   ];
 
   const logs = { "s-1": s1, "s-2": s2, "s-3": s3 };
@@ -108,9 +114,34 @@ function response() {
   assert.strictEqual(first.at, 1060, "the newest matching message leads");
   const gamma = await mod.searchSessions(ctx, "gamma");
   assert.strictEqual(gamma.hits[0].title, "gamma first line", "the first prompt names an untitled session");
+  /* A hit carries the session's own title even when the persistence header has
+     none: the title event is captured while indexing, not read from the header. */
+  const beta = await mod.searchSessions(ctx, "unrelated");
+  assert.strictEqual(beta.hits[0].title, "Beta", "the provider title wins over the first-prompt prefix");
+  /* The transcript is markdown-free: a jump can only find the message if the
+     fragment has the markers taken out. */
+  assert.ok(Array.isArray(beta.hits[0].seeks) && beta.hits[0].seeks.length >= 1, "a hit carries text fragments to find it by");
+  assert.strictEqual(beta.hits[0].seek, beta.hits[0].seeks[0], "the first fragment is the plain seek");
+  assert.ok(beta.hits[0].seeks.every((fragment) => fragment.indexOf("**") === -1 && fragment.indexOf("`") === -1), "fragments are markdown-free");
+  const verdict = await mod.searchSessions(ctx, "verdict");
+  const headingHit = verdict.hits.find((hit) => hit.sessionId === "s-3");
+  assert.ok(headingHit !== undefined, "a match inside a markdown heading is found");
+  const fragment = headingHit.seeks[0];
+  assert.ok(fragment.indexOf("#") === -1, "the heading marker is stripped from the fragment");
+  assert.ok(fragment.indexOf("**") === -1 && fragment.indexOf("`") === -1, "bold and code markers are stripped too");
+  assert.ok(fragment.toLowerCase().indexOf("verdict") !== -1, "the fragment still starts at the match");
+  /* Reading a hit must not require opening the session: the neighbourhood of the
+     match travels with the hit, flattened and centred on it. */
+  assert.ok(typeof headingHit.context === "string" && headingHit.context !== "", "a hit carries its surrounding text");
+  assert.ok(headingHit.context.toLowerCase().indexOf("verdict") !== -1, "the context is centred on the match");
+  assert.ok(headingHit.context.length <= 1000, "the context is capped so the payload stays small");
+  assert.ok(beta.hits[0].at > 0, "each hit carries its timestamp");
   const s1hit = answer.hits.find((hit) => hit.sessionId === "s-1" && hit.role === "assistant");
   assert.strictEqual(s1hit.workspace, "Work", "the workspace label is resolved from cwd");
   assert.strictEqual(s1hit.turn, 1, "the hit names the turn");
+  assert.strictEqual(s1hit.step, 3, "an assistant hit names its step inside the turn");
+  const promptHit = answer.hits.find((hit) => hit.sessionId === "s-1" && hit.role === "user");
+  assert.strictEqual(promptHit.step, null, "a prompt has no step: it arrives before the turn's steps");
   assert.ok(s1hit.snippet.indexOf("build failed") !== -1, "the snippet shows the match");
   assert.strictEqual(s1hit.lead, false, "a match at the start needs no leading ellipsis");
 

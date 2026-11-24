@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.30.1";
+export const HOST_VERSION = "0.30.2";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -663,7 +663,7 @@ async function readSessionEvents(ctx, sessionId) {
  * pending, which is what the panel shows as "still indexing".
  * ------------------------------------------------------------------------- */
 
-const SEARCH_INDEX_VERSION = 1;
+const SEARCH_INDEX_VERSION = 4;
 /** Longer messages are cut for the cache: snippets never need the tail. */
 const SEARCH_MESSAGE_CAP = 200000;
 const SEARCH_PER_SESSION = 3;
@@ -752,8 +752,12 @@ function extractSearchMessages(events) {
     if (text === "") continue;
     if (text.length > SEARCH_MESSAGE_CAP) text = text.slice(0, SEARCH_MESSAGE_CAP);
     const declared = Number(data.turn);
+    const declaredStep = Number(data.step);
     messages.push({
       turn: Number.isSafeInteger(declared) ? declared : turn,
+      /* Assistant messages carry their step inside the turn; user messages do not
+         (they arrive before the turn's steps), so the step stays null there. */
+      step: Number.isSafeInteger(declaredStep) ? declaredStep : null,
       seq: Number.isSafeInteger(Number(event.seq)) ? Number(event.seq) : 0,
       at: Number.isFinite(Number(event.time)) ? Number(event.time) : 0,
       role: event.type === "user/message" ? "user" : "assistant",
@@ -761,6 +765,93 @@ function extractSearchMessages(events) {
     });
   }
   return messages;
+}
+
+/**
+ * The session's own title, read from the events already in hand.
+ *
+ * A session writes the title twice: a fallback that is just the first prompt's
+ * prefix, then the real one from the title provider. The first one is not the
+ * name shown in the sidebar, so the provider title wins and the fallback is only
+ * used when the provider never answered.
+ */
+function titleFromEvents(events) {
+  let provider = "";
+  let fallback = "";
+  let firstPrompt = "";
+  for (const event of events) {
+    if (event === null || typeof event !== "object") continue;
+    if (event.type === "session/title") {
+      const raw = typeof event.data === "string" ? event.data : event.data?.title;
+      const value = typeof raw === "string" ? raw.trim() : "";
+      if (value === "") continue;
+      if (event.data?.source?.kind === "fallback") fallback = value;
+      else provider = value;
+      continue;
+    }
+    if (firstPrompt === "" && event.type === "user/message") {
+      const text = conversationText(event.data?.message?.content ?? event.data?.content).trim();
+      const first = text.split("\n")[0].trim();
+      if (first !== "") firstPrompt = first.slice(0, 120);
+    }
+  }
+  if (provider !== "") return provider;
+  if (fallback !== "") return fallback;
+  return firstPrompt;
+}
+
+/**
+ * Fragments of the message to find again in the rendered transcript.
+ *
+ * The conversation view exposes no per-turn DOM anchor, so a jump locates what
+ * to scroll to by its text - and the log's text is markdown while the DOM's is
+ * not. `**bold**`, backticks, table pipes and heading marks all disappear when
+ * the message renders, so the raw window would never match. Several candidates
+ * are returned because a match can sit inside bold, inside a table cell, or at
+ * the start of a line the renderer rewrites.
+ */
+function searchSeeks(text, needle) {
+  const stripped = text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^\s{0,6}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,6}>\s?/gm, "")
+    .replace(/^\s{0,6}(?:[-*+]|\d+\.)\s+/gm, "")
+    .replace(/\*\*|__|`/g, "")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const index = needle === "" ? -1 : stripped.toLowerCase().indexOf(needle);
+  const out = [];
+  const push = (from) => {
+    const body = stripped.slice(Math.max(0, from), Math.max(0, from) + 70).trim();
+    if (body.length >= 8 && out.indexOf(body) === -1) out.push(body);
+  };
+  if (index >= 0) {
+    push(index);
+    push(index - 30);
+  }
+  push(0);
+  return out.slice(0, 3);
+}
+
+/**
+ * A window of the message around the match.
+ *
+ * Jumping into a long session makes the chat mount a large page of history, and
+ * that is slow; the panel can show the neighbourhood of a hit on its own. The
+ * window is collapsed to single spaces and capped because it crosses the IPC
+ * boundary for every hit.
+ */
+function searchContext(text, needle, radius) {
+  const span = Number.isFinite(radius) ? radius : 420;
+  const flat = text.replace(/\s+/g, " ");
+  const index = needle === "" ? -1 : flat.toLowerCase().indexOf(needle);
+  if (index < 0) return flat.slice(0, span * 2).trim();
+  const from = Math.max(0, index - span);
+  const to = Math.min(flat.length, index + needle.length + span);
+  const head = from > 0 ? "\u2026" : "";
+  const tail = to < flat.length ? "\u2026" : "";
+  return head + flat.slice(from, to).trim() + tail;
 }
 
 function searchSnippet(text, needle) {
@@ -831,33 +922,56 @@ export async function searchSessions(ctx, query, options = {}) {
       }
       decoded += 1;
       let messages = [];
+      let title = "";
       try {
-        messages = extractSearchMessages(await readSessionEvents(ctx, session.id));
+        const events = await readSessionEvents(ctx, session.id);
+        messages = extractSearchMessages(events);
+        title = titleFromEvents(events);
       } catch {
         messages = [];
       }
-      await writeSearchCache(directory, session.id, { v: SEARCH_INDEX_VERSION, key, messages });
-      cached = { key, messages };
+      await writeSearchCache(directory, session.id, { v: SEARCH_INDEX_VERSION, key, messages, title });
+      cached = { key, messages, title };
     }
 
     let found = 0;
+    /* How far down the transcript the last turn sits: the client uses it to jump
+       to an approximate scroll position before it looks for the text. */
+    let maxTurn = 0;
+    for (const message of cached.messages) {
+      if (message !== null && typeof message === "object" && Number.isFinite(Number(message.turn))) {
+        if (Number(message.turn) > maxTurn) maxTurn = Number(message.turn);
+      }
+    }
     for (const message of cached.messages) {
       if (message === null || typeof message !== "object" || typeof message.text !== "string") continue;
       const haystack = message.text.toLowerCase();
       if (!terms.every((term) => haystack.indexOf(term) !== -1)) continue;
       const { snippet, lead, tail } = searchSnippet(message.text, terms[0]);
-      const title = session.header.title ?? "";
+      const seeks = searchSeeks(message.text, terms[0]);
+      const headerTitle = typeof session.header.title === "string" ? session.header.title.trim() : "";
+      const cachedTitle = typeof cached.title === "string" ? cached.title.trim() : "";
       const cwd = normalizedPath(session.header.cwd);
       hits.push({
         sessionId: session.id,
-        title: typeof title === "string" && title.trim() !== "" ? title.trim() : titleFromMessages(cached.messages, session.id),
+        title: headerTitle !== "" ? headerTitle : (cachedTitle !== "" ? cachedTitle : titleFromMessages(cached.messages, session.id)),
         workspace: workspaceByPath.get(cwd) ?? "",
         cwd: typeof session.header.cwd === "string" ? session.header.cwd : "",
         turn: message.turn,
+        step: message.step === undefined ? null : message.step,
         seq: message.seq,
         at: message.at,
         role: message.role,
         snippet,
+        /* A piece of the message to find again in the rendered transcript: the
+           chat exposes no per-turn DOM anchor, so the client locates the text. */
+        seek: seeks.length > 0 ? seeks[0] : "",
+        seeks,
+        /* The matched neighbourhood, so reading a hit never needs the chat. */
+        context: searchContext(message.text, terms[0]),
+        /* How many turns the session has, so the client can scroll to a rough
+           position before looking for the text. */
+        turns: maxTurn,
         lead: lead === true,
         tail: tail === true,
       });
@@ -1657,6 +1771,8 @@ function checkpointValue(record, key) {
  *
  * A title is written right after the first prompt, so the first page of the log
  * is enough - and reading one page is far cheaper than folding the whole Log.
+ * The page holds both the prefix fallback and the provider's title; the provider
+ * one is the name the sidebar shows, so it wins.
  */
 async function titleFromLog(ctx, sessionId) {
   let handle;
@@ -1668,11 +1784,18 @@ async function titleFromLog(ctx, sessionId) {
   try {
     const slice = await handle.read(0, 60);
     const events = slice !== null && slice !== undefined && Array.isArray(slice.events) ? slice.events : [];
+    let provider = "";
+    let fallback = "";
     for (const event of events) {
       if (event?.type !== "session/title") continue;
-      const title = typeof event.data === "string" ? event.data : event.data?.title;
-      if (typeof title === "string" && title.trim() !== "") return title.trim();
+      const raw = typeof event.data === "string" ? event.data : event.data?.title;
+      const value = typeof raw === "string" ? raw.trim() : "";
+      if (value === "") continue;
+      if (event.data?.source?.kind === "fallback") fallback = value;
+      else provider = value;
     }
+    if (provider !== "") return provider;
+    if (fallback !== "") return fallback;
     for (const event of events) {
       if (event?.type !== "user/message") continue;
       const line = blockText(event.data?.content).split("\n")[0].trim();

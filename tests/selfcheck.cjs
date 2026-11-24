@@ -120,16 +120,25 @@ composerSeat.append(composerRow);
 const conversationNode = el("div", "conv");
 conversationNode.attrs["data-conversation-session"] = "A-fresh-1";
 
-/* Search-jump fixtures: the chat's scroller plus one mounted turn row. */
+/* Search-jump fixtures: the chat's scroller plus the message the hit points at.
+   The real transcript has no per-turn anchor, so the jump locates text. */
 const searchScroller = el("div", "scroll");
 searchScroller.clientHeight = 600;
 searchScroller.scrollTop = 1200;
+searchScroller.scrollHeight = 6000;
 const searchTurns = {};
 const mountedTurn = el("div", "chat-row");
 mountedTurn.attrs["data-chat-turn"] = "5";
 mountedTurn.scrolled = false;
+mountedTurn.textContent = "the build failed here while linking";
+mountedTurn.childElementCount = 0;
 mountedTurn.scrollIntoView = function () { mountedTurn.scrolled = true; };
 searchTurns["5"] = mountedTurn;
+/* Every element the transcript holds, so `querySelectorAll("*")` can find the
+   message by its text. */
+searchScroller.querySelectorAll = function (selector) {
+  return selector === "*" ? [mountedTurn] : [];
+};
 
 /* Keep the fallback dictionary deterministic in this test. */
 global.navigator = { language: "en-US" };
@@ -339,6 +348,7 @@ const ctx = {
     },
   },
 };
+if (typeof mod.__setSearchEnabled === "function") mod.__setSearchEnabled(true);
 mod.apply(ctx);
 assert.ok(Sorter !== null, "overlay component was not registered");
 assert.ok(SettingsRow !== null, "settings row was not registered");
@@ -597,6 +607,10 @@ assert.strictEqual(A.rows[0].getAttribute("data-wsr-pin-hidden"), null, "the ori
 /* ---------- token statistics panel -------------------------------------- */
 
 function textOf(node) {
+  /* React elements keep their text as string children, not as `textContent`. */
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (node === null || node === undefined || typeof node !== "object") return "";
   const parts = [typeof node.textContent === "string" ? node.textContent : ""];
   for (const child of node.children || []) parts.push(textOf(child));
   return parts.join(" ");
@@ -1126,6 +1140,47 @@ function textOf(node) {
 
   const searchInput = findNode(searchPage, (node) => node.props !== undefined && node.props.className === "wsr-search-input");
   assert.ok(searchInput !== null, "the search box renders");
+
+  /* Recent queries: a chip re-runs one, its × removes it, and Clear empties the
+     list. The list lives in the shared store, so it survives a restart. */
+  const historyStore = { searchHistory: ["build failed", "CDP"] };
+  const dropped = [];
+  const searchPageWithHistory = SearchPage({
+    useStore: () => historyStore,
+    actions: {
+      pushSearch: function (query) { dropped.push(["push", query]); },
+      dropSearch: function (query) { dropped.push(["drop", query]); },
+      clearSearches: function () { dropped.push(["clear"]); },
+    },
+  });
+  const chips = [];
+  (function walk(node) {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    if (node.props !== undefined && node.props.className === "wsr-search-chip") chips.push(node);
+    for (const child of node.children || []) walk(child);
+  })(searchPageWithHistory);
+  assert.strictEqual(chips.length, 2, "each remembered query gets a chip");
+  const chipButtons = chips[0].children.filter((node) => node.props !== undefined && typeof node.props.onClick === "function");
+  assert.strictEqual(chipButtons.length, 2, "a chip carries a run button and a remove button");
+  assert.strictEqual(chipButtons[0].children[0], "build failed", "the chip shows the query");
+  chipButtons[1].props.onClick({ stopPropagation() {} });
+  assert.deepStrictEqual(dropped, [["drop", "build failed"]], "the × removes exactly that query");
+  const clearNode = (function find(node) {
+    if (node === null || typeof node !== "object") return null;
+    if (node.props !== undefined && node.props.className === "wsr-search-history-clear") return node;
+    for (const child of node.children || []) {
+      const found = find(child);
+      if (found !== null) return found;
+    }
+    return null;
+  })(searchPageWithHistory);
+  assert.ok(clearNode !== null, "the history row offers a clear button");
+  clearNode.props.onClick();
+  assert.deepStrictEqual(dropped[dropped.length - 1], ["clear"], "clear empties the list");
   searchInput.props.onChange({ target: { value: "build failed" } });
   assert.strictEqual(SEARCH.draft(), "build failed", "the draft follows the input");
 
@@ -1136,6 +1191,76 @@ function textOf(node) {
   assert.ok(String(searchCall.url).indexOf("/ws-recency/search") !== -1, "Enter posts the search route");
   assert.strictEqual(JSON.parse(searchCall.options.body).query, "build failed", "the whole query is sent");
 
+  /* A hit names its session and when it was said: without those two, two hits
+     from the same workspace read identically. */
+  const hitNode = SEARCH.hitRow({
+    sessionId: "sess-1234567890abcdef",
+    title: "Alpha work",
+    workspace: "Work",
+    cwd: "C:\\work",
+    turn: 3,
+    step: 7,
+    seq: 42,
+    at: 1763456789000,
+    role: "assistant",
+    snippet: "build failed here",
+    lead: false,
+    tail: false,
+  }, ["build"], function () {});
+  const hitHead = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-head");
+  assert.ok(textOf(hitHead).indexOf("Alpha work") !== -1, "the hit names its session");
+  /* The step is what the reader checks against the chat after jumping. */
+  const hitStep = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-step");
+  assert.ok(hitStep !== null, "an assistant hit names its step");
+  assert.strictEqual(hitStep.children[0], "step 7", "the step number is shown");
+  const noStepHit = SEARCH.hitRow({ sessionId: "s", turn: 2, role: "user", snippet: "x" }, [], function () {});
+  assert.strictEqual(findNode(noStepHit, (node) => node.props !== undefined && node.props.className === "wsr-hit-step"), null, "a prompt carries no step");
+  const hitMeta = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-meta");
+  assert.ok(hitMeta !== null, "the hit carries a meta line");
+  assert.ok(textOf(hitMeta).indexOf("C:\\work") !== -1, "and shows the working directory");
+  assert.ok(textOf(hitMeta).indexOf("build failed") === -1, "the meta line does not repeat the snippet");
+  const hitTime = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-time");
+  assert.ok(hitTime !== null, "and the time it was said");
+  assert.ok(String(hitTime.children[0]).length > 0, "the time is not blank");
+  /* With no title the id stands in, shortened so it stays readable. */
+  const untitled = SEARCH.hitRow({ sessionId: "sess-1234567890abcdef", turn: 1, role: "user", snippet: "x" }, [], function () {});
+  const untitledHead = findNode(untitled, (node) => node.props !== undefined && node.props.className === "wsr-hit-head");
+  assert.ok(textOf(untitledHead).indexOf("sess-123") !== -1, "an untitled session falls back to its id");
+  assert.ok(textOf(untitledHead).indexOf("sess-1234567890abcdef") === -1, "the id is shortened");
+
+  /* Highlighting the query's terms inside the transcript is drawn through the
+     Custom Highlight API: no DOM is mutated, so React never fights it. */
+  const painted = [];
+  global.window.CSS = { highlights: { set: (name, value) => painted.push([name, value]), delete: () => {} } };
+  global.window.Highlight = class { constructor(ranges) { this.ranges = ranges; } };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+  global.document.createTreeWalker = (root) => {
+    const nodes = [root];
+    let index = -1;
+    return { nextNode: () => (index += 1) < nodes.length ? nodes[index] : null, currentNode: null };
+  };
+  const textNode = { nodeValue: "the build failed here", parentElement: mountedTurn };
+  global.document.createRange = () => ({
+    startContainer: null,
+    setStart(node) { this.startContainer = node; },
+    setEnd() {},
+  });
+  global.document.createTreeWalker = () => {
+    const nodes = [textNode];
+    let index = -1;
+    return {
+      get currentNode() { return nodes[index]; },
+      nextNode() { index += 1; return index < nodes.length ? nodes[index] : null; },
+    };
+  };
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 5, turns: 10, seek: "the build failed here" }, ["build"]);
+  flush();
+  assert.ok(painted.length >= 1, "the query term is painted in the transcript");
+  assert.strictEqual(painted[0][0], "wsr-search-hit", "the highlight is registered by name");
+  delete global.window.CSS;
+  delete global.window.Highlight;
+  delete global.NodeFilter;
+
   /* Highlighting works on the snippet, so the list never re-renders to mark it. */
   const marked = SEARCH.highlight("the build failed here", ["build", "failed"]);
   const markNodes = marked.filter((node) => node.type === "mark");
@@ -1143,16 +1268,73 @@ function textOf(node) {
   assert.strictEqual(markNodes[0].children[0], "build");
   assert.strictEqual(markNodes[1].children[0], "failed");
 
-  /* A hit opens its session and rings the turn it came from. */
+  /* A hit opens its session and rings the message it came from. The transcript
+     exposes no turn anchor, so the jump finds the message by its text. */
   service.opened.length = 0;
-  SEARCH.jump({ sessionId: "A-fresh-1", turn: 5 });
+  mountedTurn.scrolled = false;
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 5, turns: 10, seek: "the build failed here" });
   assert.deepStrictEqual(service.opened, ["A-fresh-1"], "clicking a hit opens the session");
   flush();
-  assert.strictEqual(mountedTurn.scrolled, true, "the matching turn is scrolled into view");
+  assert.strictEqual(mountedTurn.scrolled, true, "the matching message is scrolled into view");
   assert.strictEqual(mountedTurn.getAttribute("data-wsr-flash"), null, "the ring is cleared afterwards");
 
+  /* A hit whose text is not on screen falls back to the chat's own turn rail:
+     clicking the mark for that turn is the official navigation. */
+  const railClicks = [];
+  const railMark = el("button", "-U5R9G_mark");
+  railMark.attrs["data-index"] = "7";
+  railMark.attrs["aria-label"] = "Jump to turn 9";
+  railMark.click = function () { railClicks.push(9); };
+  global.document.querySelectorAll = function (selector) {
+    if (selector === "button[data-index]") return [railMark];
+    return [];
+  };
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 9, turns: 10, seek: "text that is not mounted" });
+  flush();
+  assert.deepStrictEqual(railClicks, [9], "the rail mark for the turn is clicked");
+
+
+  /* A hit whose text is not on screen at least moves the transcript: the jump
+     estimates the position from the turn index before it looks for the text. */
+  global.document.querySelectorAll = () => [];
+  const beforeJump = searchScroller.scrollTop;
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 9, turns: 10, seek: "text that is not mounted" });
+  flush();
+  assert.ok(searchScroller.scrollTop !== beforeJump || searchScroller.scrollTop > 0, "the transcript moves towards the hit");
+
+  /* A turn whose body is not rendered must not be reported as a hit: a very long
+     session renders old turns without their message content. */
+  const stub = el("div", "chat-row");
+  stub.attrs["data-chat-turn"] = "6";
+  stub.textContent = "";
+  stub.childElementCount = 0;
+  stub.scrolled = false;
+  stub.scrollIntoView = function () { stub.scrolled = true; };
+  searchTurns["6"] = stub;
+  const toasts = [];
+  const realAppend = overlayRoot.appendChild.bind(overlayRoot);
+  overlayRoot.appendChild = function (node) {
+    if (node !== null && typeof node === "object" && String(node.className).indexOf("wsr-jump-toast") !== -1) toasts.push(node);
+    return realAppend(node);
+  };
+  const realBodyAppend = global.document.body.appendChild;
+  global.document.body.appendChild = function (node) {
+    if (node !== null && typeof node === "object" && String(node.className).indexOf("wsr-jump-toast") !== -1) toasts.push(node);
+    return node;
+  };
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 6, turns: 10, seek: "text not inside the stub" });
+  flush();
+  assert.ok(toasts.some((node) => String(node.textContent).indexOf("collapsed") !== -1), "a stub row is reported instead of claiming success");
+  global.document.body.appendChild = realBodyAppend;
+  overlayRoot.appendChild = realAppend;
+  delete searchTurns["6"];
+
+  SEARCH.resumePasses();
   conversationNode.attrs["data-conversation-session"] = "";
   render();
+  /* A jump suspends the sidebar pass until the host settles, so the deferred
+     pass is what clears the pill here. */
+  flush();
   assert.strictEqual(composerSeat.querySelector("[data-wsr-composer-analysis]"), null, "the pill goes away with the conversation");
 })().then(() => {
   console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel, search jump");

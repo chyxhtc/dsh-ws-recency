@@ -49,6 +49,12 @@
         var NS = "ws-recency";
         var h = react.createElement;
 
+        /**
+         * Master switch for the search feature: its panel icon and the page behind
+         * it. Off leaves the plugin present but registers no search side at all.
+         */
+        var SEARCH_ENABLED = true;
+
         var HEADER_PREFIX = "workspace:";
         var SESSION_PREFIX = "session:";
         var SECTION_TOKEN = "_groupSection";
@@ -352,6 +358,19 @@
           '[' + STATE_ATTR + '="followup"] [class*="_title"]{color:#d99a2b}',
           '[' + STATE_ATTR + '="waiting"] [class*="_title"]{color:#d99a2b}',
           ".wsr-search-bar{display:flex;gap:8px;align-items:center}",
+          ".wsr-hit-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:2px}",
+          ".wsr-hit-context-toggle,.wsr-hit-context-jump{border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;cursor:pointer}",
+          ".wsr-hit-context-toggle:hover,.wsr-hit-context-jump:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,rgba(255,255,255,.24))}",
+          ".wsr-hit-context{max-height:38vh;overflow:auto;margin-top:4px;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.65;white-space:pre-wrap;word-break:break-word}",
+          ".wsr-search-history{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-search-history-label{flex:none}",
+          ".wsr-search-chip{display:inline-flex;align-items:center;border-radius:9px;background:var(--dsw-alias-bg-layer-3,rgba(255,255,255,.07));overflow:hidden}",
+          ".wsr-search-chip-run{border:none;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;padding:0 4px 0 8px;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+          ".wsr-search-chip-run:hover{color:var(--dsw-alias-label-primary)}",
+          ".wsr-search-chip-drop{border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;padding:0 7px 0 2px;cursor:pointer}",
+          ".wsr-search-chip-drop:hover{color:var(--dsw-alias-state-error-primary,#d9534f)}",
+          ".wsr-search-history-clear{border:none;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;cursor:pointer;text-decoration:underline;padding:0 2px}",
+          ".wsr-search-history-clear:hover{color:var(--dsw-alias-label-primary)}",
           ".wsr-search-input{flex:1;min-width:0;height:30px;padding:0 10px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:inherit;font-size:13px}",
           ".wsr-hit{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:8px;cursor:pointer}",
           ".wsr-hit:hover{background:var(--dsw-alias-bg-layer-2)}",
@@ -363,6 +382,13 @@
           ".wsr-hit-ws{flex:none;max-width:30%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
           ".wsr-hit-turn{flex:none}",
           ".wsr-hit-snippet{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);word-break:break-word}",
+          ".wsr-hit-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-hit-time{flex:none;font-variant-numeric:tabular-nums}",
+          ".wsr-hit-step{flex:none;color:var(--dsw-alias-label-secondary)}",
+          ".wsr-jump-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9999;padding:6px 12px;border-radius:8px;font-size:12px;background:var(--dsw-alias-bg-layer-3,rgba(32,34,38,.96));color:var(--dsw-alias-label-primary);border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none}",
+          ".wsr-diagnose-toast{max-width:min(680px,90vw);white-space:normal;line-height:1.6;text-align:left;font-variant-numeric:tabular-nums}",
+          ".wsr-jump-toast-warn{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 45%,transparent);color:var(--dsw-alias-state-error-primary,#d9534f)}",
+          ".wsr-hit-cwd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}",
           ".wsr-mark{background:rgba(79,142,247,.28);color:inherit;border-radius:2px}",
           '[data-wsr-flash="true"]{outline:2px solid #4f8ef7;outline-offset:2px;border-radius:8px}',
           ".wsr-dot{display:block;width:7px;height:7px;border-radius:50%;margin:0 auto;background:#d99a2b;cursor:pointer}",
@@ -479,6 +505,22 @@
           "search.you": "你",
           "search.assistant": "助手",
           "search.turn": "第 {n} 轮",
+          "search.pluginCost": "插件 {ms}ms",
+          "menu.diagnose": "插件耗时诊断",
+          "diagnose.report": "近 60 秒：扫描 {passes} 次 / 共 {total}ms / 最慢 {worst}ms · 页面节点 {nodes} · 已挂载轮次 {turns}",
+          "search.contextShow": "看上下文",
+          "search.contextHide": "收起",
+          "search.openSession": "打开会话",
+          "search.history": "最近搜索",
+          "search.historyRun": "再搜一次：{query}",
+          "search.historyDrop": "从历史里删除",
+          "search.historyClear": "清空",
+          "search.step": "第 {n} 步",
+          "search.jumpTurn": "已定位：第 {turn} 轮 · 按轮次",
+          "search.jumpText": "已定位：第 {turn} 轮 · 按文字",
+          "search.jumpNoSession": "打不开这个会话（可能已归档、或不在当前工作区）",
+          "search.jumpNoTurn": "会话已打开，但没找到第 {turn} 轮（共 {turns} 轮）",
+          "search.jumpCollapsed": "找到了第 {turn} 轮，但这一轮的历史内容没有被渲染（长会话的旧轮次是折叠的），请手动向上翻一点",
           "ui.reload": "刷新界面",
           "ui.refresh": "刷新列表",
           "trash.title": "回收站",
@@ -664,6 +706,22 @@
           "search.you": "You",
           "search.assistant": "Assistant",
           "search.turn": "turn {n}",
+          "search.pluginCost": "plugin {ms}ms",
+          "menu.diagnose": "Plugin cost",
+          "diagnose.report": "Last 60s: {passes} passes / {total}ms total / {worst}ms worst · {nodes} nodes · {turns} turns mounted",
+          "search.contextShow": "Show context",
+          "search.contextHide": "Hide",
+          "search.openSession": "Open session",
+          "search.history": "Recent",
+          "search.historyRun": "Search again: {query}",
+          "search.historyDrop": "Remove from history",
+          "search.historyClear": "Clear",
+          "search.step": "step {n}",
+          "search.jumpTurn": "Landed on turn {turn} (by turn)",
+          "search.jumpText": "Landed on turn {turn} (by text)",
+          "search.jumpNoSession": "Could not open that session (archived, or outside the current workspace)",
+          "search.jumpNoTurn": "Session opened, but turn {turn} was not found (of {turns})",
+          "search.jumpCollapsed": "Turn {turn} was found, but its history is not rendered (old turns of a long session are collapsed); scroll up a little",
           "ui.reload": "Reload UI",
           "ui.refresh": "Refresh",
           "trash.title": "Trash",
@@ -779,7 +837,62 @@
           return text;
         }
 
-        function top() {
+        /**
+         * Whether a mutated node belongs to the conversation, not the sidebar.
+         *
+         * The observer used to watch the whole body, so a chat that mounts a page
+         * of history - thousands of nodes - ran this plugin's sidebar pass over and
+         * over while the host was rendering, and that is what made a jump into a
+         * long session feel frozen. Nothing here decorates the chat, so its
+         * mutations are none of this observer's business.
+         */
+        /**
+         * The sidebar's own containers, as a set of ancestors of a workspace row.
+         *
+         * Filtering by "is the chat in this node" was not enough: the turn rail and
+         * the host's hover preview are portalled onto <body>, outside the chat, so
+         * moving the pointer along the rail ran this plugin's sidebar pass on every
+         * preview repaint - which is exactly the delay felt after a long jump. The
+         * sidebar is a sibling subtree, and only its containers can hold a row.
+         */
+        var sidebarAncestors = null;
+
+        function sidebarChain() {
+          if (sidebarAncestors !== null && sidebarAncestors.size > 0) {
+            /* Revalidate cheaply: a stale set would stop noticing real changes. */
+            var alive = 0;
+            sidebarAncestors.forEach(function (node) {
+              if (node.isConnected !== false) alive += 1;
+            });
+            if (alive > 0) return sidebarAncestors;
+          }
+          var set = new Set();
+          var header = document.querySelector('[data-row-key^="' + HEADER_PREFIX + '"]');
+          if (header === null || header === undefined) return set;
+          var node = header.parentElement;
+          while (node !== null && node !== undefined && node.parentElement !== null
+            && node.parentElement !== undefined && node.parentElement !== document.body) {
+            set.add(node);
+            node = node.parentElement;
+          }
+          sidebarAncestors = set;
+          return set;
+        }
+
+        function outsideSidebar(node, chain) {
+          if (node === null || node === undefined) return false;
+          var element = node;
+          if (element.nodeType !== 1) element = element.parentElement;
+          if (element === null || element === undefined) return false;
+          var containers = chain === undefined || chain === null ? sidebarChain() : chain;
+          var current = element;
+          while (current !== null && current !== undefined) {
+            if (containers.has(current)) return false;
+            if (current === document.body) return true;
+            current = current.parentElement;
+          }
+          return true;
+        }        function top() {
           return typeof document !== "undefined" && document.body !== null ? document.body : null;
         }
 
@@ -1719,18 +1832,66 @@
           decorateComposerStats();
         }
 
+        /**
+         * While this is in the future the sidebar pass stays off.
+         *
+         * Jumping to a hit in a long session makes the host mount a whole page of
+         * history. That is thousands of DOM changes, and each one used to run this
+         * plugin's sidebar pass on top of the host's own rendering, which is what
+         * still froze the window even after chat mutations were filtered out.
+         */
+        var suppressedUntil = 0;
+
+        function suspendPasses(ms) {
+          var span = typeof ms === "number" && ms > 0 ? ms : 8000;
+          suppressedUntil = Date.now() + span;
+        }
+
+        function passesSuspended() {
+          return suppressedUntil !== 0 && Date.now() < suppressedUntil;
+        }
+        /** At most this often, whatever happens: a pass writes DOM, and writing DOM
+         * can be observed by our own observer, so the interval is the guarantee that
+         * a feedback loop cannot turn into a busy main thread. */
+        var PASS_MIN_GAP = 400;
+        var lastPassAt = 0;
+        var passCount = 0;
+        /* Rolling record for the diagnostic row: how often the pass runs and how
+           long it takes, so a claim about cost can be checked on screen. */
+        var passSamples = [];
+
+        function recordPass(spent) {
+          passSamples.push({ at: Date.now(), ms: spent });
+          if (passSamples.length > 200) passSamples.shift();
+        }
+
         function schedule() {
           if (disposed || timer !== null) return;
+          sidebarAncestors = null;
+          if (passesSuspended()) {
+            /* One pass, once the host has finished mounting. */
+            var wait = Math.max(120, suppressedUntil - Date.now() + 60);
+            window.setTimeout(function () {
+              if (!disposed) schedule();
+            }, wait);
+            return;
+          }
+          var since = Date.now() - lastPassAt;
+          var delay = since >= PASS_MIN_GAP ? 60 : PASS_MIN_GAP - since + 16;
           timer = window.setTimeout(function () {
             timer = null;
+            lastPassAt = Date.now();
+            passCount += 1;
+            var began = Date.now();
             try {
               apply();
             } catch (error) {
               console.warn("[dsh-ws-recency] pass failed:", error);
             }
-          }, 0);
+            recordPass(Date.now() - began);
+            if (typeof window !== "undefined") window.__DSH_WSR_PASSES__ = passCount;
+          }, delay);
         }
-
         /** `shell.overlay` occupant; it renders no chrome of its own. */
         function Sorter(props) {
           if (typeof props.useSessions === "function") {
@@ -1797,6 +1958,46 @@
          * `<home>/.trash/ws-recency/`. The browser half only asks for confirmation
          * and posts the id.
          */
+        /**
+         * Session menu row that reports this plugin's own cost.
+         *
+         * Without devtools there was no way to tell a slow plugin from a slow host,
+         * and several rounds went into guessing. This prints the numbers where the
+         * lag is felt. */
+        function DiagnoseMenuItem(props) {
+          var Item = ui.MenuItemButton;
+          if (typeof Item !== "function") return null;
+          return h(Item, {
+            icon: undefined,
+            onSelect: function () {
+              var now = Date.now();
+              var recent = passSamples.filter(function (sample) {
+                return now - sample.at <= 60000;
+              });
+              var total = 0;
+              var worst = 0;
+              for (var i = 0; i < recent.length; i += 1) {
+                total += recent[i].ms;
+                if (recent[i].ms > worst) worst = recent[i].ms;
+              }
+              var nodes = typeof document !== "undefined" ? document.querySelectorAll("*").length : 0;
+              var turns = typeof document !== "undefined" ? document.querySelectorAll("[data-chat-turn]").length : 0;
+              var note = statsDiv("wsr-jump-toast wsr-diagnose-toast");
+              note.textContent = t("diagnose.report", {
+                passes: String(recent.length),
+                total: String(total),
+                worst: String(worst),
+                nodes: String(nodes),
+                turns: String(turns),
+              });
+              document.body.appendChild(note);
+              window.setTimeout(function () {
+                if (note.parentElement !== null) note.remove();
+              }, 8000);
+            },
+          }, t("menu.diagnose"));
+        }
+
         function TrashMenuItem(props) {
           var Item = ui.MenuItemButton;
           if (typeof Item !== "function") return null;
@@ -3775,10 +3976,21 @@
 
         /* ---------- session content search -------------------------------- */
 
+        /** How many recent queries the panel remembers. */
+        var SEARCH_HISTORY_MAX = 12;
+
         /** What the uncontrolled input holds; the panel keeps only results in state. */
         var searchDraft = "";
         /** Bumped per search so a slow answer cannot overwrite a newer one. */
         var searchGeneration = 0;
+        /**
+         * The last answer, kept outside the component.
+         *
+         * Opening a hit switches the main view to the conversation, which unmounts
+         * this page; without this the results were gone when the user came back
+         * and every search had to be run again.
+         */
+        var searchLast = null;
 
         function searchPost(body) {
           return fetch("/ws-recency/search", {
@@ -3801,6 +4013,39 @@
           return h(Icon, { size: size });
         }
 
+        /**
+         * Move a scroller and announce it.
+         *
+         * The chat pages older history in when its own scroll handler sees movement.
+         * Assigning `scrollTop` from script does not fire that handler, so a long
+         * session stayed at the same page no matter how often the value was set;
+         * a synthetic scroll event is what lets the next page load.
+         */
+        function scrollTo(scroller, top) {
+          if (scroller === null || scroller === undefined) return;
+          var target = Math.max(0, Number(top) || 0);
+          try {
+            scroller.scrollTop = target;
+          } catch (error) {
+            return;
+          }
+          var fire = function () {
+            try {
+              var event = document.createEvent("Event");
+              event.initEvent("scroll", true, false);
+              scroller.dispatchEvent(event);
+            } catch (error) {
+              /* an engine without createEvent still got the assignment */
+            }
+          };
+          fire();
+          try {
+            if (typeof requestAnimationFrame === "function") requestAnimationFrame(fire);
+            else window.setTimeout(fire, 16);
+          } catch (error) {
+            /* the first dispatch is usually enough */
+          }
+        }
         function conversationScroller() {
           if (typeof document === "undefined") return null;
           try {
@@ -3823,9 +4068,57 @@
         function turnRowOf(turn) {
           if (typeof document === "undefined" || !isFinite(turn)) return null;
           try {
-            return document.querySelector('[data-chat-turn="' + String(turn) + '"]');
+            /* Scoped when possible: a document-wide attribute query on a long
+               transcript is the expensive part of a jump's polling loop. The
+               document stays as the fallback because the scroller is not always
+               the element that holds the rows. */
+            var selector = '[data-chat-turn="' + String(turn) + '"]';
+            var scope = conversationScroller();
+            if (scope !== null && typeof scope.querySelector === "function") {
+              var scoped = scope.querySelector(selector);
+              if (scoped !== null && scoped !== undefined) return scoped;
+            }
+            return document.querySelector(selector);
           } catch (error) {
             return null;
+          }
+        }
+
+        /** A short-lived line that says where the jump landed and how it got there. */
+        function announceJump(hit, byText, costMs) {
+          if (typeof document === "undefined") return;
+          try {
+            var note = statsDiv("wsr-jump-toast");
+            var text = t(byText === true ? "search.jumpText" : "search.jumpTurn", { turn: String(hit.turn) });
+            if (isFinite(Number(costMs))) text += " · " + t("search.pluginCost", { ms: String(Math.round(Number(costMs))) });
+            note.textContent = text;
+            document.body.appendChild(note);
+            window.setTimeout(function () {
+              if (note.parentElement !== null) note.remove();
+            }, 3200);
+          } catch (error) {
+            /* a toast is a nicety: never break the jump for it */
+          }
+        }
+        /**
+         * Say why a jump did not land.
+         *
+         * Without this a failed jump is indistinguishable from a jump that landed
+         * in the wrong place: the panel just sits where it was and the user cannot
+         * tell whether the session opened, whether the turn exists, or whether the
+         * text was never rendered.
+         */
+        function announceJumpFailure(hit, reason) {
+          if (typeof document === "undefined") return;
+          try {
+            var note = statsDiv("wsr-jump-toast wsr-jump-toast-warn");
+            note.textContent = t(reason, { turn: String(hit.turn), turns: String(hit.turns) });
+            document.body.appendChild(note);
+            window.setTimeout(function () {
+              if (note.parentElement !== null) note.remove();
+            }, 5000);
+          } catch (error) {
+            /* nothing to do if the toast itself fails */
           }
         }
 
@@ -3887,9 +4180,422 @@
           window.setTimeout(tick, 120);
         }
 
-        function jumpToSearchHit(hit) {
+        /** Collapsed text of an element, for matching a message fragment. */
+        function normalizedText(node) {
+          var text = node !== null && node !== undefined && typeof node.textContent === "string" ? node.textContent : "";
+          return text.replace(/\s+/g, " ").trim();
+        }
+
+        /**
+         * The smallest element in the transcript that holds this fragment.
+         *
+         * The conversation view renders no per-turn anchor (`data-chat-turn` does
+         * not exist in it), so text is the only handle a jump has. The needle is
+         * retried in shorter pieces because markdown rendering can split or drop
+         * parts of a long sentence.
+         */
+        function findByText(scroller, seeks) {
+          if (scroller === null) return null;
+          var candidates = Array.isArray(seeks) ? seeks : (typeof seeks === "string" ? [seeks] : []);
+          if (candidates.length === 0) return null;
+          var probes = [];
+          for (var c = 0; c < candidates.length; c += 1) {
+            var needle = String(candidates[c] || "").replace(/\s+/g, " ").trim();
+            if (needle === "") continue;
+            probes.push(needle);
+            if (needle.length > 34) probes.push(needle.slice(0, 34));
+            if (needle.length > 16) probes.push(needle.slice(0, 16));
+          }
+          /* Walk the turn rows, not every element: one `textContent` read per row
+             is a few dozen reads, where sweeping `querySelectorAll("*")` over a
+             126-turn transcript is tens of thousands and freezes the panel. */
+          var rows = [];
+          try {
+            var found = scroller.querySelectorAll("[data-chat-turn]");
+            for (var r = 0; r < found.length && r < 400; r += 1) rows.push(found[r]);
+          } catch (error) {
+            rows = [];
+          }
+          for (var p = 0; p < probes.length; p += 1) {
+            var probe = probes[p].trim();
+            if (probe === "") continue;
+            for (var q = 0; q < rows.length; q += 1) {
+              if (normalizedText(rows[q]).indexOf(probe) !== -1) return rows[q];
+            }
+          }
+          return null;
+        }
+        /**
+         * Whether a turn row actually carries the matched text.
+         *
+         * A very long session renders its old turns through a lighter path than
+         * the recent ones - the per-message action bar is absent - and that path
+         * may hold a collapsed placeholder instead of the message body. Landing on
+         * one of those scrolls somewhere useless, so a row is only trusted when
+         * the matched text (or at least a real block of text) is inside it.
+         */
+        function rowCarriesSeek(row, seeks) {
+          if (row === null || row === undefined) return false;
+          var text = normalizedText(row);
+          var candidates = Array.isArray(seeks) ? seeks : (typeof seeks === "string" ? [seeks] : []);
+          for (var i = 0; i < candidates.length; i += 1) {
+            var needle = String(candidates[i] || "").replace(/\s+/g, " ").trim();
+            if (needle === "") continue;
+            if (text.indexOf(needle) !== -1) return true;
+            if (needle.length > 20 && text.indexOf(needle.slice(0, 20)) !== -1) return true;
+          }
+          /* No needle matched: a body of text still proves the row is rendered. */
+          return text.length > 200;
+        }
+        
+        
+        /** The rail mark for one turn, if the rail currently renders it. */
+        function railMarkFor(turn) {
+          var wanted = Number(turn);
+          if (!isFinite(wanted)) return null;
+          var marks = railMarks();
+          for (var i = 0; i < marks.length; i += 1) {
+            if (turnOfRailMark(marks[i]) === wanted) return marks[i];
+          }
+          return null;
+        }
+        /**
+         * The rail's own scroll container.
+         *
+         * A mark's parent is the marks list, not the scroller: scrolling the list
+         * does nothing, so the ancestor that actually scrolls is what has to move.
+         */
+        function railList() {
+          var marks = railMarks();
+          if (marks.length === 0) return null;
+          var node = marks[0].parentElement;
+          while (node !== null && node !== undefined) {
+            var scrolls = typeof node.scrollHeight === "number" && typeof node.clientHeight === "number"
+              && node.scrollHeight > node.clientHeight && node.clientHeight > 0;
+            if (scrolls) return node;
+            node = node.parentElement;
+          }
+          return null;
+        }
+
+        /** The style rule the Custom Highlight API paints matches with. */
+        var searchHighlightReady = false;
+
+        function ensureSearchHighlight() {
+          if (searchHighlightReady || typeof document === "undefined") return;
+          searchHighlightReady = true;
+          try {
+            var style = document.createElement("style");
+            style.setAttribute("data-wsr-search-highlight", "true");
+            style.textContent = "::highlight(wsr-search-hit){background:rgba(245,197,66,.45);color:inherit}";
+            if (document.head !== null && document.head !== undefined) document.head.appendChild(style);
+          } catch (error) {
+            /* without the rule the jump still scrolls; only the paint is lost */
+          }
+        }
+
+        /** Text nodes under a root, for finding the query terms inside a message. */
+        function textNodesIn(root, limit) {
+          var out = [];
+          var cap = typeof limit === "number" && limit > 0 ? limit : 3000;
+          if (root === null || root === undefined) return out;
+          if (typeof NodeFilter === "undefined" || typeof document.createTreeWalker !== "function") return out;
+          try {
+            var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+            while (out.length < cap && walker.nextNode() !== null) out.push(walker.currentNode);
+          } catch (error) {
+            return out;
+          }
+          return out;
+        }
+        /**
+         * Paints the query's terms where they appear and centres the first one.
+         *
+         * Landing on the right turn is not enough: a long turn buries the match,
+         * and reading it out of the chat by hand is what this panel exists to
+         * avoid. The Custom Highlight API paints the ranges without touching the
+         * React-managed DOM, so nothing is re-rendered or fought over.
+         */
+        function markHitTerms(terms) {
+          if (typeof document === "undefined") return;
+          var needles = [];
+          for (var i = 0; i < (Array.isArray(terms) ? terms.length : 0); i += 1) {
+            var term = String(terms[i] || "").toLowerCase();
+            if (term !== "" && needles.indexOf(term) === -1) needles.push(term);
+          }
+          if (needles.length === 0) return;
+          /* Four short attempts at most: every attempt walks text nodes, and a
+             long transcript has enough of them that polling was felt as lag. */
+          var attempts = 0;
+          var tick = function () {
+            attempts += 1;
+            if (attempts > 2) return;
+            var scroller = conversationScroller();
+            if (scroller === null) {
+              window.setTimeout(tick, 300);
+              return;
+            }
+            var beganScan = Date.now();
+            var nodes = textNodesIn(scroller, 1200);
+            var ranges = [];
+            for (var n = 0; n < nodes.length && ranges.length < 40; n += 1) {
+              var node = nodes[n];
+              var text = String(node.nodeValue || "");
+              if (text === "") continue;
+              var lower = text.toLowerCase();
+              for (var k = 0; k < needles.length && ranges.length < 40; k += 1) {
+                var from = 0;
+                while (from < lower.length && ranges.length < 40) {
+                  var at = lower.indexOf(needles[k], from);
+                  if (at < 0) break;
+                  try {
+                    var range = document.createRange();
+                    range.setStart(node, at);
+                    range.setEnd(node, at + needles[k].length);
+                    ranges.push(range);
+                  } catch (error) {
+                    /* a node the range API refuses is simply skipped */
+                  }
+                  from = at + needles[k].length;
+                }
+              }
+            }
+            if (ranges.length === 0) {
+              if (attempts < 2) window.setTimeout(tick, 600);
+              return;
+            }
+            var painted = false;
+            try {
+              /* `CSS` in this module is the plugin's stylesheet array, so the
+                 DOM API has to be reached through `window`. */
+              var cssApi = typeof window !== "undefined" && window !== null ? window.CSS : undefined;
+              var HighlightCtor = typeof window !== "undefined" && window !== null ? window.Highlight : undefined;
+              if (cssApi !== undefined && cssApi !== null && cssApi.highlights !== undefined && typeof HighlightCtor === "function") {
+                ensureSearchHighlight();
+                cssApi.highlights.set("wsr-search-hit", new HighlightCtor(ranges));
+                painted = true;
+                window.setTimeout(function () {
+                  try {
+                    cssApi.highlights.delete("wsr-search-hit");
+                  } catch (error) {
+                    /* the panel may have closed already */
+                  }
+                }, 12000);
+              }
+            } catch (error) {
+              painted = false;
+            }
+            var spentScan = Date.now() - beganScan;
+            if (spentScan > 120 && typeof window !== "undefined") window.__DSH_WSR_LAST_TAIL_MS__ = spentScan;
+            var first = ranges[0];
+            var holder = first !== undefined && first !== null
+              && first.startContainer !== undefined && first.startContainer !== null
+              ? first.startContainer.parentElement
+              : null;
+            if (holder !== null && holder !== undefined) flashTurnRow(holder);
+            else if (!painted) window.setTimeout(tick, 300);
+          };
+          window.setTimeout(tick, 120);
+        }        /**
+         * Bring one search hit into view.
+         *
+         * Three routes, best first: a mounted `data-chat-turn` row (the chat keeps
+         * one per flow item), the turn rail's own mark for that turn (it loads a
+         * turn that is outside the window), and finally a proportional scroll plus
+         * a text search, with the upward walk while older history loads.
+         */
+                /** The badge currently pinned to a rail cell, if any. */
+
+                
+                /**
+         * Bring one search hit into view.
+         *
+         * Scrolling the transcript does not page older history in: the chat asks the
+         * user to load it. Clicking the turn rail's mark for that turn does load it,
+         * which is the route the host itself uses, so the rail is the primary path
+         * here. Mounted rows and a text search remain as fallbacks.
+         */
+        /**
+         * One last look after a rail click: the host is loading a whole page of
+         * history, so nothing here may poll while that runs.
+         */
+        function finaliseJump(hit, terms) {
+          if (typeof document === "undefined") return;
+          var began = Date.now();
+          var seeks = Array.isArray(hit.seeks) ? hit.seeks : hit.seek;
+          var scroller = conversationScroller();
+          if (scroller !== null) {
+            var row = findByText(scroller, seeks);
+            if (row !== null) flashTurnRow(row);
+          }
+          markHitTerms(terms);
+          /* Anything past a frame is ours to answer for, so say so rather than
+             letting it pass as the host being slow. */
+          var spent = Date.now() - began;
+          if (spent > 120 && typeof window !== "undefined") {
+            window.__DSH_WSR_LAST_TAIL_MS__ = spent;
+          }
+        }
+        /**
+         * Bring one search hit into view.
+         *
+         * Scrolling the transcript does not page older history in: the chat asks the
+         * user to load it, while clicking the turn rail's mark loads and aligns that
+         * turn. The rail is therefore the primary route. Everything here is kept
+         * to a few cheap lookups: the host is rendering history at the same time,
+         * and a polling loop on top of that is what made the jump feel frozen.
+         */
+        function revealHit(hit, terms) {
+          if (typeof document === "undefined" || hit === null || hit === undefined) return;
+          var sessionId = hit.sessionId;
+          var turn = Number(hit.turn);
+          var seeksNow = Array.isArray(hit.seeks) ? hit.seeks : hit.seek;
+          var deadline = Date.now() + (Number(hit.turns) > 40 ? 15000 : 9000);
+          var opened = false;
+          var reportedStub = false;
+          var pokes = 0;
+          var ticks = 0;
+          /* Wall time includes the host opening the session and loading its
+             history; only the synchronous work in here belongs to this plugin. */
+          var spentMs = 0;
+          var started = Date.now();
+          var tick = function () {
+            var beganTick = Date.now();
+            var done = function () {
+              spentMs += Date.now() - beganTick;
+            };
+            var result = tickOnce();
+            done();
+            return result;
+          };
+          var tickOnce = function () {
+            if (Date.now() > deadline) {
+              announceJumpFailure(hit, opened ? "search.jumpNoTurn" : "search.jumpNoSession");
+              return;
+            }
+            if (currentConversationId() !== sessionId) {
+              window.setTimeout(tick, 250);
+              return;
+            }
+            opened = true;
+            ticks += 1;
+            var row = turnRowOf(turn);
+            if (row !== null) {
+              flashTurnRow(row);
+              if (rowCarriesSeek(row, seeksNow)) {
+                announceJump(hit, false, spentMs);
+                markHitTerms(terms);
+                return;
+              }
+              if (!reportedStub) {
+                reportedStub = true;
+                announceJumpFailure(hit, "search.jumpCollapsed");
+              }
+              window.setTimeout(tick, 500);
+              return;
+            }
+            /* Query the rail every other tick: it is a document-wide lookup. */
+            if (ticks % 2 === 1) {
+              var mark = railMarkFor(turn);
+              if (mark !== null) {
+                try {
+                  mark.click();
+                  announceJump(hit, false, spentMs);
+                  /* The click starts a real history load: hand the thread back to
+                     the host and look once when it has had time to render. */
+                  window.setTimeout(function () {
+                  finaliseJump(hit, terms);
+                  suppressedUntil = 0;
+                  schedule();
+                }, 1200);
+                  return;
+                } catch (error) {
+                  /* fall through */
+                }
+              }
+            }
+            /* The rail is virtualised too: nudge it so the wanted mark renders. */
+            if (pokes < 4) {
+              var list = railList();
+              var turns = Number(hit.turns);
+              if (list !== null && turn > 0 && turns > 0) {
+                var span = Math.max(0, (Number(list.scrollHeight) || 0) - (Number(list.clientHeight) || 0));
+                var ratio = Math.min(1, Math.max(0, (turn - 1) / Math.max(1, turns - 1)));
+                scrollTo(list, span * ratio);
+                pokes += 1;
+                window.setTimeout(tick, 350);
+                return;
+              }
+            }
+            window.setTimeout(tick, 350);
+          };
+          window.setTimeout(tick, 200);
+        }
+        function jumpToSearchHit(hit, terms) {
+          suspendPasses(12000);
           openSessionRow(hit.sessionId);
-          revealTurn(hit.sessionId, hit.turn);
+          revealHit(hit, terms);
+        }
+
+        /**
+         * The chat's own turn rail: one button per turn, `data-index` + an
+         * aria-label that names the turn. Clicking a mark is the official
+         * navigation, and it also loads a turn that is not in the window yet.
+         */
+        function railMarks() {
+          if (typeof document === "undefined") return [];
+          var all = null;
+          try {
+            /* The rail's own frame first: the same collection, found without
+               walking the whole document. */
+            var frame = document.querySelector('[class*="_frame"]');
+            var scopedAll = frame === null ? null : frame.querySelectorAll("button[data-index]");
+            all = scopedAll !== null && scopedAll.length > 0 ? scopedAll : document.querySelectorAll("button[data-index]");
+          } catch (error) {
+            return [];
+          }
+          var marks = [];
+          for (var i = 0; i < (all === null ? 0 : all.length); i += 1) {
+            var button = all[i];
+            var className = typeof button.className === "string" ? button.className : "";
+            if (className.indexOf("_mark") === -1) continue;
+            marks.push(button);
+          }
+          return marks;
+        }
+
+        /** The turn a rail mark points at: the last integer in its label. */
+        /**
+         * The turn a rail mark points at.
+         *
+         * The label starts with the turn number ("Jump to turn 3", "跳转到第 3 轮");
+         * any count a wording appends comes later, so the first integer is the turn.
+         * A label that carries a count instead of a turn would make the FIRST match
+         * wrong in exactly the same way the LAST one was, so both are tried and the
+         * mark's own order breaks the tie.
+         */
+        function turnOfRailMark(button) {
+          if (button === null || button === undefined || typeof button.getAttribute !== "function") return NaN;
+          var label = String(button.getAttribute("aria-label") || "");
+          var found = label.match(/\d+/);
+          return found === null ? NaN : Number(found[0]);
+        }
+
+        /** Click the rail mark for one turn, if it is currently rendered. */
+        function jumpViaRail(turn) {
+          var wanted = Number(turn);
+          if (!isFinite(wanted)) return false;
+          var marks = railMarks();
+          for (var i = 0; i < marks.length; i += 1) {
+            if (turnOfRailMark(marks[i]) !== wanted) continue;
+            try {
+              marks[i].click();
+              return true;
+            } catch (error) {
+              return false;
+            }
+          }
+          return false;
         }
 
         /** Snippet text with every query term wrapped in a mark. */
@@ -3929,29 +4635,129 @@
          * budget plus how many are still pending, so this asks again until the
          * index has caught up instead of making the user press search twice.
          */
-        function SearchPanelPage() {
-          var state = react.useState({ loaded: false, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" });
+        /** A session id is a UUID; the head and tail are what tells two apart. */
+        function shortSessionId(sessionId) {
+          if (typeof sessionId !== "string" || sessionId === "") return "";
+          return sessionId.length > 12 ? sessionId.slice(0, 8) + "\u2026" + sessionId.slice(-4) : sessionId;
+        }
+
+        /**
+         * One search hit.
+         *
+         * A hit is only useful if it says which conversation and when: the
+         * workspace narrows it down, but two sessions in one workspace read the
+         * same without a title and a timestamp.
+         */
+        function searchHitRow(hit, terms, onClick, extra) {
+          var title = typeof hit.title === "string" && hit.title.trim() !== ""
+            ? hit.title.trim()
+            : (typeof hit.sessionId === "string" ? shortSessionId(hit.sessionId) : "");
+          var when = formatWhen(Number(hit.at) || 0);
+          return h("div", {
+            className: "wsr-hit",
+            title: hit.cwd || "",
+            onClick: onClick,
+          },
+            h("div", { className: "wsr-hit-head" },
+              h("span", { className: "wsr-hit-role " + (hit.role === "user" ? "wsr-hit-user" : "wsr-hit-agent") }, hit.role === "user" ? t("search.you") : t("search.assistant")),
+              h("span", { className: "wsr-hit-title", title: title }, title),
+              typeof hit.workspace === "string" && hit.workspace !== "" ? h("span", { className: "wsr-hit-ws" }, hit.workspace) : null,
+              h("span", { className: "wsr-hit-turn" }, t("search.turn", { n: String(hit.turn) })),
+              /* The step inside the turn: it is what the reader checks against the
+                 chat after jumping, so a hit that looks wrong can be told apart
+                 from a jump that landed wrong. */
+              typeof hit.step === "number" && isFinite(hit.step)
+                ? h("span", { className: "wsr-hit-step" }, t("search.step", { n: String(hit.step) }))
+                : null,
+            ),
+            h("div", { className: "wsr-hit-meta" },
+              when !== "" ? h("span", { className: "wsr-hit-time" }, when) : null,
+              typeof hit.cwd === "string" && hit.cwd !== "" ? h("span", { className: "wsr-hit-cwd" }, hit.cwd) : null,
+            ),
+            h("div", { className: "wsr-hit-snippet" },
+              hit.lead === true ? "\u2026" : null,
+              highlightSnippet(hit.snippet || "", terms),
+              hit.tail === true ? "\u2026" : null,
+            ),
+            extra === undefined || extra === null ? null : extra,
+          );
+        }
+
+        /**
+         * One search hit, with the surrounding text on demand.
+         *
+         * Opening a hit in a long session makes the chat mount a page of history,
+         * which can take seconds. Reading the hit does not have to: the host ships
+         * the matched neighbourhood, so the row can show it where it stands.
+         */
+        function SearchHitRow(props) {
+          var opened = react.useState(false);
+          var context = typeof props.hit.context === "string" ? props.hit.context : "";
+          var extra = context === "" ? null : [
+            h("div", { className: "wsr-hit-actions" },
+              h("button", {
+                type: "button",
+                className: "wsr-hit-context-toggle",
+                onClick: function (event) {
+                  if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+                  opened[1](opened[0] !== true);
+                },
+              }, opened[0] === true ? t("search.contextHide") : t("search.contextShow")),
+              h("button", {
+                type: "button",
+                className: "wsr-hit-context-jump",
+                onClick: function (event) {
+                  if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+                  if (typeof props.onJump === "function") props.onJump();
+                },
+              }, t("search.openSession")),
+            ),
+            opened[0] === true ? h("div", { className: "wsr-hit-context" }, context) : null,
+          ];
+          return searchHitRow(props.hit, props.terms, props.onJump, extra);
+        }
+
+        function SearchPanelPage(props) {
+          var state = react.useState(searchLast === null
+            ? { loaded: false, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" }
+            : searchLast);
           var view = state[0];
           var setView = state[1];
+          /* The recent-query list lives in the shared store, so it survives a
+             restart and is the same list on every panel. */
+          var preferences = props !== undefined && props !== null && typeof props.useStore === "function"
+            ? props.useStore(function (snapshot) { return snapshot; })
+            : (data.settings || {});
+          var actions = props !== undefined && props !== null && props.actions !== undefined ? props.actions : {};
+          var historyList = preferences !== null && preferences !== undefined && Array.isArray(preferences.searchHistory)
+            ? preferences.searchHistory
+            : [];
+          /* Every update also parks the answer outside the component, so coming
+             back from a hit restores the list instead of asking for a new search. */
+          var commit = function (next) {
+            searchLast = next;
+            setView(next);
+          };
 
           var run = function (text, refresh) {
             var query = typeof text === "string" ? text.trim() : "";
             searchGeneration += 1;
             var generation = searchGeneration;
             if (query === "") {
-              setView({ loaded: true, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" });
+              commit({ loaded: true, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" });
               return;
             }
-            setView({ loaded: true, query: query, hits: view.hits, terms: view.terms, scanned: view.scanned, total: view.total, pending: view.pending, took: view.took, busy: true, error: "" });
+            if (typeof actions.pushSearch === "function") actions.pushSearch(query);
+            commit({ loaded: true, query: query, hits: view.hits, terms: view.terms, scanned: view.scanned, total: view.total, pending: view.pending, took: view.took, busy: true, error: "" });
             var ask = function (needRefresh) {
               searchPost({ query: query, refresh: needRefresh === true }).then(function (answer) {
                 if (generation !== searchGeneration) return;
                 var json = answer.json;
                 if (json === null || json.ok !== true) {
-                  setView({ loaded: true, query: query, hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: t("search.failed") + "HTTP " + answer.status });
+                  commit({ loaded: true, query: query, hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: t("search.failed") + "HTTP " + answer.status });
                   return;
                 }
-                setView({
+                commit({
                   loaded: true,
                   query: query,
                   hits: Array.isArray(json.hits) ? json.hits : [],
@@ -3970,7 +4776,7 @@
                 }
               }).catch(function (error) {
                 if (generation !== searchGeneration) return;
-                setView({ loaded: true, query: query, hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: t("search.failed") + (error && error.message ? error.message : error) });
+                commit({ loaded: true, query: query, hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: t("search.failed") + (error && error.message ? error.message : error) });
               });
             };
             ask(refresh === true);
@@ -3980,7 +4786,8 @@
             className: "wsr-search-input",
             type: "search",
             placeholder: t("search.placeholder"),
-            defaultValue: "",
+            /* The box comes back with the query that produced the results below. */
+            defaultValue: view.query || searchDraft,
             onChange: function (event) {
               searchDraft = event !== undefined && event.target !== undefined ? String(event.target.value || "") : "";
             },
@@ -3993,31 +4800,54 @@
           });
 
           var rows = view.hits.map(function (hit, index) {
-            return h("div", {
-              className: "wsr-hit",
-              key: String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index),
-              title: hit.cwd || "",
-              onClick: function () { jumpToSearchHit(hit); },
-            },
-              h("div", { className: "wsr-hit-head" },
-                h("span", { className: "wsr-hit-role " + (hit.role === "user" ? "wsr-hit-user" : "wsr-hit-agent") }, hit.role === "user" ? t("search.you") : t("search.assistant")),
-                h("span", { className: "wsr-hit-title" }, hit.title || hit.sessionId || ""),
-                typeof hit.workspace === "string" && hit.workspace !== "" ? h("span", { className: "wsr-hit-ws" }, hit.workspace) : null,
-                h("span", { className: "wsr-hit-turn" }, t("search.turn", { n: String(hit.turn) })),
-              ),
-              h("div", { className: "wsr-hit-snippet" },
-                hit.lead === true ? "\u2026" : null,
-                highlightSnippet(hit.snippet || "", view.terms),
-                hit.tail === true ? "\u2026" : null,
-              ),
-            );
+            var row = h(SearchHitRow, {
+              hit: hit,
+              terms: view.terms,
+              onJump: function () { jumpToSearchHit(hit, view.terms); },
+            });
+            row.key = String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index);
+            return row;
           });
 
           return h("div", { className: "wsr-page wsr-search-page" },
             h("div", { className: "wsr-page-head" },
               h("div", { className: "wsr-page-heading" }, t("search.title")),
             ),
-            h("div", { className: "wsr-search-bar" },
+            historyList.length === 0 ? null : h("div", { className: "wsr-search-history" },
+              h("span", { className: "wsr-search-history-label" }, t("search.history")),
+              historyList.map(function (item, index) {
+                var text = String(item);
+                return h("span", { className: "wsr-search-chip", key: text + ":" + String(index) },
+                  h("button", {
+                    type: "button",
+                    className: "wsr-search-chip-run",
+                    title: t("search.historyRun", { query: text }),
+                    onClick: function () {
+                      searchDraft = text;
+                      run(text, false);
+                  },
+                  }, text),
+                  h("button", {
+                    type: "button",
+                    className: "wsr-search-chip-drop",
+                    title: t("search.historyDrop"),
+                    "aria-label": t("search.historyDrop"),
+                    onClick: function (event) {
+                      if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+                      if (typeof actions.dropSearch === "function") actions.dropSearch(text);
+                    },
+                  }, "\u00d7"),
+                );
+              }),
+              h("button", {
+                type: "button",
+                className: "wsr-search-history-clear",
+                onClick: function () {
+                  if (typeof actions.clearSearches === "function") actions.clearSearches();
+                },
+              }, t("search.historyClear")),
+            ),
+                        h("div", { className: "wsr-search-bar" },
               input,
               h("button", { type: "button", className: "wsr-btn", onClick: function () { run(searchDraft, false); } }, t("search.run")),
             ),
@@ -4485,6 +5315,10 @@
 
         function apply_(ctx) {
           installCss();
+          /* The turn rail's cells carry no text, and the host's own hover preview
+             shows a turn's prompt (a number appears only when that prompt is
+             empty). Labelling belongs to the search feature, so it is off with
+             it. */
           /* Navigation and unpinning live in the Workspace UI service. It can be
              provided after this plugin applies, so take it now when it is there and
              let cordis hand it over later when it is not. Never fail the plugin over
@@ -4502,7 +5336,7 @@
           }
           var prefs = clientStore.defineStore({
             init: function () {
-              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, argMode: "tool", followUps: {} };
+              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, argMode: "tool", followUps: {}, searchHistory: [] };
             },
             persist: "dsh.ws-recency.prefs.v1",
             actions: {
@@ -4526,6 +5360,30 @@
                 if (draft.followUps === null || typeof draft.followUps !== "object") return;
                 if (draft.followUps[sessionId] !== undefined) delete draft.followUps[sessionId];
               },
+              /* Recent queries, newest first, case-insensitively de-duplicated. */
+              pushSearch: function (draft, query) {
+                var text = typeof query === "string" ? query.trim() : "";
+                if (text === "") return;
+                var list = Array.isArray(draft.searchHistory) ? draft.searchHistory : [];
+                var lower = text.toLowerCase();
+                var next = [text];
+                for (var i = 0; i < list.length && next.length < SEARCH_HISTORY_MAX; i += 1) {
+                  if (String(list[i]).toLowerCase() === lower) continue;
+                  next.push(list[i]);
+                }
+                draft.searchHistory = next;
+              },
+              dropSearch: function (draft, query) {
+                var text = typeof query === "string" ? query.trim().toLowerCase() : "";
+                if (text === "") return;
+                var list = Array.isArray(draft.searchHistory) ? draft.searchHistory : [];
+                draft.searchHistory = list.filter(function (item) {
+                  return String(item).trim().toLowerCase() !== text;
+                });
+              },
+              clearSearches: function (draft) {
+                draft.searchHistory = [];
+              },
             },
           });
 
@@ -4539,7 +5397,19 @@
           prefsStore = prefs;
 
           if (typeof MutationObserver === "function" && top() !== null) {
-            observer = new MutationObserver(schedule);
+            observer = new MutationObserver(function (records) {
+              if (passesSuspended()) return;
+              /* One relevant record is enough: the pass itself is the expensive
+                 part, and it always looks at the whole sidebar. */
+              var list = Array.isArray(records) ? records : [];
+              var chain = sidebarChain();
+              for (var i = 0; i < list.length; i += 1) {
+                if (outsideSidebar(list[i] === undefined || list[i] === null ? null : list[i].target, chain)) {
+                  schedule();
+                  return;
+                }
+              }
+            });
             observer.observe(top(), {
               childList: true,
               subtree: true,
@@ -4578,23 +5448,27 @@
             }, ColorsRow);
           });
 
-          ctx.slots.inject("sidebar.panellist", function () {
-            return ctx.slots.register({
-              name: "sidebar.panellist",
-              id: "ws-recency-search",
-              order: 19,
-              locale: NS,
-              label: function () { return t("search.title"); },
-            }, SearchPanelIcon);
-          });
+          if (SEARCH_ENABLED) {
+            ctx.slots.inject("sidebar.panellist", function () {
+              return ctx.slots.register({
+                name: "sidebar.panellist",
+                id: "ws-recency-search",
+                order: 19,
+                locale: NS,
+                label: function () { return t("search.title"); },
+              }, SearchPanelIcon);
+            });
 
-          ctx.slots.inject("main", function () {
-            return ctx.slots.register({
-              name: "main",
-              key: "ws-recency-search",
-              locale: NS,
-            }, SearchPanelPage);
-          });
+            ctx.slots.inject("main", function () {
+              return ctx.slots.register({
+                name: "main",
+                key: "ws-recency-search",
+                locale: NS,
+                store: prefs,
+              }, SearchPanelPage);
+            });
+          }
+
 
           ctx.slots.inject("sidebar.panellist", function () {
             return ctx.slots.register({
@@ -4707,6 +5581,16 @@
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
             return ctx.slots.register({
               name: "sidebar.workspaces.session.menu.item",
+              id: "ws-recency-diagnose",
+              order: 690,
+              store: prefs,
+              locale: NS,
+            }, DiagnoseMenuItem);
+          });
+
+          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
+            return ctx.slots.register({
+              name: "sidebar.workspaces.session.menu.item",
               id: "ws-recency-trash",
               order: 700,
               store: prefs,
@@ -4741,6 +5625,15 @@
           reveal: revealTurn,
           jump: jumpToSearchHit,
           turnRow: turnRowOf,
+          hitRow: searchHitRow,
+          shortId: shortSessionId,
+          resumePasses: function () { suppressedUntil = 0; },
+        };
+
+        /* The search feature ships disabled while its cost is being isolated;
+           tests turn it on so the code stays covered. */
+        exports.__setSearchEnabled = function (value) {
+          SEARCH_ENABLED = value === true;
         };
 
         exports.name = "dsh-ws-recency";
