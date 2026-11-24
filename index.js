@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.31.1";
+export const HOST_VERSION = "0.32.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -999,6 +999,43 @@ export async function searchSessions(ctx, query, options = {}) {
     sessions.push({ id: header.id, header, sizeBytes: Number(snapshot.sizeBytes) || 0, updatedAt: Number(header.updatedAt ?? header.createdAt ?? 0) });
   }
   sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+
+  /* No words, but a filter: the question is "which session was that?", so the
+     answer is sessions, not messages. Listing them needs no transcript work. */
+  if (parsed.terms.length === 0 && parsed.groups.length === 0) {
+    const matchedSessions = [];
+    for (const session of sessions) {
+      const cwd = normalizedPath(session.header.cwd);
+      if (parsed.filters.workspace !== "") {
+        const name = String(workspaceByPath.get(cwd) ?? "").toLowerCase();
+        if (name.indexOf(parsed.filters.workspace) === -1) continue;
+      }
+      if (parsed.filters.session !== "") {
+        const headerTitle = typeof session.header.title === "string" ? session.header.title.toLowerCase() : "";
+        if (headerTitle.indexOf(parsed.filters.session) === -1) continue;
+      }
+      matchedSessions.push({
+        sessionId: session.id,
+        title: typeof session.header.title === "string" ? session.header.title : "",
+        workspace: workspaceByPath.get(cwd) ?? "",
+        cwd: typeof session.header.cwd === "string" ? session.header.cwd : "",
+        at: session.updatedAt,
+        sizeBytes: session.sizeBytes,
+      });
+      if (matchedSessions.length >= SEARCH_TOTAL_CAP) break;
+    }
+    return {
+      ok: true,
+      query: "",
+      terms: [],
+      hits: [],
+      sessions: matchedSessions,
+      scanned: sessions.length,
+      total: sessions.length,
+      pending: 0,
+      took: Date.now() - started,
+    };
+  }
 
   const refresh = options.refresh === true;
   const hits = [];

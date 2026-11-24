@@ -525,6 +525,7 @@
           "search.filterSessionPlaceholder": "包含…（回车）",
           "search.filterRole": "角色",
           "search.filterAll": "全部",
+          "search.sessionResults": "会话（{n}）",
           "search.history": "最近搜索",
           "search.historyRun": "再搜一次：{query}",
           "search.historyDrop": "从历史里删除",
@@ -736,6 +737,7 @@
           "search.filterSessionPlaceholder": "title contains… (Enter)",
           "search.filterRole": "Role",
           "search.filterAll": "All",
+          "search.sessionResults": "Sessions ({n})",
           "search.history": "Recent",
           "search.historyRun": "Search again: {query}",
           "search.historyDrop": "Remove from history",
@@ -4669,9 +4671,46 @@
           return searchHitRow(props.hit, props.terms, props.onJump, extra);
         }
 
+        /**
+         * One session, for a search that narrowed by title or workspace only.
+         *
+         * Without words there is nothing to point at inside a transcript, so the
+         * useful answer is the session itself: its title, where it lives, and when.
+         */
+        function SearchSessionRow(props) {
+          var item = props.item;
+          var when = formatWhen(Number(item.at) || 0);
+          return h("div", {
+            className: "wsr-hit wsr-session-hit",
+            title: item.title || "",
+            onClick: function () {
+              if (typeof props.onOpen === "function") props.onOpen();
+            },
+          },
+            h("div", { className: "wsr-hit-head" },
+              h("span", { className: "wsr-hit-title", title: item.title || "" }, item.title || props.shortId),
+              typeof item.workspace === "string" && item.workspace !== "" ? h("span", { className: "wsr-hit-ws" }, item.workspace) : null,
+            ),
+            h("div", { className: "wsr-hit-meta" },
+              when !== "" ? h("span", { className: "wsr-hit-time" }, when) : null,
+              typeof item.cwd === "string" && item.cwd !== "" ? h("span", { className: "wsr-hit-cwd" }, item.cwd) : null,
+            ),
+            h("div", { className: "wsr-hit-actions" },
+              h("button", {
+                type: "button",
+                className: "wsr-hit-context-jump",
+                onClick: function (event) {
+                  if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+                  if (typeof props.onOpen === "function") props.onOpen();
+                },
+              }, t("search.openSession")),
+            ),
+          );
+        }
+
         function SearchPanelPage(props) {
           var state = react.useState(searchLast === null
-            ? { loaded: false, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" }
+            ? { loaded: false, query: "", hits: [], sessions: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" }
             : searchLast);
           var view = state[0];
           var setView = state[1];
@@ -4701,11 +4740,14 @@
             var query = typeof text === "string" ? text.trim() : "";
             searchGeneration += 1;
             var generation = searchGeneration;
-            if (query === "") {
+            /* A filter alone is a question too: "which session was that?". */
+            var hasFilters = searchFilters.workspace !== "" || searchFilters.session !== ""
+              || searchFilters.role !== "";
+            if (query === "" && !hasFilters) {
               commit({ loaded: true, query: "", hits: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" });
               return;
             }
-            if (typeof actions.pushSearch === "function") actions.pushSearch(query);
+            if (query !== "" && typeof actions.pushSearch === "function") actions.pushSearch(query);
             commit({ loaded: true, query: query, hits: view.hits, terms: view.terms, scanned: view.scanned, total: view.total, pending: view.pending, took: view.took, busy: true, error: "" });
             var ask = function (needRefresh) {
               searchPost({
@@ -4725,6 +4767,7 @@
                   loaded: true,
                   query: query,
                   hits: Array.isArray(json.hits) ? json.hits : [],
+                  sessions: Array.isArray(json.sessions) ? json.sessions : [],
                   terms: Array.isArray(json.terms) ? json.terms : [],
                   scanned: json.scanned || 0,
                   total: json.total || 0,
@@ -4763,6 +4806,16 @@
             },
           });
 
+          var sessionRows = (Array.isArray(view.sessions) ? view.sessions : []).map(function (item, index) {
+            var row = h(SearchSessionRow, {
+              item: item,
+              shortId: shortSessionId(String(item.sessionId || "")),
+              onOpen: function () { openSessionRow(item.sessionId); },
+            });
+            row.key = "session:" + String(item.sessionId || index);
+            return row;
+          });
+
           var rows = view.hits.map(function (hit, index) {
             var row = h(SearchHitRow, {
               hit: hit,
@@ -4777,40 +4830,11 @@
             h("div", { className: "wsr-page-head" },
               h("div", { className: "wsr-page-heading" }, t("search.title")),
             ),
-            historyList.length === 0 ? null : h("div", { className: "wsr-search-history" },
-              h("span", { className: "wsr-search-history-label" }, t("search.history")),
-              historyList.map(function (item, index) {
-                var text = String(item);
-                return h("span", { className: "wsr-search-chip", key: text + ":" + String(index) },
-                  h("button", {
-                    type: "button",
-                    className: "wsr-search-chip-run",
-                    title: t("search.historyRun", { query: text }),
-                    onClick: function () {
-                      searchDraft = text;
-                      run(text, false);
-                  },
-                  }, text),
-                  h("button", {
-                    type: "button",
-                    className: "wsr-search-chip-drop",
-                    title: t("search.historyDrop"),
-                    "aria-label": t("search.historyDrop"),
-                    onClick: function (event) {
-                      if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
-                      if (typeof actions.dropSearch === "function") actions.dropSearch(text);
-                    },
-                  }, "\u00d7"),
-                );
-              }),
-              h("button", {
-                type: "button",
-                className: "wsr-search-history-clear",
-                onClick: function () {
-                  if (typeof actions.clearSearches === "function") actions.clearSearches();
-                },
-              }, t("search.historyClear")),
+            h("div", { className: "wsr-search-bar" },
+              input,
+              h("button", { type: "button", className: "wsr-btn", onClick: function () { run(searchDraft, false); } }, t("search.run")),
             ),
+            h("div", { className: "wsr-search-hint" }, t("search.hint")),
             h("div", { className: "wsr-search-filters" },
               h("label", { className: "wsr-filter" },
                 h("span", { className: "wsr-filter-label" }, t("search.filterWorkspace")),
@@ -4883,17 +4907,52 @@
                 })(),
               ),
             ),
-            h("div", { className: "wsr-search-hint" }, t("search.hint")),
-            h("div", { className: "wsr-search-bar" },
-              input,
-              h("button", { type: "button", className: "wsr-btn", onClick: function () { run(searchDraft, false); } }, t("search.run")),
+            historyList.length === 0 ? null : h("div", { className: "wsr-search-history" },
+              h("span", { className: "wsr-search-history-label" }, t("search.history")),
+              historyList.map(function (item, index) {
+                var text = String(item);
+                return h("span", { className: "wsr-search-chip", key: text + ":" + String(index) },
+                  h("button", {
+                    type: "button",
+                    className: "wsr-search-chip-run",
+                    title: t("search.historyRun", { query: text }),
+                    onClick: function () {
+                      searchDraft = text;
+                      run(text, false);
+                  },
+                  }, text),
+                  h("button", {
+                    type: "button",
+                    className: "wsr-search-chip-drop",
+                    title: t("search.historyDrop"),
+                    "aria-label": t("search.historyDrop"),
+                    onClick: function (event) {
+                      if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+                      if (typeof actions.dropSearch === "function") actions.dropSearch(text);
+                    },
+                  }, "\u00d7"),
+                );
+              }),
+              h("button", {
+                type: "button",
+                className: "wsr-search-history-clear",
+                onClick: function () {
+                  if (typeof actions.clearSearches === "function") actions.clearSearches();
+                },
+              }, t("search.historyClear")),
             ),
-            view.busy ? h("div", { className: "wsr-page-note" }, t("search.searching")) : null,
+                                                            view.busy ? h("div", { className: "wsr-page-note" }, t("search.searching")) : null,
             view.error !== "" ? h("div", { className: "wsr-page-note wsr-page-error" }, view.error) : null,
             view.pending > 0 ? h("div", { className: "wsr-page-note" }, t("search.indexing", { n: String(view.pending) })) : null,
             view.loaded && !view.busy ? h("div", { className: "wsr-page-note" }, t("search.summary", { hits: String(view.hits.length), sessions: String(view.total), ms: String(view.took) })) : null,
-            view.loaded && !view.busy && view.hits.length === 0 ? h("div", { className: "wsr-page-note" }, t("search.empty")) : null,
-            h("div", { className: "wsr-page-list" }, rows),
+            view.loaded && !view.busy && view.hits.length === 0 && sessionRows.length === 0 ? h("div", { className: "wsr-page-note" }, t("search.empty")) : null,
+            sessionRows.length > 0
+              ? h("div", { className: "wsr-page-list" },
+                h("div", { className: "wsr-search-history-label" }, t("search.sessionResults", { n: String(sessionRows.length) })),
+                sessionRows,
+              )
+              : null,
+            sessionRows.length === 0 ? h("div", { className: "wsr-page-list" }, rows) : null,
           );
         }
 

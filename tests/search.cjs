@@ -145,6 +145,19 @@ function response() {
   assert.ok(roleControl.hits.every((hit) => hit.role !== "user"), "the role control filters too");
   const bothControls = await mod.searchSessions(ctx, "build ws:nowhere", { workspace: "Work" });
   assert.ok(bothControls.hits.length >= 1, "the on-screen control wins over a stale typed filter");
+
+  /* No words, only a filter: the question is which session it was, so the answer
+     is sessions, and it must not need a transcript scan. */
+  const titleOnly = await mod.searchSessions(ctx, "", { session: "beta" });
+  assert.strictEqual(titleOnly.hits.length, 0, "a title-only search returns no message hits");
+  assert.ok(Array.isArray(titleOnly.sessions) && titleOnly.sessions.length >= 1, "it returns the matching sessions");
+  assert.ok(titleOnly.sessions.every((item) => String(item.title).toLowerCase().indexOf("beta") !== -1), "every returned session matches the title");
+  const noTitleMatch = await mod.searchSessions(ctx, "", { session: "nothing-like-this" });
+  assert.strictEqual(noTitleMatch.sessions.length, 0, "a title that matches nothing returns no sessions");
+  const workspaceOnly = await mod.searchSessions(ctx, "", { workspace: "Work" });
+  assert.ok(workspaceOnly.sessions.length >= 1, "a workspace alone lists its sessions");
+  const emptyQuery = await mod.searchSessions(ctx, "");
+  assert.deepStrictEqual(emptyQuery.hits, [], "an empty query with no filter is not a search");
   /* The transcript is markdown-free: a jump can only find the message if the
      fragment has the markers taken out. */
   assert.ok(Array.isArray(beta.hits[0].seeks) && beta.hits[0].seeks.length >= 1, "a hit carries text fragments to find it by");
