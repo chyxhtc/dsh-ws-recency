@@ -20,12 +20,12 @@ function reader(events) {
   };
 }
 
-function request(body, method = "POST", origin = "http://127.0.0.1:43120") {
+function request(body, method = "POST", origin = "http://127.0.0.1:43120", host = "127.0.0.1:43120") {
   const payload = Buffer.from(JSON.stringify(body ?? {}), "utf8");
   return {
     method,
     url: "/ws-recency/search",
-    headers: { origin, "content-type": "application/json" },
+    headers: { origin, host, "content-type": "application/json" },
     async *[Symbol.asyncIterator]() {
       yield payload;
     },
@@ -248,6 +248,16 @@ function response() {
   const foreign = response();
   await mod.handleSearchRequest(ctx, request({ query: "build" }, "POST", "https://example.com"), foreign);
   assert.strictEqual(foreign.state.status, 403);
+
+  /* Reached over a LAN address or a gateway: same origin, so it is allowed. */
+  const lan = response();
+  await mod.handleSearchRequest(ctx, request({ query: "build" }, "POST", "http://192.168.1.9:43120", "192.168.1.9:43120"), lan);
+  assert.strictEqual(lan.state.status, 200, "a LAN address that matches the host is trusted");
+
+  /* A foreign page pointing at the LAN host is still refused. */
+  const foreignLan = response();
+  await mod.handleSearchRequest(ctx, request({ query: "build" }, "POST", "http://evil.example", "192.168.1.9:43120"), foreignLan);
+  assert.strictEqual(foreignLan.state.status, 403, "a foreign origin is refused whatever the host is");
 
   fs.rmSync(home, { recursive: true, force: true });
   console.log("search ok: extraction, literal multi-term match, snippets, turn/workspace, cache, refresh, guards");

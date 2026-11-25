@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.32.1";
+export const HOST_VERSION = "0.32.2";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -67,16 +67,52 @@ function sessionIdFrom(req, body) {
   return body !== null && body !== undefined && typeof body.sessionId === "string" ? body.sessionId.trim() : "";
 }
 
-/** Only the app itself may call these routes: a foreign origin is refused. */
-function loopbackOrigin(req) {
+/** Hostnames that are this machine, whatever port is in front of them. */
+function isLoopbackHostname(hostname) {
+  const name = String(hostname ?? "").toLowerCase().replace(/^\[|\]$/g, "");
+  return name === "localhost" || name === "127.0.0.1" || name === "::1" || name.endsWith(".localhost");
+}
+
+/**
+ * Whether a request comes from the app itself.
+ *
+ * The old rule demanded a loopback origin, which refused every page that reached
+ * the app through a LAN address or a gateway - those pages are the app too, and
+ * the user could not delete a session from them.
+ *
+ * What actually has to be stopped is a foreign page driving these destructive
+ * routes at a local server (a browser will send its own origin). So the rule is
+ * same-origin: the origin has to name the host the request was addressed to, as
+ * seen either directly or through a proxy's forwarded headers. A request with no
+ * origin comes from a non-browser client and is allowed, as before.
+ */
+function trustedOrigin(req) {
   const origin = req.headers.origin;
-  if (origin === undefined) return true;
+  if (origin === undefined || origin === null || origin === "") return true;
+  let originHost = "";
+  let originName = "";
   try {
-    const { hostname } = new URL(origin);
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+    const parsed = new URL(String(origin));
+    originHost = parsed.host.toLowerCase();
+    originName = parsed.hostname.toLowerCase();
   } catch {
     return false;
   }
+  const headers = req.headers ?? {};
+  const candidates = [headers.host, headers["x-forwarded-host"]]
+    .filter((value) => typeof value === "string" && value !== "")
+    .flatMap((value) => String(value).split(","))
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value !== "");
+  for (const candidate of candidates) {
+    if (candidate === originHost) return true;
+    const name = candidate.replace(/:\d+$/, "");
+    if (name === originName) return true;
+  }
+  /* No host header at all: a non-browser client, judged by the old rule. */
+  if (candidates.length === 0) return isLoopbackHostname(originName);
+  /* Loopback to loopback stays allowed even if a proxy rewrote the host. */
+  return isLoopbackHostname(originName) && candidates.some((value) => isLoopbackHostname(value.replace(/:\d+$/, "")));
 }
 
 async function readJsonBody(req) {
@@ -266,7 +302,7 @@ export async function handleTrashRequest(ctx, req, res) {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
     return;
   }
-  if (!loopbackOrigin(req)) {
+  if (!trustedOrigin(req)) {
     sendJson(res, 403, { ok: false, error: "origin not trusted" });
     return;
   }
@@ -2231,7 +2267,7 @@ export async function handleHandoffRequest(ctx, req, res) {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
     return;
   }
-  if (!loopbackOrigin(req)) {
+  if (!trustedOrigin(req)) {
     sendJson(res, 403, { ok: false, error: "origin not trusted" });
     return;
   }
@@ -2320,7 +2356,7 @@ export async function handleTrashListRequest(ctx, req, res) {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
     return;
   }
-  if (!loopbackOrigin(req)) {
+  if (!trustedOrigin(req)) {
     sendJson(res, 403, { ok: false, error: "origin not trusted" });
     return;
   }
@@ -2380,7 +2416,7 @@ export async function handleAdoptRequest(ctx, req, res) {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
     return;
   }
-  if (!loopbackOrigin(req)) {
+  if (!trustedOrigin(req)) {
     sendJson(res, 403, { ok: false, error: "origin not trusted" });
     return;
   }
@@ -2397,7 +2433,7 @@ export async function handleMoveRequest(ctx, req, res) {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
     return;
   }
-  if (!loopbackOrigin(req)) {
+  if (!trustedOrigin(req)) {
     sendJson(res, 403, { ok: false, error: "origin not trusted" });
     return;
   }
@@ -2422,7 +2458,7 @@ export async function handleSearchRequest(ctx, req, res) {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
     return;
   }
-  if (!loopbackOrigin(req)) {
+  if (!trustedOrigin(req)) {
     sendJson(res, 403, { ok: false, error: "origin not trusted" });
     return;
   }
@@ -2449,7 +2485,7 @@ export async function handleStatsRequest(ctx, req, res) {
     sendJson(res, 405, { ok: false, error: "method not allowed" });
     return;
   }
-  if (!loopbackOrigin(req)) {
+  if (!trustedOrigin(req)) {
     sendJson(res, 403, { ok: false, error: "origin not trusted" });
     return;
   }

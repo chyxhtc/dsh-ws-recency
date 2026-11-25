@@ -188,6 +188,12 @@ DSH 原生的置顶只把会话顶到**它所属工作区分组的第一行**，
 
 偏好持久化在 Client store 的 `dsh.ws-recency.prefs.v1`。
 
+## 局域网 / 网关访问
+
+插件的宿主路由（删除、回收站、统计、搜索、移动、交接）会校验请求来源：只接受**同源**请求，也就是 `Origin` 指向的 host 与请求的 `Host`（或代理的 `X-Forwarded-Host`）一致；没有 `Origin` 的非浏览器请求照旧放行。
+
+所以用 `dsh-gateway` 之类的转接插件、或直接从局域网 IP 访问时，删除和统计都能正常用；只有**真正的跨站页面**会被 403 拒绝。0.32.1 及更早的版本只认回环地址，非回环访问一律 403（issue #3）。
+
 ## 已知边界
 
 - 依赖宿主 DOM：分组容器带 `_groupSection`、分组头带 `data-row-key="workspace:<id>"`、行带 `data-row-key="session:<id>"`、溢出按钮类名含 `sessionOverflowButton`。宿主改结构就要跟着改。
