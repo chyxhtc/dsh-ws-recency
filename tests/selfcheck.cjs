@@ -1239,6 +1239,15 @@ function textOf(node) {
   clearNode.props.onClick();
   assert.deepStrictEqual(dropped[dropped.length - 1], ["clear"], "clear empties the list");
 
+  /* A hit far behind the newest turn asks first instead of stalling the app. */
+  const coldRow = SEARCH.hitRow(
+    { sessionId: "s", turn: 3, turns: 130, role: "user", snippet: "x", seq: 1 },
+    [],
+    function () {},
+    null,
+  );
+  assert.ok(coldRow !== null, "a hit row renders");
+
   /* Narrowing is a control, not syntax: a workspace select, a title box and three
      role chips, and the words in the box stay words. */
   const filterRow = findNode(searchPage, (node) => node.props !== undefined && node.props.className === "wsr-filters");
@@ -1371,6 +1380,20 @@ function textOf(node) {
   SEARCH.jump({ sessionId: "A-fresh-1", turn: 9, turns: 10, seek: "text that is not mounted" });
   flush();
   assert.deepStrictEqual(railClicks, [9], "the rail mark for the turn is clicked");
+
+  /* The click starts a page load in the host; until the turn is really in the
+     document, the note says it is loading rather than claiming success. */
+  const loadingNotes = [];
+  const realBodyAppendForLoading = global.document.body.appendChild;
+  global.document.body.appendChild = function (node) {
+    if (node !== null && typeof node === "object" && String(node.className).indexOf("wsr-jump-loading") !== -1) loadingNotes.push(node);
+    return node;
+  };
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 9, turns: 120, seek: "text that is not mounted" });
+  flush();
+  assert.ok(loadingNotes.length >= 1, "a jump into older history reports that it is loading");
+  assert.ok(String(loadingNotes[0].textContent).indexOf("9") !== -1, "the loading note names the turn");
+  global.document.body.appendChild = realBodyAppendForLoading;
 
 
   /* A hit whose text is not on screen at least moves the transcript: the jump

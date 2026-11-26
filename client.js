@@ -75,6 +75,10 @@
         var MIN_DAYS = 1;
         var MAX_DAYS = 90;
         var DEFAULT_DAYS = 3;
+
+        /** Turns behind the newest that make a jump ask first; 0 disables asking. */
+        var DEFAULT_COLD_JUMP = 40;
+        var MAX_COLD_JUMP = 500;
         /** Safety stop for driving the host's own "show more" (5 rows per click). */
         var MAX_EXPAND_CLICKS = 40;
         var TICK_MS = 5 * 60 * 1000;
@@ -410,6 +414,7 @@
           ".wsr-hit-step{flex:none;color:var(--dsw-alias-label-secondary)}",
           ".wsr-jump-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9999;padding:6px 12px;border-radius:8px;font-size:12px;background:var(--dsw-alias-bg-layer-3,rgba(32,34,38,.96));color:var(--dsw-alias-label-primary);border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none}",
           ".wsr-diagnose-toast{max-width:min(680px,90vw);white-space:normal;line-height:1.6;text-align:left;font-variant-numeric:tabular-nums}",
+          ".wsr-jump-loading{color:var(--dsw-alias-label-secondary)}",
           ".wsr-jump-toast-warn{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 45%,transparent);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-hit-cwd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}",
           ".wsr-mark{background:rgba(79,142,247,.28);color:inherit;border-radius:2px}",
@@ -533,6 +538,11 @@
           "diagnose.report": "近 60 秒：扫描 {passes} 次 / 共 {total}ms / 最慢 {worst}ms · 页面节点 {nodes} · 已挂载轮次 {turns}",
           "search.contextShow": "看上下文",
           "search.contextHide": "收起",
+          "search.coldJump": "这一轮在最新一轮之前 {behind} 轮，跳过去要加载大量历史，可能十几秒。",
+          "search.coldContext": "只看上下文",
+          "search.coldJumpAnyway": "仍然跳过去",
+          "search.settings.coldTitle": "跳转前确认",
+          "search.settings.coldDesc": "命中离最新一轮超过这么多轮时先问一句；0 表示每次都直接跳。",
           "search.openSession": "打开会话",
           "search.hint": "空格=都要有 · \"词组\" · a|b 或 · -排除",
           "search.filterWorkspace": "工作区",
@@ -548,6 +558,8 @@
 
           "search.historyEmpty": "还没有记录",
           "search.step": "第 {n} 步",
+          "search.jumpLoading": "正在加载第 {turn} 轮… {secs}s",
+          "search.jumpLoadingCold": "正在加载第 {turn} 轮（历史较早，可能要十几秒）… {secs}s",
           "search.jumpTurn": "已定位：第 {turn} 轮 · 按轮次",
           "search.jumpText": "已定位：第 {turn} 轮 · 按文字",
           "search.jumpNoSession": "打不开这个会话（可能已归档、或不在当前工作区）",
@@ -747,6 +759,11 @@
           "diagnose.report": "Last 60s: {passes} passes / {total}ms total / {worst}ms worst · {nodes} nodes · {turns} turns mounted",
           "search.contextShow": "Show context",
           "search.contextHide": "Hide",
+          "search.coldJump": "This turn is {behind} turns behind the newest one; jumping there loads a lot of history and can take a while.",
+          "search.coldContext": "Show context",
+          "search.coldJumpAnyway": "Jump anyway",
+          "search.settings.coldTitle": "Ask before a long jump",
+          "search.settings.coldDesc": "Ask when a hit is this many turns behind the newest one; 0 jumps every time.",
           "search.openSession": "Open session",
           "search.hint": "space = all of them · \"phrase\" · a|b either · -exclude",
           "search.filterWorkspace": "Workspace",
@@ -762,6 +779,8 @@
 
           "search.historyEmpty": "nothing yet",
           "search.step": "step {n}",
+          "search.jumpLoading": "Loading turn {turn}… {secs}s",
+          "search.jumpLoadingCold": "Loading turn {turn} (older history, this can take a while)… {secs}s",
           "search.jumpTurn": "Landed on turn {turn} (by turn)",
           "search.jumpText": "Landed on turn {turn} (by text)",
           "search.jumpNoSession": "Could not open that session (archived, or outside the current workspace)",
@@ -3821,6 +3840,43 @@
           }, t("menu.stats"));
         }
 
+        /** Settings -> General row: ask before a jump that loads a lot of history. */
+        function ColdJumpRow(props) {
+          var settings = props.useStore(function (state) { return state; });
+          var value = Number(settings.coldJumpTurns);
+          if (!Number.isFinite(value)) value = DEFAULT_COLD_JUMP;
+          var text = t("search.settings.coldTitle");
+          return h("div", { className: "wsr-setRow" },
+            h("div", { className: "wsr-setText" },
+              h("div", { className: "wsr-setTitle" }, text),
+              h("div", { className: "wsr-setDesc" }, t("search.settings.coldDesc")),
+            ),
+            h("div", { className: "wsr-controls" },
+              h("button", {
+                type: "button",
+                className: "wsr-step",
+                "aria-label": text + " -1",
+                onClick: function () { props.actions.setColdJumpTurns(value - 10); },
+              }, "-"),
+              h("input", {
+                type: "number",
+                className: "wsr-input",
+                min: 0,
+                max: MAX_COLD_JUMP,
+                value: String(value),
+                "aria-label": text,
+                onChange: function (event) { props.actions.setColdJumpTurns(event.target.value); },
+              }),
+              h("button", {
+                type: "button",
+                className: "wsr-step",
+                "aria-label": text + " +1",
+                onClick: function () { props.actions.setColdJumpTurns(value + 10); },
+              }, "+"),
+            ),
+          );
+        }
+
         /** Settings -> General row: how old a session must be before it is folded. */
         function SettingsRow(props) {
           var settings = props.useStore(function (state) { return state; });
@@ -4146,9 +4202,68 @@
           }
         }
 
+        /** The progress line shown while a jump waits for the host. */
+        var jumpNote = null;
+        var jumpNoteTimer = 0;
+        var jumpNoteStarted = 0;
+
+        function clearJumpNote() {
+          try {
+            if (jumpNoteTimer !== 0) {
+              window.clearInterval(jumpNoteTimer);
+              jumpNoteTimer = 0;
+            }
+            if (jumpNote !== null && jumpNote !== undefined) {
+              if (jumpNote.parentElement !== null && jumpNote.parentElement !== undefined) jumpNote.remove();
+              jumpNote = null;
+            }
+          } catch (error) {
+            /* nothing to clean up */
+          }
+        }
+
+        /**
+         * Say that history is being loaded, and for how long.
+         *
+         * Clicking a rail cell starts a real page load in the host; on a long
+         * session that takes seconds. The old code announced "landed" at the moment
+         * of the click, so the window looked frozen with a success note already on
+         * screen.
+         */
+        function announceJumpLoading(hit) {
+          if (typeof document === "undefined") return;
+          clearJumpNote();
+          jumpNoteStarted = Date.now();
+          /* Far behind the newest turn: say so, because the wait is proportional. */
+          var cold = Number(hit.turns) - Number(hit.turn) > 40;
+          var text = function () {
+            var secs = String(Math.max(0, Math.round((Date.now() - jumpNoteStarted) / 1000)));
+            return cold
+              ? t("search.jumpLoadingCold", { turn: String(hit.turn), secs: secs })
+              : t("search.jumpLoading", { turn: String(hit.turn), secs: secs });
+          };
+          try {
+            var note = statsDiv("wsr-jump-toast wsr-jump-loading");
+            note.textContent = text();
+            document.body.appendChild(note);
+            jumpNote = note;
+            jumpNoteTimer = window.setInterval(function () {
+              if (jumpNote === null || jumpNote === undefined) return;
+              try {
+                jumpNote.textContent = text();
+              } catch (error) {
+                clearJumpNote();
+              }
+            }, 500);
+          } catch (error) {
+            /* a toast is a nicety: never break the jump for it */
+          }
+        }
+
         /** A short-lived line that says where the jump landed and how it got there. */
         function announceJump(hit, byText, costMs) {
           if (typeof document === "undefined") return;
+          clearJumpNote();
           try {
             var note = statsDiv("wsr-jump-toast");
             var text = t(byText === true ? "search.jumpText" : "search.jumpTurn", { turn: String(hit.turn) });
@@ -4172,6 +4287,7 @@
          */
         function announceJumpFailure(hit, reason) {
           if (typeof document === "undefined") return;
+          clearJumpNote();
           try {
             var note = statsDiv("wsr-jump-toast wsr-jump-toast-warn");
             note.textContent = t(reason, { turn: String(hit.turn), turns: String(hit.turns) });
@@ -4493,31 +4609,56 @@
          * One last look after a rail click: the host is loading a whole page of
          * history, so nothing here may poll while that runs.
          */
-        function finaliseJump(hit, terms) {
+        /**
+         * Look for the landed turn, and keep looking while the host pages in.
+         *
+         * `settle` is what makes the progress note honest: it only turns into
+         * "landed" once the turn is actually in the document.
+         */
+        /**
+         * Watch for the landing and stop counting as soon as it happens.
+         *
+         * The row appearing is the landing: the host moves the viewport and mounts
+         * the turn, and on a session whose turns hold dozens of steps the body can
+         * take many more seconds to render than the move itself. Requiring the
+         * matched text before declaring success reported "not found" for jumps that
+         * had visibly worked, and kept the progress note counting to its deadline.
+         */
+        function settleJump(hit, terms, attempt, spentMs) {
           if (typeof document === "undefined") return;
-          var began = Date.now();
           var seeks = Array.isArray(hit.seeks) ? hit.seeks : hit.seek;
-          var scroller = conversationScroller();
-          if (scroller !== null) {
-            var row = findByText(scroller, seeks);
-            if (row !== null) flashTurnRow(row);
+          var row = turnRowOf(Number(hit.turn));
+          if (row === null) {
+            /* The row can be missing while the window is still being replaced; the
+               text search is only a fallback for the case the row never appears. */
+            var scroller = conversationScroller();
+            if (scroller !== null) row = findByText(scroller, seeks);
           }
-          markHitTerms(terms);
-          /* Anything past a frame is ours to answer for, so say so rather than
-             letting it pass as the host being slow. */
-          var spent = Date.now() - began;
-          if (spent > 120 && typeof window !== "undefined") {
-            window.__DSH_WSR_LAST_TAIL_MS__ = spent;
+          if (row !== null) {
+            clearJumpNote();
+            flashTurnRow(row);
+            announceJump(hit, false, spentMs);
+            markHitTerms(terms);
+            suppressedUntil = 0;
+            schedule();
+            return;
           }
+          /* Roughly ten seconds: past that the host is not going to land it, and
+             the note should stop pretending to know. */
+          if (attempt < 14) {
+            window.setTimeout(function () { settleJump(hit, terms, attempt + 1, spentMs); }, 700);
+            return;
+          }
+          announceJumpFailure(hit, "search.jumpNoTurn");
         }
+
         /**
          * Bring one search hit into view.
          *
-         * Scrolling the transcript does not page older history in: the chat asks the
-         * user to load it, while clicking the turn rail's mark loads and aligns that
-         * turn. The rail is therefore the primary route. Everything here is kept
-         * to a few cheap lookups: the host is rendering history at the same time,
-         * and a polling loop on top of that is what made the jump feel frozen.
+         * Scrolling does not page older history in; clicking the rail's cell for the
+         * turn does, so that is the route. Everything else here is a cheap poll that
+         * stops as soon as the click has been made - the landing is decided by
+         * settleJump, not by this loop.
          */
         function revealHit(hit, terms) {
           if (typeof document === "undefined" || hit === null || hit === undefined) return;
@@ -4532,14 +4673,10 @@
           /* Wall time includes the host opening the session and loading its
              history; only the synchronous work in here belongs to this plugin. */
           var spentMs = 0;
-          var started = Date.now();
           var tick = function () {
             var beganTick = Date.now();
-            var done = function () {
-              spentMs += Date.now() - beganTick;
-            };
             var result = tickOnce();
-            done();
+            spentMs += Date.now() - beganTick;
             return result;
           };
           var tickOnce = function () {
@@ -4573,15 +4710,18 @@
               var mark = railMarkFor(turn);
               if (mark !== null) {
                 try {
+                  /* The lookup above can straddle a switch, and clicking the wrong
+                     session's rail would page history into a conversation nobody
+                     asked about. */
+                  if (currentConversationId() !== sessionId) {
+                    window.setTimeout(tick, 200);
+                    return;
+                  }
                   mark.click();
-                  announceJump(hit, false, spentMs);
-                  /* The click starts a real history load: hand the thread back to
-                     the host and look once when it has had time to render. */
-                  window.setTimeout(function () {
-                  finaliseJump(hit, terms);
-                  suppressedUntil = 0;
-                  schedule();
-                }, 1200);
+                  /* The click starts a real history load; until it lands, the only
+                     honest thing to say is that it is under way. */
+                  announceJumpLoading(hit);
+                  window.setTimeout(function () { settleJump(hit, terms, 0, spentMs); }, 900);
                   return;
                 } catch (error) {
                   /* fall through */
@@ -4605,6 +4745,7 @@
           };
           window.setTimeout(tick, 200);
         }
+
         function jumpToSearchHit(hit, terms) {
           suspendPasses(12000);
           openSessionRow(hit.sessionId);
@@ -4766,6 +4907,19 @@
          */
         function SearchHitRow(props) {
           var opened = react.useState(false);
+          /* A hit far behind the newest turn means the host has to mount a lot of
+             history to show it; asking first keeps a search from stalling the app
+             for ten seconds without warning. */
+          var cold = props.coldAfter > 0
+            && Number(props.hit.turns) - Number(props.hit.turn) > props.coldAfter;
+          var openContext = function () { opened[1](true); };
+          var go = function () {
+            if (cold) {
+              askColdJump(props.hit, props.onJump, openContext);
+              return;
+            }
+            if (typeof props.onJump === "function") props.onJump();
+          };
           var context = typeof props.hit.context === "string" ? props.hit.context : "";
           var extra = context === "" ? null : [
             h("div", { className: "wsr-hit-actions" },
@@ -4782,13 +4936,14 @@
                 className: "wsr-hit-context-jump",
                 onClick: function (event) {
                   if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+                  /* Pressing this is the confirmation. */
                   if (typeof props.onJump === "function") props.onJump();
                 },
               }, t("search.openSession")),
             ),
             opened[0] === true ? h("div", { className: "wsr-hit-context" }, context) : null,
           ];
-          return searchHitRow(props.hit, props.terms, props.onJump, extra);
+          return searchHitRow(props.hit, props.terms, go, extra);
         }
 
         /**
@@ -4828,6 +4983,50 @@
           );
         }
 
+        /** Ask whether a jump that means loading a lot of history should go ahead. */
+        function askColdJump(hit, onJump, onContext) {
+          if (typeof document === "undefined") return;
+          closeConfirm();
+          confirmPrevious = typeof document.activeElement !== "undefined" ? document.activeElement : null;
+          var backdrop = statsDiv("wsr-modal-backdrop");
+          backdrop.setAttribute("data-wsr-confirm", "cold");
+          var panel = statsDiv("wsr-confirm");
+          panel.setAttribute("role", "dialog");
+          panel.setAttribute("aria-modal", "true");
+          panel.setAttribute("tabindex", "-1");
+          panel.appendChild(statsDiv("wsr-confirm-text", t("search.coldJump", {
+            turn: String(hit.turn),
+            behind: String(Math.max(0, Number(hit.turns) - Number(hit.turn))),
+          })));
+          var actions = statsDiv("wsr-confirm-actions");
+          var context = document.createElement("button");
+          context.type = "button";
+          context.className = "wsr-qcancel";
+          context.setAttribute("data-wsr-cold-context", "true");
+          context.textContent = t("search.coldContext");
+          context.addEventListener("click", function (event) {
+            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+            closeConfirm(null);
+            if (typeof onContext === "function") onContext();
+          });
+          var accept = document.createElement("button");
+          accept.type = "button";
+          accept.className = "wsr-qsubmit";
+          accept.setAttribute("data-wsr-cold-jump", "true");
+          accept.textContent = t("search.coldJumpAnyway");
+          accept.addEventListener("click", function (event) {
+            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
+            closeConfirm(null);
+            if (typeof onJump === "function") onJump();
+          });
+          actions.appendChild(context);
+          actions.appendChild(accept);
+          panel.appendChild(actions);
+          backdrop.appendChild(panel);
+          document.body.appendChild(backdrop);
+          try { if (typeof panel.focus === "function") panel.focus(); } catch (error) { /* focus is a nicety */ }
+        }
+
         function SearchPanelPage(props) {
           var state = react.useState(searchLast === null
             ? { loaded: false, query: "", hits: [], sessions: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" }
@@ -4845,6 +5044,9 @@
           var storedHistory = preferences !== null && preferences !== undefined
             && Array.isArray(preferences.searchHistory) ? preferences.searchHistory : [];
           var historyList = mergedHistory(storedHistory);
+          /* 0 turns the question off and jumps straight away, as before. */
+          var coldAfterRaw = Number(preferences !== null && preferences !== undefined ? preferences.coldJumpTurns : 0);
+          var coldJumpTurns = Number.isFinite(coldAfterRaw) ? Math.max(0, Math.round(coldAfterRaw)) : DEFAULT_COLD_JUMP;
           /* Every update also parks the answer outside the component, so coming
              back from a hit restores the list instead of asking for a new search. */
           var commit = function (next) {
@@ -4957,6 +5159,7 @@
             var row = h(SearchHitRow, {
               hit: hit,
               terms: view.terms,
+              coldAfter: coldJumpTurns,
               onJump: function () { jumpToSearchHit(hit, view.terms); },
             });
             row.key = String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index);
@@ -5560,7 +5763,7 @@
           }
           var prefs = clientStore.defineStore({
             init: function () {
-              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, argMode: "tool", followUps: {}, searchHistory: [] };
+              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, argMode: "tool", followUps: {}, searchHistory: [], coldJumpTurns: DEFAULT_COLD_JUMP };
             },
             persist: "dsh.ws-recency.prefs.v1",
             actions: {
@@ -5569,6 +5772,11 @@
               setColors: function (draft, value) { draft.colors = value === true; },
               setPinnedSection: function (draft, value) { draft.pinnedSection = value === true; },
               setArgMode: function (draft, value) { draft.argMode = value === "agent" ? "agent" : "tool"; },
+              setColdJumpTurns: function (draft, value) {
+                var next = Number(value);
+                if (!Number.isFinite(next)) return;
+                draft.coldJumpTurns = Math.min(MAX_COLD_JUMP, Math.max(0, Math.round(next)));
+              },
               setFoldDays: function (draft, value) {
                 var next = Number(value);
                 if (!Number.isFinite(next)) return;
@@ -5660,6 +5868,16 @@
               store: prefs,
               locale: NS,
             }, SettingsRow);
+          });
+
+          ctx.slots.inject("settings.general.item", function () {
+            return ctx.slots.register({
+              name: "settings.general.item",
+              id: "ws-recency-cold-jump",
+              order: 45,
+              store: prefs,
+              locale: NS,
+            }, ColdJumpRow);
           });
 
           ctx.slots.inject("settings.general.item", function () {
