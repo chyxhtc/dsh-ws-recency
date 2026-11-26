@@ -1,5 +1,29 @@
 # 怎么把这个插件发给别人
 
+
+## 发布规则（2026-11-26 起）
+
+- **本地可以随便提交**：写代码、跑测试、`git commit`、打本地 tag 都不用问。
+- **发到 npm 必须先经过人验证**：任何 `npm publish`、GitHub Release 都要在应用里实测通过、并由维护者明确说「发」之后才能做。
+- 只有一条命令被允许用来发布：`node tools/publish.mjs <version> --approved`。它在**没有 `--approved` 时直接拒绝**，并且会先跑完 8 套测试、校验工作区干净、确认版本号一致，再去 publish，然后等 registry 真的能取到该版本，最后发 GitHub Release。
+- 为什么这么严：npm 会有「staged」状态——收到 409 `previously staged version` 看似失败，几分钟后版本却又出现了，中间版本就可能被客户装上。一次误发不是撤一个 tag 能解决的。
+- 版本号是消耗品：每个发出去的号都不能复用，出错就换下一个号，不要在同一号上反复重发。
+
+## 操作顺序
+
+```powershell
+# 1. 本地：改完、跑测试、提交（不用问）
+node tests/selfcheck.cjs
+git add -A; git commit -m "..."
+
+# 2. 维护者在应用里实测：重启、试功能
+
+# 3. 维护者说「发」之后，才执行
+node tools/publish.mjs 0.36.0 --approved
+```
+
+脚本会自动：跑完 8 套测试 → 校验工作区干净 → `npm publish` → 轮询 registry 直到能取到该版本 → 用同一份 tarball 建 GitHub Release。`GH_TOKEN` 未设置时只发 npm，并打印补发 Release 的命令。
+
 插件是一个标准的 DSH bundle 包：`index.js`（宿主占位）+ `client.js`（全部逻辑）+ `cordis.patch.yml`（挂载一行）。下面四种方式按门槛从低到高。
 
 ## A. 直接发 tarball（最快，0 账号）
@@ -57,7 +81,7 @@ npm publish --access public
 dsh plugin --profile <profile> add dsh-ws-recency
 ```
 
-发版前记得：`node tests/selfcheck.cjs` 过、`npm pack --dry-run` 只含 5 个文件（`tests/` 不会进包）。
+发版前记得：8 套测试都过、`npm pack --dry-run` 只含 6 个文件（`tests/` 与 `tools/` 不会进包）。发布本身走上面那条 gated 命令，不要手工 `npm publish`。
 
 ## D. 进社区市场（能被搜到）
 
