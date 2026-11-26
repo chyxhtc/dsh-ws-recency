@@ -175,6 +175,11 @@ function response() {
   assert.ok(typeof headingHit.context === "string" && headingHit.context !== "", "a hit carries its surrounding text");
   assert.ok(headingHit.context.toLowerCase().indexOf("verdict") !== -1, "the context is centred on the match");
   assert.ok(headingHit.context.length <= 1000, "the context is capped so the payload stays small");
+  /* Line breaks carry the structure; a collapsed paragraph is hard to read. */
+  const multiLine = await mod.searchSessions(ctx, "gamma");
+  const lineHit = multiLine.hits.find((hit) => hit.sessionId === "s-3");
+  assert.ok(lineHit !== undefined, "the multi-line message is found");
+  assert.ok(lineHit.context.indexOf("\n") !== -1, "the context keeps its line breaks");
   assert.ok(beta.hits[0].at > 0, "each hit carries its timestamp");
   const s1hit = answer.hits.find((hit) => hit.sessionId === "s-1" && hit.role === "assistant");
   assert.strictEqual(s1hit.workspace, "Work", "the workspace label is resolved from cwd");

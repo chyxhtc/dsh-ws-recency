@@ -365,7 +365,7 @@
           ".wsr-hit-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:2px}",
           ".wsr-hit-context-toggle,.wsr-hit-context-jump{border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;cursor:pointer}",
           ".wsr-hit-context-toggle:hover,.wsr-hit-context-jump:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,rgba(255,255,255,.24))}",
-          ".wsr-hit-context{max-height:38vh;overflow:auto;margin-top:4px;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.65;white-space:pre-wrap;word-break:break-word}",
+          ".wsr-hit-context{max-height:42vh;overflow:auto;margin-top:4px;padding:8px 10px;border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.04));color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.75;white-space:pre-wrap;word-break:break-word;tab-size:2}",
           /* A column flex box with a fixed height shrinks its children once the
              content is taller than the box, and the shortest row goes first - that
              is how the recent-searches row vanished only after a search returned
@@ -538,9 +538,7 @@
           "diagnose.report": "近 60 秒：扫描 {passes} 次 / 共 {total}ms / 最慢 {worst}ms · 页面节点 {nodes} · 已挂载轮次 {turns}",
           "search.contextShow": "看上下文",
           "search.contextHide": "收起",
-          "search.coldJump": "这一轮在最新一轮之前 {behind} 轮，跳过去要加载大量历史，可能十几秒。",
-          "search.coldContext": "只看上下文",
-          "search.coldJumpAnyway": "仍然跳过去",
+          "search.coldExpanded": "第 {turn} 轮在最新一轮之前 {behind} 轮，已展开上下文；要跳转请点这一行的「打开会话」。",
           "search.settings.coldTitle": "跳转前确认",
           "search.settings.coldDesc": "命中离最新一轮超过这么多轮时先问一句；0 表示每次都直接跳。",
           "search.openSession": "打开会话",
@@ -759,9 +757,7 @@
           "diagnose.report": "Last 60s: {passes} passes / {total}ms total / {worst}ms worst · {nodes} nodes · {turns} turns mounted",
           "search.contextShow": "Show context",
           "search.contextHide": "Hide",
-          "search.coldJump": "This turn is {behind} turns behind the newest one; jumping there loads a lot of history and can take a while.",
-          "search.coldContext": "Show context",
-          "search.coldJumpAnyway": "Jump anyway",
+          "search.coldExpanded": "Turn {turn} is {behind} turns behind the newest one, so its context is shown here; press Open session on this row to jump.",
           "search.settings.coldTitle": "Ask before a long jump",
           "search.settings.coldDesc": "Ask when a hit is this many turns behind the newest one; 0 jumps every time.",
           "search.openSession": "Open session",
@@ -4912,10 +4908,12 @@
              for ten seconds without warning. */
           var cold = props.coldAfter > 0
             && Number(props.hit.turns) - Number(props.hit.turn) > props.coldAfter;
-          var openContext = function () { opened[1](true); };
           var go = function () {
             if (cold) {
-              askColdJump(props.hit, props.onJump, openContext);
+              /* Showing the context here is cheaper and more readable than a
+                 modal, and the row's own button is the explicit "jump anyway". */
+              opened[1](true);
+              announceColdHint(props.hit);
               return;
             }
             if (typeof props.onJump === "function") props.onJump();
@@ -4941,7 +4939,9 @@
                 },
               }, t("search.openSession")),
             ),
-            opened[0] === true ? h("div", { className: "wsr-hit-context" }, context) : null,
+            opened[0] === true
+              ? h("div", { className: "wsr-hit-context" }, highlightSnippet(context, props.terms))
+              : null,
           ];
           return searchHitRow(props.hit, props.terms, go, extra);
         }
@@ -4983,51 +4983,33 @@
           );
         }
 
-        /** Ask whether a jump that means loading a lot of history should go ahead. */
-        function askColdJump(hit, onJump, onContext) {
+
+        /** Say why a cold hit opened its context instead of jumping. */
+        function announceColdHint(hit) {
           if (typeof document === "undefined") return;
-          closeConfirm();
-          confirmPrevious = typeof document.activeElement !== "undefined" ? document.activeElement : null;
-          var backdrop = statsDiv("wsr-modal-backdrop");
-          backdrop.setAttribute("data-wsr-confirm", "cold");
-          var panel = statsDiv("wsr-confirm");
-          panel.setAttribute("role", "dialog");
-          panel.setAttribute("aria-modal", "true");
-          panel.setAttribute("tabindex", "-1");
-          panel.appendChild(statsDiv("wsr-confirm-text", t("search.coldJump", {
-            turn: String(hit.turn),
-            behind: String(Math.max(0, Number(hit.turns) - Number(hit.turn))),
-          })));
-          var actions = statsDiv("wsr-confirm-actions");
-          var context = document.createElement("button");
-          context.type = "button";
-          context.className = "wsr-qcancel";
-          context.setAttribute("data-wsr-cold-context", "true");
-          context.textContent = t("search.coldContext");
-          context.addEventListener("click", function (event) {
-            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
-            closeConfirm(null);
-            if (typeof onContext === "function") onContext();
-          });
-          var accept = document.createElement("button");
-          accept.type = "button";
-          accept.className = "wsr-qsubmit";
-          accept.setAttribute("data-wsr-cold-jump", "true");
-          accept.textContent = t("search.coldJumpAnyway");
-          accept.addEventListener("click", function (event) {
-            if (event !== undefined && typeof event.stopPropagation === "function") event.stopPropagation();
-            closeConfirm(null);
-            if (typeof onJump === "function") onJump();
-          });
-          actions.appendChild(context);
-          actions.appendChild(accept);
-          panel.appendChild(actions);
-          backdrop.appendChild(panel);
-          document.body.appendChild(backdrop);
-          try { if (typeof panel.focus === "function") panel.focus(); } catch (error) { /* focus is a nicety */ }
+          try {
+            var note = statsDiv("wsr-jump-toast");
+            note.textContent = t("search.coldExpanded", {
+              turn: String(hit.turn),
+              behind: String(Math.max(0, Number(hit.turns) - Number(hit.turn))),
+            });
+            document.body.appendChild(note);
+            window.setTimeout(function () {
+              if (note.parentElement !== null) note.remove();
+            }, 6000);
+          } catch (error) {
+            /* a toast is a nicety */
+          }
         }
 
         function SearchPanelPage(props) {
+          /* A previous build could leave its own backdrop behind; clear it. */
+          try {
+            var strays = document.querySelectorAll('[data-wsr-confirm="cold"]');
+            for (var stray = 0; stray < strays.length; stray += 1) strays[stray].remove();
+          } catch (error) {
+            /* nothing to clean */
+          }
           var state = react.useState(searchLast === null
             ? { loaded: false, query: "", hits: [], sessions: [], terms: [], scanned: 0, total: 0, pending: 0, took: 0, busy: false, error: "" }
             : searchLast);

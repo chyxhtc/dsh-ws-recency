@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.33.0";
+export const HOST_VERSION = "0.33.1";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -910,7 +910,12 @@ function searchSeeks(text, needle) {
  */
 function searchContext(text, needle, radius) {
   const span = Number.isFinite(radius) ? radius : 420;
-  const flat = text.replace(/\s+/g, " ");
+  /* Only spaces and tabs collapse: the line breaks carry the structure, and a
+     collapsed paragraph is much harder to read than a long one. */
+  const flat = text
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n");
   const index = needle === "" ? -1 : flat.toLowerCase().indexOf(needle);
   if (index < 0) return flat.slice(0, span * 2).trim();
   const from = Math.max(0, index - span);
