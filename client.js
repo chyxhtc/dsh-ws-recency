@@ -514,7 +514,7 @@
           "move.done": "已移动到「{workspace}」。若列表没刷新，切换一下工作区或重启应用。",
           "move.doneLive": "\n\n这个会话刚才是打开状态：建议重启应用后再继续对话，避免它沿用旧的目录。",
           "move.repaired": "已补登记到「{workspace}」：上一次移动只搬了日志、没登记工作区，这次把它补上了。",
-          "move.live": "这个会话正开着，不能移动。先切到别的会话，或重启应用后不要打开它，再来移动。",
+          "move.live": "这个会话正开着，无法移动。请重启应用，重启后不要打开它，再从列表里移动。",
           "adopt.title": "补登记游离会话",
           "adopt.description": "修复会话归属：把“目录属于某工作区却不在任何分组”的会话挂回去，并把仍挂在旧工作区分组里的重复归属清掉。",
           "adopt.action": "扫描并刷新",
@@ -820,7 +820,7 @@
           "archive.blank": "blank draft",
           "archive.workspace": "workspace",
           "move.failed": "Move failed: ",
-          "move.live": "This session is open, so it cannot be moved. Switch to another conversation, or restart the app and do not open it, then move it.",
+          "move.live": "This session is open, so it cannot be moved. Restart the app, do not open it, then move it from the list.",
           "stats.chart": "Where the tokens went",
           "stats.family.shell": "shell",
           "stats.family.files": "files",
@@ -3015,6 +3015,11 @@
           panel.appendChild(body);
           body.appendChild(statsDiv("wsr-stats-note", t("move.note")));
           body.appendChild(statsDiv("wsr-move-warning", t("move.warning")));
+          if (currentConversationId() === sessionId) {
+            var liveNote = statsDiv("wsr-move-warning", t("move.live"));
+            liveNote.setAttribute("data-wsr-move-live", "true");
+            body.appendChild(liveNote);
+          }
 
           var current = workspaceOfSession(sessionId);
           var items = (data.workspaces && data.workspaces.items) || [];
