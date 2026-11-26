@@ -2022,6 +2022,11 @@
 
         function schedule() {
           if (disposed || timer !== null) return;
+          /* The interval keeps calling us; a switched-off half must not paint. */
+          if (!featureOn(data.settings, "sidebar")) {
+            unpaintSidebar();
+            return;
+          }
           sidebarAncestors = null;
           if (passesSuspended()) {
             /* One pass, once the host has finished mounting. */
@@ -2049,10 +2054,15 @@
         function unpaintSidebar() {
           if (typeof document === "undefined") return;
           try {
-            var painted = document.querySelectorAll("[data-wsr-rank],[data-wsr-dot]");
+            var pinned = document.querySelectorAll('[data-wsr-pin="true"]');
+            for (var k = 0; k < pinned.length; k += 1) pinned[k].remove();
+            pinHost = null;
+            var painted = document.querySelectorAll("[data-wsr-rank],[data-wsr-dot],[data-wsr-state],[data-wsr-pin-hidden]");
             for (var i = 0; i < painted.length; i += 1) {
               painted[i].removeAttribute("data-wsr-rank");
               painted[i].removeAttribute("data-wsr-dot");
+              painted[i].removeAttribute("data-wsr-state");
+              painted[i].removeAttribute("data-wsr-pin-hidden");
               painted[i].style.removeProperty("order");
             }
             var hidden = document.querySelectorAll(".wsr-hidden");
@@ -2079,6 +2089,7 @@
           if (typeof props.t === "function") data.t = props.t;
           /* With the sidebar half off, drop our paint and stop the timer. */
           var sidebarOn = featureOn(data.settings, "sidebar");
+          if (typeof syncPanelsExposed === "function") syncPanelsExposed(data.settings);
           react.useEffect(function () {
             if (sidebarOn) {
               schedule();
@@ -2177,6 +2188,9 @@
          * leaving the app and coming back fixes it. These stay in the page and
          * never take the window's focus away.
          * ------------------------------------------------------------------- */
+
+        /** Set by apply(): keeps gated panel registrations in step with the store. */
+        var syncPanelsExposed = null;
 
         var confirmBackdrop = null;
         var confirmPrevious = null;
@@ -5328,28 +5342,39 @@
           return h(Icon, { size: size });
         }
 
-        /** One switch: a title, what it costs to turn off, and a toggle. */
+        /** One switch: a title, what it costs to turn off, and the host's own toggle. */
         function FeatureRow(props) {
           var on = props.on === true;
+          var Switch = ui.Switch;
+          var control;
+          if (typeof Switch === "function") {
+            control = h(Switch, {
+              checked: on,
+              label: props.title,
+              onChange: function () {
+                if (typeof props.onToggle === "function") props.onToggle(props.id);
+              },
+            });
+          } else {
+            /* Older hosts without the primitive fall back to a plain button. */
+            control = h("button", {
+              type: "button",
+              className: on ? "wsr-toggle wsr-toggle-on" : "wsr-toggle",
+              "aria-pressed": on ? "true" : "false",
+              "data-wsr-feature-toggle": props.id,
+              onClick: function () {
+                if (typeof props.onToggle === "function") props.onToggle(props.id);
+              },
+            }, t(on ? "features.on" : "features.off"));
+          }
           return h("div", { className: "wsr-setRow", "data-wsr-feature": props.id },
             h("div", { className: "wsr-setText" },
               h("div", { className: "wsr-setTitle" }, props.title),
               h("div", { className: "wsr-setDesc" }, props.description),
             ),
-            h("div", { className: "wsr-controls" },
-              h("button", {
-                type: "button",
-                className: on ? "wsr-toggle wsr-toggle-on" : "wsr-toggle",
-                "aria-pressed": on ? "true" : "false",
-                "data-wsr-feature-toggle": props.id,
-                onClick: function () {
-                  if (typeof props.onToggle === "function") props.onToggle(props.id);
-                },
-              }, t(on ? "features.on" : "features.off")),
-            ),
+            h("div", { className: "wsr-controls", "data-wsr-feature-toggle": props.id }, control),
           );
-        }
-        /** The package this section belongs to, as the plugin page names it. */
+        }        /** The package this section belongs to, as the plugin page names it. */
         var OUR_PACKAGE = "dsh-ws-recency";
 
         /** The package name a detail subject stands for, whichever shape it takes. */
@@ -5985,16 +6010,7 @@
           });
 
           if (SEARCH_ENABLED) {
-            ctx.slots.inject("sidebar.panellist", function () {
-              return ctx.slots.register({
-                name: "sidebar.panellist",
-                id: "ws-recency-search",
-                order: 19,
-              store: prefs,
-                locale: NS,
-                label: function () { return t("search.title"); },
-              }, withFeature(SearchPanelIcon, "search"));
-            });
+            
 
             ctx.slots.inject("main", function () {
               return ctx.slots.register({
@@ -6008,16 +6024,7 @@
 
 
 
-          ctx.slots.inject("sidebar.panellist", function () {
-            return ctx.slots.register({
-              name: "sidebar.panellist",
-              id: "ws-recency-trash",
-              order: 20,
-              store: prefs,
-              locale: NS,
-              label: function () { return t("trash.title"); },
-            }, withFeature(TrashPanelIcon, "trash"));
-          });
+          
 
           ctx.slots.inject("plugins.detail.section", function () {
             return ctx.slots.register({
@@ -6114,6 +6121,89 @@
 
 
 
+          /*
+           * Search and trash each own a sidebar row. Hiding the glyph is not enough:
+           * the row's label and its panel page are registered too, so the switch has to
+           * dispose the whole injection and build it again when it comes back.
+           */
+          var gated = {};
+          function bindPanels(feature, build) {
+            gated[feature] = { build: build, dispose: null };
+            syncPanels(data.settings);
+          }
+          function syncPanels(settings) {
+            Object.keys(gated).forEach(function (feature) {
+              var entry = gated[feature];
+              var want = featureOn(settings, feature);
+              if (want && entry.dispose === null) {
+                try {
+                  entry.dispose = entry.build();
+                } catch (error) {
+                  console.warn("[dsh-ws-recency] could not register " + feature + ":", error);
+                }
+                return;
+              }
+              if (!want && entry.dispose !== null) {
+                try {
+                  entry.dispose();
+                } catch (error) {
+                  /* already gone */
+                }
+                entry.dispose = null;
+              }
+            });
+          }
+          syncPanelsExposed = syncPanels;
+
+          bindPanels("search", function () {
+            var icon = ctx.slots.inject("sidebar.panellist", function () {
+              return ctx.slots.register({
+                name: "sidebar.panellist",
+                id: "ws-recency-search",
+                order: 19,
+                store: prefs,
+                locale: NS,
+                label: function () { return t("search.title"); },
+              }, SearchPanelIcon);
+            });
+            var page = ctx.slots.inject("main", function () {
+              return ctx.slots.register({
+                name: "main",
+                key: "ws-recency-search",
+                store: prefs,
+                locale: NS,
+              }, SearchPanelPage);
+            });
+            return function () {
+              if (typeof icon === "function") icon();
+              if (typeof page === "function") page();
+            };
+          });
+
+          bindPanels("trash", function () {
+            var icon = ctx.slots.inject("sidebar.panellist", function () {
+              return ctx.slots.register({
+                name: "sidebar.panellist",
+                id: "ws-recency-trash",
+                order: 20,
+                store: prefs,
+                locale: NS,
+                label: function () { return t("trash.title"); },
+              }, TrashPanelIcon);
+            });
+            var page = ctx.slots.inject("main", function () {
+              return ctx.slots.register({
+                name: "main",
+                key: "ws-recency-trash",
+                store: prefs,
+                locale: NS,
+              }, TrashPanelPage);
+            });
+            return function () {
+              if (typeof icon === "function") icon();
+              if (typeof page === "function") page();
+            };
+          });
           ctx.effect(function () {
             return function () { shutdown(); };
           }, "dsh-ws-recency: list observer");

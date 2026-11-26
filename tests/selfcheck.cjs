@@ -329,8 +329,15 @@ const ctx = {
   },
   locale: { register() { return () => {}; } },
   slots: {
-    inject(_name, factory) { return factory(); },
+    /* Registrations are disposed when a feature switch goes off: keep a list. */
+    registrations: [],
+    inject(_name, factory) {
+      const disposer = factory();
+      return typeof disposer === "function" ? disposer : () => {};
+    },
     register(spec2, component) {
+      const entry = { spec: spec2, component };
+      ctx.slots.registrations.push(entry);
       if (spec2.name === "shell.overlay") Sorter = component;
       if (spec2.name === "settings.general.item") SettingsRow = component;
       if (spec2.name === "sidebar.session.row.leading") FollowUpDot = component;
@@ -344,7 +351,10 @@ const ctx = {
       if (spec2.name === "plugins.detail.section" && spec2.id === "ws-recency-features") FeaturesPage = component;
       if (spec2.name === "main" && spec2.key === "ws-recency-trash") TrashPage = component;
       if (spec2.name === "main" && spec2.key === "ws-recency-search") SearchPage = component;
-      return () => {};
+      return () => {
+        const at = ctx.slots.registrations.indexOf(entry);
+        if (at !== -1) ctx.slots.registrations.splice(at, 1);
+      };
     },
   },
 };
@@ -1465,8 +1475,9 @@ function textOf(node) {
     assert.strictEqual(searchRow.props["data-wsr-feature"], "search", "the row names its feature");
     const controls = searchRow.children[1];
     const toggle = controls.children[0];
-    assert.ok(String(toggle.props.className).indexOf("wsr-toggle") !== -1, "the control is a switch");
-    toggle.props.onClick();
+    assert.ok(toggle !== undefined && toggle !== null, "the row carries a control");
+    if (typeof toggle.props.onChange === "function") toggle.props.onChange(true);
+    else toggle.props.onClick();
     assert.deepStrictEqual(toggled, ["search"], "the switch names its feature");
 
     /* With the switch off, the gated component renders nothing. */
@@ -1481,11 +1492,15 @@ function textOf(node) {
       "a different package's page gets no section",
     );
 
+    /* Switching search off disposes its sidebar row (label and page with it). */
+    const beforeOff = ctx.slots.registrations.length;
     prefs.features = { search: false };
-    assert.strictEqual(mount(SearchIcon, { size: 16 }), null, "a disabled feature draws no glyph");
-    assert.strictEqual(mount(SearchPage, {}), null, "and no page");
+    render();
+    assert.ok(ctx.slots.registrations.length < beforeOff, "turning search off removes its row");
+    assert.ok(prefs.features.search === false, "the choice stays in the store");
     prefs.features = {};
-    assert.ok(mount(SearchIcon, { size: 16 }) !== null, "turning it back on restores the glyph");
+    render();
+    assert.strictEqual(ctx.slots.registrations.length, beforeOff, "turning it back on restores it");
   }
 console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel, search jump");
 }).catch((error) => {

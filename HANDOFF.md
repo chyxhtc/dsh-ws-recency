@@ -303,3 +303,9 @@ var SEARCH_ENABLED = true;   // 搜索面板、跳转、上下文展开、关键
 - 顺手去掉多出来的侧栏图标与整页组件，`FeaturesSection` 直接作为插件详情页的一节（标题 + 说明 + 7 行开关 + 计数 + 全部启用）。
 - 详情槽的 standardProps 里没有 `useStore`，所以这一节自己维护一份 override：点开关时先本地翻转再调 store 动作，界面上立刻可见；`resetFeatures` 清空 override。
 - 教训：加 UI 之前先确认宿主已有的扩展点（`plugins.detail.section`、`plugins.detail.actions`、`plugins.detail.badge`），不要自造一个新的导航入口。
+
+## 0.35.2
+
+- 搜索 / 回收站关掉后只掉图标、留一条文字行：侧栏那一行来自 `sidebar.panellist` 的**注册**，宿主用 `label` 渲染文字，图标返回 null 只掉图标。改成按开关**注册/注销**：`bindPanels(feature, build)` 保存整个 injection 的 disposer（`ctx.slots.inject` 返回幂等 disposer），关掉时 dispose 图标与页面两处注册，Sorter 每次渲染调 `syncPanels(data.settings)` 对齐。
+- 侧栏会话管理关不掉：`apply()` 里的 `setInterval(schedule, TICK_MS)` 从不检查开关，pass 一直在画。现在 `schedule()` 一进来就判断，关掉则 `unpaintSidebar()` 后直接返回。`unpaintSidebar` 也补全了：删掉整块置顶区（`[data-wsr-pin]`）、清 `data-wsr-state` / `data-wsr-pin-hidden` / `data-wsr-rank` / `data-wsr-dot`、去掉 `.wsr-hidden` 与内联 `order`。
+- 开关改用宿主的 `Switch` primitive（`@deepseek-ai/dsh-client-ui-primitives`），和插件页其它开关同款；老宿主没有该导出时退回自带按钮样式。
