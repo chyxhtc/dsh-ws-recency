@@ -572,6 +572,7 @@
           "features.on": "已启用",
           "features.off": "已关闭",
           "features.reset": "全部启用",
+          "features.restart": "改动需要重启应用后生效。",
           "features.note": "只关掉你不需要的部分：关掉的入口会从界面上消失，相关的后台逻辑也会停下。",
           "features.takesEffect": "当前启用 {on} / {all} 项。",
           "features.sidebar.title": "侧栏会话管理",
@@ -809,6 +810,7 @@
           "features.on": "On",
           "features.off": "Off",
           "features.reset": "Enable all",
+          "features.restart": "the change takes effect after a restart.",
           "features.note": "Turn off only what you do not need: the entry disappears from the interface and its background work stops.",
           "features.takesEffect": "{on} of {all} features are on.",
           "features.sidebar.title": "Sidebar session management",
@@ -2191,6 +2193,9 @@
 
         /** Set by apply(): keeps gated panel registrations in step with the store. */
         var syncPanelsExposed = null;
+
+        /** What was registered at startup, so the page can say "restart to apply". */
+        var panelBootExposed = null;
 
         var confirmBackdrop = null;
         var confirmPrevious = null;
@@ -5424,16 +5429,26 @@
             if (props.actions !== undefined) props.actions.resetFeatures();
           };
 
+          /* These two own a sidebar row, and a row is fixed at startup. */
+          var boot = typeof panelBootExposed === "function" ? panelBootExposed() : null;
+          var waitsForRestart = function (id) {
+            if (id !== "search" && id !== "trash") return false;
+            if (boot === null) return false;
+            return boot[id] !== valueOf(id);
+          };
           var rows = FEATURE_IDS.map(function (id) {
             return h(FeatureRow, {
               key: id,
               id: id,
               title: t("features." + id + ".title"),
-              description: t("features." + id + ".desc"),
+              description: waitsForRestart(id)
+                ? t("features." + id + ".desc") + " " + t("features.restart")
+                : t("features." + id + ".desc"),
               on: valueOf(id),
               onToggle: toggle,
             });
           });
+
           var onCount = FEATURE_IDS.filter(function (id) { return valueOf(id); }).length;
           return h("section", { className: "wsr-plugin-features", "data-wsr-features": OUR_PACKAGE },
             h("div", { className: "wsr-features-head" },
@@ -6122,88 +6137,60 @@
 
 
           /*
-           * Search and trash each own a sidebar row. Hiding the glyph is not enough:
-           * the row's label and its panel page are registered too, so the switch has to
-           * dispose the whole injection and build it again when it comes back.
+           * Search and trash each own a sidebar row. The host derives the row from the
+           * registration, so a row cannot be hidden by drawing less; and re-registering
+           * mid-session left the row behind on the next switch. So: register once, at
+           * startup, for whatever the stored settings asked for, and tell the user that a
+           * change here needs a restart. Everything else takes effect immediately.
            */
-          var gated = {};
-          function bindPanels(feature, build) {
-            gated[feature] = { build: build, dispose: null };
-            syncPanels(data.settings);
-          }
+          var panelBoot = null;
           function syncPanels(settings) {
-            Object.keys(gated).forEach(function (feature) {
-              var entry = gated[feature];
-              var want = featureOn(settings, feature);
-              if (want && entry.dispose === null) {
-                try {
-                  entry.dispose = entry.build();
-                } catch (error) {
-                  console.warn("[dsh-ws-recency] could not register " + feature + ":", error);
-                }
-                return;
-              }
-              if (!want && entry.dispose !== null) {
-                try {
-                  entry.dispose();
-                } catch (error) {
-                  /* already gone */
-                }
-                entry.dispose = null;
-              }
-            });
+            if (panelBoot !== null) return;
+            panelBoot = {};
+            FEATURE_IDS.forEach(function (feature) { panelBoot[feature] = featureOn(settings, feature); });
+            if (panelBoot.search) {
+              ctx.slots.inject("sidebar.panellist", function () {
+                return ctx.slots.register({
+                  name: "sidebar.panellist",
+                  id: "ws-recency-search",
+                  order: 19,
+                  store: prefs,
+                  locale: NS,
+                  label: function () { return t("search.title"); },
+                }, SearchPanelIcon);
+              });
+              ctx.slots.inject("main", function () {
+                return ctx.slots.register({
+                  name: "main",
+                  key: "ws-recency-search",
+                  store: prefs,
+                  locale: NS,
+                }, SearchPanelPage);
+              });
+            }
+            if (panelBoot.trash) {
+              ctx.slots.inject("sidebar.panellist", function () {
+                return ctx.slots.register({
+                  name: "sidebar.panellist",
+                  id: "ws-recency-trash",
+                  order: 20,
+                  store: prefs,
+                  locale: NS,
+                  label: function () { return t("trash.title"); },
+                }, TrashPanelIcon);
+              });
+              ctx.slots.inject("main", function () {
+                return ctx.slots.register({
+                  name: "main",
+                  key: "ws-recency-trash",
+                  store: prefs,
+                  locale: NS,
+                }, TrashPanelPage);
+              });
+            }
           }
           syncPanelsExposed = syncPanels;
-
-          bindPanels("search", function () {
-            var icon = ctx.slots.inject("sidebar.panellist", function () {
-              return ctx.slots.register({
-                name: "sidebar.panellist",
-                id: "ws-recency-search",
-                order: 19,
-                store: prefs,
-                locale: NS,
-                label: function () { return t("search.title"); },
-              }, SearchPanelIcon);
-            });
-            var page = ctx.slots.inject("main", function () {
-              return ctx.slots.register({
-                name: "main",
-                key: "ws-recency-search",
-                store: prefs,
-                locale: NS,
-              }, SearchPanelPage);
-            });
-            return function () {
-              if (typeof icon === "function") icon();
-              if (typeof page === "function") page();
-            };
-          });
-
-          bindPanels("trash", function () {
-            var icon = ctx.slots.inject("sidebar.panellist", function () {
-              return ctx.slots.register({
-                name: "sidebar.panellist",
-                id: "ws-recency-trash",
-                order: 20,
-                store: prefs,
-                locale: NS,
-                label: function () { return t("trash.title"); },
-              }, TrashPanelIcon);
-            });
-            var page = ctx.slots.inject("main", function () {
-              return ctx.slots.register({
-                name: "main",
-                key: "ws-recency-trash",
-                store: prefs,
-                locale: NS,
-              }, TrashPanelPage);
-            });
-            return function () {
-              if (typeof icon === "function") icon();
-              if (typeof page === "function") page();
-            };
-          });
+          panelBootExposed = function () { return panelBoot; };
           ctx.effect(function () {
             return function () { shutdown(); };
           }, "dsh-ws-recency: list observer");
@@ -6226,6 +6213,13 @@
 
         /* Test hook: the jump and the highlighting are pure DOM helpers. */
         /* The statistics panel no longer has a menu row; tests open it here. */
+        /* What the sidebar bound at startup: the page reads it to say "restart". */
+        exports.__features = {
+          boot: function () {
+            return typeof panelBootExposed === "function" ? panelBootExposed() : null;
+          },
+        };
+
         exports.__stats = { open: openStatsPanel, close: closeStatsPanel };
 
         exports.__search = {

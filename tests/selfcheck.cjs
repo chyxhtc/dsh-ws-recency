@@ -1492,15 +1492,30 @@ function textOf(node) {
       "a different package's page gets no section",
     );
 
-    /* Switching search off disposes its sidebar row (label and page with it). */
-    const beforeOff = ctx.slots.registrations.length;
+    /* A sidebar row is fixed at startup, so its switch waits for a restart. */
+    const bootCount = ctx.slots.registrations.length;
     prefs.features = { search: false };
     render();
-    assert.ok(ctx.slots.registrations.length < beforeOff, "turning search off removes its row");
+    assert.strictEqual(ctx.slots.registrations.length, bootCount, "the row stays until a restart");
     assert.ok(prefs.features.search === false, "the choice stays in the store");
+    const afterTogglePage = mount(FeaturesPage, {
+      useStore: (select) => select(prefs),
+      actions: featureActions,
+      subject: { kind: "bundle", pkg: { name: "dsh-ws-recency" } },
+    });
+    const rowElementsAfter = [];
+    (function walk2(node) {
+      if (node === null || node === undefined || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        for (const item of node) walk2(item);
+        return;
+      }
+      if (typeof (node.props || {}).id === "string" && node.props.id === "search") rowElementsAfter.push(node);
+      for (const child of node.children || []) walk2(child);
+    })(afterTogglePage);
+    const searchRowAfter = rowElementsAfter[0].type(rowElementsAfter[0].props);
+    assert.ok(textOf(searchRowAfter).indexOf("after a restart") !== -1, "the page says the change needs a restart");
     prefs.features = {};
-    render();
-    assert.strictEqual(ctx.slots.registrations.length, beforeOff, "turning it back on restores it");
   }
 console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel, search jump");
 }).catch((error) => {

@@ -309,3 +309,10 @@ var SEARCH_ENABLED = true;   // 搜索面板、跳转、上下文展开、关键
 - 搜索 / 回收站关掉后只掉图标、留一条文字行：侧栏那一行来自 `sidebar.panellist` 的**注册**，宿主用 `label` 渲染文字，图标返回 null 只掉图标。改成按开关**注册/注销**：`bindPanels(feature, build)` 保存整个 injection 的 disposer（`ctx.slots.inject` 返回幂等 disposer），关掉时 dispose 图标与页面两处注册，Sorter 每次渲染调 `syncPanels(data.settings)` 对齐。
 - 侧栏会话管理关不掉：`apply()` 里的 `setInterval(schedule, TICK_MS)` 从不检查开关，pass 一直在画。现在 `schedule()` 一进来就判断，关掉则 `unpaintSidebar()` 后直接返回。`unpaintSidebar` 也补全了：删掉整块置顶区（`[data-wsr-pin]`）、清 `data-wsr-state` / `data-wsr-pin-hidden` / `data-wsr-rank` / `data-wsr-dot`、去掉 `.wsr-hidden` 与内联 `order`。
 - 开关改用宿主的 `Switch` primitive（`@deepseek-ai/dsh-client-ui-primitives`），和插件页其它开关同款；老宿主没有该导出时退回自带按钮样式。
+
+## 0.35.3
+
+- 0.35.2 的「按开关注销/重建注册」只灵一次：开启后再关闭，第二次 dispose 不起作用（行留着），重启才恢复。改成**只在启动时注册一次**（`syncPanels` 用 `panelBoot` 记住当前值，之后不再动），搜索与回收站的开关改为「重启后生效」，插件页对这两行追加说明（`features.restart`）。其余开关仍然当场生效。
+- 这样也去掉了「在 React 渲染过程中 dispose 宿主注册」这种脆弱写法；`ctx.slots.inject` 的 disposer 一次性用完就没法重复使用，实测不可靠。
+- 测试改成：切换后注册数不变（不重建），且行文本出现「the change takes effect after a restart」。
+- 教训：宿主把侧栏行当成注册的属性，不是组件的输出——能画多少都不能让一行消失；要么在启动时决定，要么不提供这个开关。
