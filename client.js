@@ -2008,48 +2008,7 @@
           });
         }
 
-        /**
-         * Session "..." menu row: move the session into the trash folder.
-         *
-         * DSH itself only archives; the host half of this plugin stops the work,
-         * detaches the bookkeeping and renames the log directory into
-         * `<home>/.trash/ws-recency/`. The browser half only asks for confirmation
-         * and posts the id.
-         */
         
-        function TrashMenuItem(props) {
-          var Item = ui.MenuItemButton;
-          if (typeof Item !== "function") return null;
-          var Icon = ui.IconTrashOutlineRegular;
-          return h(Item, {
-            icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
-            onSelect: function () {
-              askConfirm(t("trash.confirm"), function () {
-                fetch("/ws-recency/session-trash?sessionId=" + encodeURIComponent(props.sessionId), {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ sessionId: props.sessionId }),
-                })
-                  .then(function (response) {
-                    return response.text().then(function (text) {
-                      var parsed = null;
-                      try { parsed = JSON.parse(text); } catch (error) { parsed = null; }
-                      return { status: response.status, text: text, json: parsed };
-                    });
-                  })
-                  .then(function (result) {
-                    if (result.json !== null && result.json.ok === true) return;
-                    var reason = (result.json !== null && result.json.error) || (result.text || "").trim().slice(0, 120) || "(empty response)";
-                    askNotice(t("trash.failed") + "HTTP " + result.status + " \u00b7 " + reason);
-                  })
-                  .catch(function (error) {
-                    askNotice(t("trash.failed") + (error && error.message ? error.message : error));
-                  });
-              });
-            },
-          }, t("menu.trash"));
-        }
-
         /* ------------------------- token statistics ------------------------- */
 
         var statsModal = null;
@@ -3750,36 +3709,8 @@
           return typeof Tooltip === "function" ? h(Tooltip, { label: label, side: "bottom" }, button) : button;
         }
 
-        /** Session "..." menu row: hand the work over to a fresh Session. */
-        function HandoffMenuItem(props) {
-          var Item = ui.MenuItemButton;
-          if (typeof Item !== "function") return null;
-          var Icon = ui.IconDataOutlineRegular;
-          return h(Item, {
-            icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
-            onSelect: function () {
-              /* Open the conversation first so the running handoff (and later the
-                 card) is visible; the prompt itself does not need the composer. */
-              var service = data.service;
-              if (service !== null && service !== undefined && typeof service.openSession === "function") {
-                try { service.openSession(props.sessionId); } catch (error) { /* the send still lands */ }
-              }
-              startHandoff(props.sessionId);
-            },
-          }, t("menu.handoff"));
-        }
-
-        /** Session "..." menu row: token statistics of that session. */
-        function StatsMenuItem(props) {
-          var Item = ui.MenuItemButton;
-          if (typeof Item !== "function") return null;
-          var Icon = ui.IconDataOutlineRegular;
-          return h(Item, {
-            icon: typeof Icon === "function" ? h(Icon, {}) : undefined,
-            onSelect: function () { openStatsPanel(props.sessionId); },
-          }, t("menu.stats"));
-        }
-
+        
+        
         /** Settings -> General row: ask before a jump that loads a lot of history. */
         function ColdJumpRow(props) {
           var settings = props.useStore(function (state) { return state; });
@@ -5926,36 +5857,9 @@
             }, MoveMenuItem);
           });
 
-          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
-            return ctx.slots.register({
-              name: "sidebar.workspaces.session.menu.item",
-              id: "ws-recency-handoff",
-              order: 685,
-              store: prefs,
-              locale: NS,
-            }, HandoffMenuItem);
-          });
-
-          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
-            return ctx.slots.register({
-              name: "sidebar.workspaces.session.menu.item",
-              id: "ws-recency-stats",
-              order: 710,
-              store: prefs,
-              locale: NS,
-            }, StatsMenuItem);
-          });
 
 
-          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
-            return ctx.slots.register({
-              name: "sidebar.workspaces.session.menu.item",
-              id: "ws-recency-trash",
-              order: 700,
-              store: prefs,
-              locale: NS,
-            }, TrashMenuItem);
-          });
+
 
           ctx.effect(function () {
             return function () { shutdown(); };
@@ -5978,6 +5882,9 @@
         };
 
         /* Test hook: the jump and the highlighting are pure DOM helpers. */
+        /* The statistics panel no longer has a menu row; tests open it here. */
+        exports.__stats = { open: openStatsPanel, close: closeStatsPanel };
+
         exports.__search = {
           draft: function () { return searchDraft; },
           highlight: highlightSnippet,

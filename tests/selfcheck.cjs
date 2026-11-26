@@ -615,7 +615,7 @@ function textOf(node) {
 }
 
 (async () => {
-  assert.ok(StatsMenuItem !== null, "the stats menu row was not registered");
+  assert.ok(typeof mod.__stats.open === "function", "the statistics panel is reachable");
   assert.ok(TrashMenuItem !== null, "the trash menu row was not registered");
 
   global.fetch.answer = {
@@ -657,13 +657,8 @@ function textOf(node) {
     },
   };
 
-  const item = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
-  assert.ok(item !== null, "the stats row renders");
-  assert.strictEqual(item.children[0], "Token statistics");
-  assert.ok(item.props.icon !== undefined, "the row carries an icon");
-
-  item.props.onSelect();
-  assert.strictEqual(global.fetch.calls.length, 1, "selecting the row asks the host for statistics");
+  mod.__stats.open("A-fresh-1");
+  assert.strictEqual(global.fetch.calls.length, 1, "opening the panel asks the host for statistics");
   assert.ok(String(global.fetch.calls[0].url).indexOf("/ws-recency/session-stats") !== -1);
   assert.ok(String(global.fetch.calls[0].url).indexOf("sessionId=A-fresh-1") !== -1, "the id travels in the query too");
   assert.deepStrictEqual(JSON.parse(global.fetch.calls[0].options.body), { sessionId: "A-fresh-1" });
@@ -793,8 +788,7 @@ function textOf(node) {
 
   /* The toggle moves the argument tokens onto the agent. */
   prefs.argMode = "agent";
-  const itemAgain = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
-  itemAgain.props.onSelect();
+  mod.__stats.open("A-fresh-1");
   await new Promise((resolve) => setTimeout(resolve, 0));
   const agentBody = overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-body");
   const agentHeader = agentBody.querySelector(".wsr-chart-headrow");
@@ -821,8 +815,7 @@ function textOf(node) {
     { step: 8, context: 7000, entered: { kind: "tool", name: "edit", detail: "d.ts", tokens: 900 } },
   ];
   global.fetch.answer.stats.amplified.compactions = [4];
-  const itemSegmented = StatsMenuItem({ sessionId: "A-fresh-1", t: (key) => key });
-  itemSegmented.props.onSelect();
+  mod.__stats.open("A-fresh-1");
   await new Promise((resolve) => setTimeout(resolve, 0));
   const segmentedBody = overlayRoot.children[overlayRoot.children.length - 1].children[0].querySelector(".wsr-modal-body");
   const segmentedGroups = segmentedBody.querySelectorAll(".wsr-context-jump-group");
@@ -883,7 +876,6 @@ function textOf(node) {
   assert.ok(String(global.fetch.calls[before].url).indexOf("sessionId=A-fresh-1") !== -1, "it analyses the conversation it sits in");
 
   /* ---------- handoff ------------------------------------------------- */
-  assert.ok(HandoffItem !== null, "the handoff menu row was registered");
   assert.ok(HandoffAction !== null, "the turn handoff action was registered");
   const handoffAction = HandoffAction({ sessionId: "session-x", messageId: "m1" });
   const handoffButton = typeof handoffAction.type === "function" ? handoffAction : handoffAction;
@@ -899,16 +891,8 @@ function textOf(node) {
   assert.ok(String(turnPrompt.content[0].text).indexOf("~~~handoff") !== -1, "the instruction asks for the tilde fence");
   assert.deepStrictEqual(JSON.parse(JSON.stringify(turnPrompt.options)), { source: "dsh-ws-recency" }, "the borrow is tagged");
 
-  /* The "..." menu row starts the same handoff; before 0.24.1 it called a
-     function that no longer existed and threw on every click. */
-  const beforeMenuPrompts = sessionService.prompts.length;
-  const handoffRow = HandoffItem({ sessionId: "A-fresh-1" });
-  assert.ok(handoffRow !== null, "the menu row renders");
-  assert.strictEqual(handoffRow.children[0], "Hand off to a new session", "the row is labelled");
-  handoffRow.props.onSelect();
-  assert.ok(service.opened.indexOf("A-fresh-1") !== -1, "the menu row opens the conversation first");
-  assert.strictEqual(sessionService.prompts.length, beforeMenuPrompts + 1, "the menu row sends the instruction");
-  assert.strictEqual(sessionService.prompts[beforeMenuPrompts].target, "A-fresh-1");
+  /* The session-menu row for handoff is gone; the turn action above is the entry. */
+
 
   /* Rewrite keeps the card's own wording and goes through the same seam. */
   const beforeRewrite = sessionService.prompts.length;
@@ -1069,23 +1053,8 @@ function textOf(node) {
   assert.strictEqual(page.props.className, "wsr-page");
   assert.ok(page.children.length > 0);
 
-  /* ---------- delete asks in the page, not with a native dialog ------- */
-  /* A native window.confirm left the renderer without keyboard focus on
-     Windows: the composer then ignored clicks until the app was refocused. */
-  const deleteRow = TrashMenuItem({ sessionId: "A-fresh-1" });
-  assert.ok(deleteRow !== null, "the delete menu row renders");
-  const beforeDelete = global.fetch.calls.length;
-  deleteRow.props.onSelect();
-  assert.strictEqual(global.fetch.calls.length, beforeDelete, "nothing is deleted before the user confirms");
-  const deleteDialog = overlayRoot.children[overlayRoot.children.length - 1];
-  assert.strictEqual(deleteDialog.getAttribute("data-wsr-confirm"), "confirm", "the confirmation is an in-page dialog");
-  const deleteText = deleteDialog.querySelector(".wsr-confirm-text");
-  assert.ok(deleteText !== null && deleteText.textContent.indexOf("Delete this session") !== -1, "it asks the delete question");
-  deleteDialog.querySelector("[data-wsr-confirm-ok]").click();
-  assert.strictEqual(global.fetch.calls.length, beforeDelete + 1, "accepting deletes the session");
-  assert.ok(String(global.fetch.calls[beforeDelete].url).indexOf("/ws-recency/session-trash") !== -1, "it posts the trash route");
-  assert.strictEqual(overlayRoot.children.indexOf(deleteDialog), -1, "the dialog closes after accepting");
-
+  /* The session menu no longer carries a delete row: it holds the follow-up mark
+     and move-to-workspace only. The trash panel and its routes are unchanged. */
   /* ---------- move to workspace ------------------------------------- */
   global.fetch.answer = { ok: true, workspace: "B" };
   assert.ok(MoveMenuItem !== null, "the move menu row was registered");
