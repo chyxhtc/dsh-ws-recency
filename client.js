@@ -413,7 +413,6 @@
           ".wsr-hit-time{flex:none;font-variant-numeric:tabular-nums}",
           ".wsr-hit-step{flex:none;color:var(--dsw-alias-label-secondary)}",
           ".wsr-jump-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9999;padding:6px 12px;border-radius:8px;font-size:12px;background:var(--dsw-alias-bg-layer-3,rgba(32,34,38,.96));color:var(--dsw-alias-label-primary);border:.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none}",
-          ".wsr-diagnose-toast{max-width:min(680px,90vw);white-space:normal;line-height:1.6;text-align:left;font-variant-numeric:tabular-nums}",
           ".wsr-jump-loading{color:var(--dsw-alias-label-secondary)}",
           ".wsr-jump-toast-warn{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 45%,transparent);color:var(--dsw-alias-state-error-primary,#d9534f)}",
           ".wsr-hit-cwd{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}",
@@ -534,8 +533,6 @@
           "search.assistant": "助手",
           "search.turn": "第 {n} 轮",
           "search.pluginCost": "插件 {ms}ms",
-          "menu.diagnose": "插件耗时诊断",
-          "diagnose.report": "近 60 秒：扫描 {passes} 次 / 共 {total}ms / 最慢 {worst}ms · 页面节点 {nodes} · 已挂载轮次 {turns}",
           "search.contextShow": "看上下文",
           "search.contextHide": "收起",
           "search.coldExpanded": "第 {turn} 轮在最新一轮之前 {behind} 轮，已展开上下文；要跳转请点这一行的「打开会话」。",
@@ -753,8 +750,6 @@
           "search.assistant": "Assistant",
           "search.turn": "turn {n}",
           "search.pluginCost": "plugin {ms}ms",
-          "menu.diagnose": "Plugin cost",
-          "diagnose.report": "Last 60s: {passes} passes / {total}ms total / {worst}ms worst · {nodes} nodes · {turns} turns mounted",
           "search.contextShow": "Show context",
           "search.contextHide": "Hide",
           "search.coldExpanded": "Turn {turn} is {behind} turns behind the newest one, so its context is shown here; press Open session on this row to jump.",
@@ -1930,15 +1925,6 @@
          * a feedback loop cannot turn into a busy main thread. */
         var PASS_MIN_GAP = 400;
         var lastPassAt = 0;
-        var passCount = 0;
-        /* Rolling record for the diagnostic row: how often the pass runs and how
-           long it takes, so a claim about cost can be checked on screen. */
-        var passSamples = [];
-
-        function recordPass(spent) {
-          passSamples.push({ at: Date.now(), ms: spent });
-          if (passSamples.length > 200) passSamples.shift();
-        }
 
         function schedule() {
           if (disposed || timer !== null) return;
@@ -1956,15 +1942,12 @@
           timer = window.setTimeout(function () {
             timer = null;
             lastPassAt = Date.now();
-            passCount += 1;
             var began = Date.now();
             try {
               apply();
             } catch (error) {
               console.warn("[dsh-ws-recency] pass failed:", error);
             }
-            recordPass(Date.now() - began);
-            if (typeof window !== "undefined") window.__DSH_WSR_PASSES__ = passCount;
           }, delay);
         }
         /** `shell.overlay` occupant; it renders no chrome of its own. */
@@ -2033,46 +2016,7 @@
          * `<home>/.trash/ws-recency/`. The browser half only asks for confirmation
          * and posts the id.
          */
-        /**
-         * Session menu row that reports this plugin's own cost.
-         *
-         * Without devtools there was no way to tell a slow plugin from a slow host,
-         * and several rounds went into guessing. This prints the numbers where the
-         * lag is felt. */
-        function DiagnoseMenuItem(props) {
-          var Item = ui.MenuItemButton;
-          if (typeof Item !== "function") return null;
-          return h(Item, {
-            icon: undefined,
-            onSelect: function () {
-              var now = Date.now();
-              var recent = passSamples.filter(function (sample) {
-                return now - sample.at <= 60000;
-              });
-              var total = 0;
-              var worst = 0;
-              for (var i = 0; i < recent.length; i += 1) {
-                total += recent[i].ms;
-                if (recent[i].ms > worst) worst = recent[i].ms;
-              }
-              var nodes = typeof document !== "undefined" ? document.querySelectorAll("*").length : 0;
-              var turns = typeof document !== "undefined" ? document.querySelectorAll("[data-chat-turn]").length : 0;
-              var note = statsDiv("wsr-jump-toast wsr-diagnose-toast");
-              note.textContent = t("diagnose.report", {
-                passes: String(recent.length),
-                total: String(total),
-                worst: String(worst),
-                nodes: String(nodes),
-                turns: String(turns),
-              });
-              document.body.appendChild(note);
-              window.setTimeout(function () {
-                if (note.parentElement !== null) note.remove();
-              }, 8000);
-            },
-          }, t("menu.diagnose"));
-        }
-
+        
         function TrashMenuItem(props) {
           var Item = ui.MenuItemButton;
           if (typeof Item !== "function") return null;
@@ -6002,15 +5946,6 @@
             }, StatsMenuItem);
           });
 
-          ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
-            return ctx.slots.register({
-              name: "sidebar.workspaces.session.menu.item",
-              id: "ws-recency-diagnose",
-              order: 690,
-              store: prefs,
-              locale: NS,
-            }, DiagnoseMenuItem);
-          });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
             return ctx.slots.register({
