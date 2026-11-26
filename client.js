@@ -398,6 +398,9 @@
           ".wsr-amplified-subtitle{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-top:4px}",
           ".wsr-amplified-lead{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-stats-footnote{padding-top:6px;border-top:.5px solid rgba(255,255,255,.06)}",
+          ".wsr-plugin-features{display:flex;flex-direction:column;gap:2px;margin-top:18px;padding-top:14px;border-top:1px solid var(--dsw-alias-border-1,rgba(255,255,255,.10))}",
+          ".wsr-features-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 2px 6px}",
+          ".wsr-features-title{font-size:14px;font-weight:600}",
           ".wsr-toggle{width:100%;height:28px;padding:0 12px 0 calc(28px + var(--dsh-workspace-indent,0px));cursor:pointer;text-align:left;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;font-size:12px}",
           ".wsr-toggle:hover{color:var(--dsw-alias-label-secondary)}",
           '[' + STATE_ATTR + '="running"] [class*="_title"]{color:#4f8ef7}',
@@ -5317,13 +5320,6 @@
         }
 
         /** The sidebar's trash entry glyph. */
-        /** Sidebar glyph for the feature switches. */
-        function FeaturesPanelIcon(props) {
-          var Icon = ui.IconSlidersTwoOutlineRegular;
-          if (typeof Icon !== "function") return null;
-          var size = props !== undefined && props !== null && typeof props.size === "number" ? props.size : 16;
-          return h(Icon, { size: size });
-        }
 
         function TrashPanelIcon(props) {
           var Icon = ui.IconTrashOutlineRegular;
@@ -5334,8 +5330,7 @@
 
         /** One switch: a title, what it costs to turn off, and a toggle. */
         function FeatureRow(props) {
-          var settings = props.useStore(function (state) { return state; });
-          var on = featureOn(settings, props.id);
+          var on = props.on === true;
           return h("div", { className: "wsr-setRow", "data-wsr-feature": props.id },
             h("div", { className: "wsr-setText" },
               h("div", { className: "wsr-setTitle" }, props.title),
@@ -5347,47 +5342,92 @@
                 className: on ? "wsr-toggle wsr-toggle-on" : "wsr-toggle",
                 "aria-pressed": on ? "true" : "false",
                 "data-wsr-feature-toggle": props.id,
-                onClick: function () { props.actions.setFeature(props.id); },
+                onClick: function () {
+                  if (typeof props.onToggle === "function") props.onToggle(props.id);
+                },
               }, t(on ? "features.on" : "features.off")),
             ),
           );
         }
+        /** The package this section belongs to, as the plugin page names it. */
+        var OUR_PACKAGE = "dsh-ws-recency";
 
-        /** The settings page: every ability of the plugin, on or off. */
-        function FeaturesPanelPage(props) {
-          var settings = props.useStore(function (state) { return state; });
+        /** The package name a detail subject stands for, whichever shape it takes. */
+        function subjectPackageName(subject) {
+          if (subject === null || subject === undefined || typeof subject !== "object") return "";
+          if (typeof subject.name === "string" && subject.name !== "") return subject.name;
+          var pkg = subject.pkg;
+          if (typeof pkg === "string") return pkg;
+          if (pkg !== null && pkg !== undefined && typeof pkg === "object") {
+            if (typeof pkg.name === "string") return pkg.name;
+            if (typeof pkg.id === "string") return pkg.id;
+          }
+          var row = subject.row;
+          if (row !== null && row !== undefined && typeof row === "object" && typeof row.package === "string") return row.package;
+          return "";
+        }
+
+        /**
+         * The plugin page's own section: every ability of this plugin, on or off.
+         *
+         * It renders nothing for another package's page, which is the contract for a
+         * detail section.
+         */
+        function FeaturesSection(props) {
+          var storeSettings = typeof props.useStore === "function" ? props.useStore(function (state) { return state; }) : data.settings;
+          var name = subjectPackageName(props.subject);
+          /* A row subject carries the package differently; accept both spellings. */
+          if (name !== OUR_PACKAGE && String(name).indexOf(OUR_PACKAGE) !== 0) return null;
+
+          /* A toggle is visible at once, even where the slot hands us no store hook. */
+          var overrides = react.useState({});
+          var valueOf = function (id) {
+            var bag = overrides[0] || {};
+            if (typeof bag[id] === "boolean") return bag[id];
+            return featureOn(storeSettings, id);
+          };
+          var setAll = function (bag) { overrides[1](bag); };
+          var toggle = function (id) {
+            var next = {};
+            var bag = overrides[0] || {};
+            next[id] = !valueOf(id);
+            setAll(Object.assign({}, bag, next));
+            if (props.actions !== undefined) props.actions.setFeature(id);
+          };
+          var reset = function () {
+            setAll({});
+            if (props.actions !== undefined) props.actions.resetFeatures();
+          };
+
           var rows = FEATURE_IDS.map(function (id) {
             return h(FeatureRow, {
               key: id,
               id: id,
               title: t("features." + id + ".title"),
               description: t("features." + id + ".desc"),
-              useStore: props.useStore,
-              actions: props.actions,
+              on: valueOf(id),
+              onToggle: toggle,
             });
           });
-          return h("div", { className: "wsr-page wsr-features-page" },
-            h("div", { className: "wsr-page-head" },
-              h("div", { className: "wsr-page-heading" }, t("features.title")),
+          var onCount = FEATURE_IDS.filter(function (id) { return valueOf(id); }).length;
+          return h("section", { className: "wsr-plugin-features", "data-wsr-features": OUR_PACKAGE },
+            h("div", { className: "wsr-features-head" },
+              h("div", { className: "wsr-features-title" }, t("features.title")),
               h("button", {
                 type: "button",
                 className: "wsr-btn",
                 "data-wsr-features-reset": "true",
-                onClick: function () { props.actions.resetFeatures(); },
+                onClick: reset,
               }, t("features.reset")),
             ),
-            h("div", { className: "wsr-page-list" },
-              h("div", { className: "wsr-setNote" }, t("features.note")),
-              rows,
-              h("div", { className: "wsr-setNote" }, t("features.takesEffect", {
-                on: String(FEATURE_IDS.filter(function (id) { return featureOn(settings, id); }).length),
-                all: String(FEATURE_IDS.length),
-              })),
-            ),
+            h("div", { className: "wsr-setNote" }, t("features.note")),
+            rows,
+            h("div", { className: "wsr-setNote" }, t("features.takesEffect", {
+              on: String(onCount),
+              all: String(FEATURE_IDS.length),
+            })),
           );
-        }
-
-        /**
+        }        /**
          * The trash page itself: the plugin's trash (deleted logs) on top, the
          * Host's archive set (hidden sessions whose logs are still in place)
          * below. Both are "put away", so both are managed from here.
@@ -5967,16 +6007,6 @@
           }
 
 
-          ctx.slots.inject("sidebar.panellist", function () {
-            return ctx.slots.register({
-              name: "sidebar.panellist",
-              id: "ws-recency-features",
-              order: 21,
-              store: prefs,
-              locale: NS,
-              label: function () { return t("features.title"); },
-            }, FeaturesPanelIcon);
-          });
 
           ctx.slots.inject("sidebar.panellist", function () {
             return ctx.slots.register({
@@ -5989,13 +6019,14 @@
             }, withFeature(TrashPanelIcon, "trash"));
           });
 
-          ctx.slots.inject("main", function () {
+          ctx.slots.inject("plugins.detail.section", function () {
             return ctx.slots.register({
-              name: "main",
-              key: "ws-recency-features",
+              name: "plugins.detail.section",
+              id: "ws-recency-features",
+              order: 60,
               store: prefs,
               locale: NS,
-            }, FeaturesPanelPage);
+            }, FeaturesSection);
           });
 
           ctx.slots.inject("main", function () {

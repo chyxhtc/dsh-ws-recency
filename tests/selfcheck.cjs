@@ -341,7 +341,7 @@ const ctx = {
       if (spec2.id === "ws-recency-handoff" && spec2.name === "sidebar.workspaces.session.menu.item") HandoffItem = component;
       if (spec2.id === "ws-recency-handoff" && spec2.name === "conversation.chat.assistant-actions") HandoffAction = component;
       if (spec2.id === "ws-recency-handoff-card") HandoffCard = component;
-      if (spec2.name === "main" && spec2.key === "ws-recency-features") FeaturesPage = component;
+      if (spec2.name === "plugins.detail.section" && spec2.id === "ws-recency-features") FeaturesPage = component;
       if (spec2.name === "main" && spec2.key === "ws-recency-trash") TrashPage = component;
       if (spec2.name === "main" && spec2.key === "ws-recency-search") SearchPage = component;
       return () => {};
@@ -1440,6 +1440,7 @@ function textOf(node) {
     const page = mount(FeaturesPage, {
       useStore: (select) => select(prefs),
       actions: featureActions,
+      subject: { kind: "bundle", pkg: { name: "dsh-ws-recency" } },
     });
     assert.ok(page !== null, "the features page renders");
     /* The page lists one row per feature: the elements carry the id. */
@@ -1469,6 +1470,17 @@ function textOf(node) {
     assert.deepStrictEqual(toggled, ["search"], "the switch names its feature");
 
     /* With the switch off, the gated component renders nothing. */
+    /* Another package's page must not show these switches. */
+    assert.strictEqual(
+      mount(FeaturesPage, {
+        useStore: (select) => select(prefs),
+        actions: featureActions,
+        subject: { kind: "bundle", pkg: { name: "dsh-context" } },
+      }),
+      null,
+      "a different package's page gets no section",
+    );
+
     prefs.features = { search: false };
     assert.strictEqual(mount(SearchIcon, { size: 16 }), null, "a disabled feature draws no glyph");
     assert.strictEqual(mount(SearchPage, {}), null, "and no page");

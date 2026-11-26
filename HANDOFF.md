@@ -296,3 +296,10 @@ var SEARCH_ENABLED = true;   // 搜索面板、跳转、上下文展开、关键
 - **实现要点（踩过）**：最初把 `if (!featureOn(...)) return null` 写在组件内部，开关一翻组件自身的 hook 数量就变，React 会报错。改成 `withFeature(Component, feature)` 包一层：包装器每次只调用一个 `useStore`，再决定渲染或返回 null，开关翻转等于卸载/挂载，hook 数量恒定。包装器带 `__featureGate` 标记，测试据此解包。
 - 测试：新增「7 行 + 开关回调 + 关掉后图标与页面都不渲染」；`selfcheck` 里那些直接调用注册组件的断言改用 `mount()` 解包（包装器 → 真组件一次，宿主 primitive 不再重复调用，否则会丢 children）；`archive-page.cjs` 的本地 `mount` 同样加了一步解包。
 - 顺带清掉两处过时断言：`TrashMenuItem` 的捕获与断言（0.34.0 已删菜单行）。
+
+## 0.35.1
+
+- 0.35.0 把开关做成了一个侧栏面板（多一个 `sidebar.panellist` 按钮 + `main` 页），位置错了。宿主的插件页本来就有自己的扩展点，0.35.1 改成注册 `plugins.detail.section`（`order: 60`），只在 `subject` 是本插件（`pkg.name` / `name` / `row.package` 命中 `dsh-ws-recency`）时才渲染；别人的插件页返回 null。
+- 顺手去掉多出来的侧栏图标与整页组件，`FeaturesSection` 直接作为插件详情页的一节（标题 + 说明 + 7 行开关 + 计数 + 全部启用）。
+- 详情槽的 standardProps 里没有 `useStore`，所以这一节自己维护一份 override：点开关时先本地翻转再调 store 动作，界面上立刻可见；`resetFeatures` 清空 override。
+- 教训：加 UI 之前先确认宿主已有的扩展点（`plugins.detail.section`、`plugins.detail.actions`、`plugins.detail.badge`），不要自造一个新的导航入口。
