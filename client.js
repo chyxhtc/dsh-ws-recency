@@ -2091,7 +2091,6 @@
           if (typeof props.t === "function") data.t = props.t;
           /* With the sidebar half off, drop our paint and stop the timer. */
           var sidebarOn = featureOn(data.settings, "sidebar");
-          if (typeof syncPanelsExposed === "function") syncPanelsExposed(data.settings);
           react.useEffect(function () {
             if (sidebarOn) {
               schedule();
@@ -2191,11 +2190,32 @@
          * never take the window's focus away.
          * ------------------------------------------------------------------- */
 
-        /** Set by apply(): keeps gated panel registrations in step with the store. */
-        var syncPanelsExposed = null;
+        /** What the sidebar bound at startup, so the page can say "restart to apply". */
+        var panelBoot = null;
 
-        /** What was registered at startup, so the page can say "restart to apply". */
-        var panelBootExposed = null;
+        /** The stored switches, read before the store instance exists. */
+        function readStoredFeatures() {
+          if (typeof localStorage === "undefined") return null;
+          try {
+            var raw = localStorage.getItem("dsh.ws-recency.prefs.v1");
+            if (raw === null || raw === undefined) {
+              /* A scoped key carries a suffix; find it by prefix. */
+              for (var i = 0; i < localStorage.length; i += 1) {
+                var key = localStorage.key(i);
+                if (typeof key === "string" && key.indexOf("dsh.ws-recency.prefs.v1") === 0) {
+                  raw = localStorage.getItem(key);
+                  break;
+                }
+              }
+            }
+            if (raw === null || raw === undefined) return null;
+            var parsed = JSON.parse(raw);
+            var bag = parsed !== null && parsed !== undefined ? parsed.features : null;
+            return bag !== null && bag !== undefined && typeof bag === "object" ? bag : null;
+          } catch (error) {
+            return null;
+          }
+        }
 
         var confirmBackdrop = null;
         var confirmPrevious = null;
@@ -5430,7 +5450,7 @@
           };
 
           /* These two own a sidebar row, and a row is fixed at startup. */
-          var boot = typeof panelBootExposed === "function" ? panelBootExposed() : null;
+          var boot = panelBoot;
           var waitsForRestart = function (id) {
             if (id !== "search" && id !== "trash") return false;
             if (boot === null) return false;
@@ -6137,60 +6157,57 @@
 
 
           /*
-           * Search and trash each own a sidebar row. The host derives the row from the
-           * registration, so a row cannot be hidden by drawing less; and re-registering
-           * mid-session left the row behind on the next switch. So: register once, at
-           * startup, for whatever the stored settings asked for, and tell the user that a
-           * change here needs a restart. Everything else takes effect immediately.
+           * Search and trash own a sidebar row, and a row is decided by the host at
+           * registration time. So they are registered here, from the settings read out of
+           * storage: registering them later, from a render, left the trash row without its
+           * panel page. A switch for one of these two therefore applies on the next start,
+           * and the plugin page says exactly that.
            */
-          var panelBoot = null;
-          function syncPanels(settings) {
-            if (panelBoot !== null) return;
-            panelBoot = {};
-            FEATURE_IDS.forEach(function (feature) { panelBoot[feature] = featureOn(settings, feature); });
-            if (panelBoot.search) {
-              ctx.slots.inject("sidebar.panellist", function () {
-                return ctx.slots.register({
-                  name: "sidebar.panellist",
-                  id: "ws-recency-search",
-                  order: 19,
-                  store: prefs,
-                  locale: NS,
-                  label: function () { return t("search.title"); },
-                }, SearchPanelIcon);
-              });
-              ctx.slots.inject("main", function () {
-                return ctx.slots.register({
-                  name: "main",
-                  key: "ws-recency-search",
-                  store: prefs,
-                  locale: NS,
-                }, SearchPanelPage);
-              });
-            }
-            if (panelBoot.trash) {
-              ctx.slots.inject("sidebar.panellist", function () {
-                return ctx.slots.register({
-                  name: "sidebar.panellist",
-                  id: "ws-recency-trash",
-                  order: 20,
-                  store: prefs,
-                  locale: NS,
-                  label: function () { return t("trash.title"); },
-                }, TrashPanelIcon);
-              });
-              ctx.slots.inject("main", function () {
-                return ctx.slots.register({
-                  name: "main",
-                  key: "ws-recency-trash",
-                  store: prefs,
-                  locale: NS,
-                }, TrashPanelPage);
-              });
-            }
+          var bootFeatures = readStoredFeatures();
+          panelBoot = {
+            search: featureOn({ features: bootFeatures || {} }, "search"),
+            trash: featureOn({ features: bootFeatures || {} }, "trash"),
+          };
+          if (panelBoot.search) {
+            ctx.slots.inject("sidebar.panellist", function () {
+              return ctx.slots.register({
+                name: "sidebar.panellist",
+                id: "ws-recency-search",
+                order: 19,
+                store: prefs,
+                locale: NS,
+                label: function () { return t("search.title"); },
+              }, SearchPanelIcon);
+            });
+            ctx.slots.inject("main", function () {
+              return ctx.slots.register({
+                name: "main",
+                key: "ws-recency-search",
+                store: prefs,
+                locale: NS,
+              }, SearchPanelPage);
+            });
           }
-          syncPanelsExposed = syncPanels;
-          panelBootExposed = function () { return panelBoot; };
+          if (panelBoot.trash) {
+            ctx.slots.inject("sidebar.panellist", function () {
+              return ctx.slots.register({
+                name: "sidebar.panellist",
+                id: "ws-recency-trash",
+                order: 20,
+                store: prefs,
+                locale: NS,
+                label: function () { return t("trash.title"); },
+              }, TrashPanelIcon);
+            });
+            ctx.slots.inject("main", function () {
+              return ctx.slots.register({
+                name: "main",
+                key: "ws-recency-trash",
+                store: prefs,
+                locale: NS,
+              }, TrashPanelPage);
+            });
+          }
           ctx.effect(function () {
             return function () { shutdown(); };
           }, "dsh-ws-recency: list observer");
@@ -6215,9 +6232,8 @@
         /* The statistics panel no longer has a menu row; tests open it here. */
         /* What the sidebar bound at startup: the page reads it to say "restart". */
         exports.__features = {
-          boot: function () {
-            return typeof panelBootExposed === "function" ? panelBootExposed() : null;
-          },
+          boot: function () { return panelBoot; },
+          readStored: readStoredFeatures,
         };
 
         exports.__stats = { open: openStatsPanel, close: closeStatsPanel };
