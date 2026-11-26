@@ -76,7 +76,8 @@ function fixture(root) {
   const live = { header: { ...state.header } };
   const ctx = {
     sessionPersistence: persistence,
-    sessions: { get: (id) => (id === "sid" ? live : undefined) },
+    /* An open session must opt in: most cases move a closed one. */
+    sessions: { get: (id) => (id === "sid" && state.liveOpen === true ? live : undefined) },
     workspaceRegistry: {
       list: () => workspaces,
       indexHeader: async (header) => { live.header = header; },
@@ -123,18 +124,17 @@ function fixture(root) {
     assert.strictEqual(result.path, f.targetCwd);
   }
 
-  /* ---------- an open session's header follows the move ---------------- */
+  /* ---------- an open session is refused, before anything moves -------- */
   {
     const f = fixture(path.join(root, "live"));
-    f.ctx.sessionPersistence.create = async (header) => {
-      f.state.header = header;
-      fs.mkdirSync(f.state.newDir, { recursive: true });
-      return { append: async () => {}, flush: async () => {}, close: async () => {} };
-    };
+    f.state.liveOpen = true;
     const result = await mod.moveSessionToWorkspace(f.ctx, "sid", "w-target");
-    assert.strictEqual(result.ok, true, result.error);
-    assert.strictEqual(f.live.header.cwd, f.targetCwd, "the live session object carries the new cwd");
-    assert.deepStrictEqual(f.state.attached, ["sid"]);
+    assert.strictEqual(result.ok, false, "an open session is not moved");
+    assert.strictEqual(result.code, "session-live", "the route can tell this case apart");
+    assert.ok(String(result.error).indexOf("正开着") !== -1, result.error);
+    assert.strictEqual(fs.existsSync(f.sourceDir), true, "the log is untouched");
+    assert.strictEqual(f.state.stopped, false, "nothing was stopped for nothing");
+    assert.deepStrictEqual(f.state.attached, [], "nothing was attached");
   }
 
   /* ---------- a stale in-memory header asks for a restart -------------- */

@@ -277,3 +277,9 @@ var SEARCH_ENABLED = true;   // 搜索面板、跳转、上下文展开、关键
 - 交接仍在每轮回复下方的动作行（`conversation.chat.assistant-actions`）；统计面板仍由输入框上方的「分析」胶囊打开（新增测试钩子 `exports.__stats.open`，因为原来测试是借菜单行触发的）。
 - **删除到回收站暂时没有 UI 入口**：宿主的删除能力本来就不存在（只有归档），所以移除这一行等于放弃“可恢复删除”的入口；回收站面板（侧栏图标）仍在，能管理已归档会话和回收站里已有的条目，宿主路由也都还在。恢复方法是把那一段注册加回去。
 - 教训：删「一个菜单行」要连带检查它的组件是否还有别的入口、以及测试是不是借它当入口。这次因为测试借 `StatsMenuItem`/`HandoffItem`/`TrashMenuItem` 驱动功能，连着改了四处断言。
+
+## 0.34.1
+
+- 「移动到工作区」对**打开着的会话**改为直接拒绝，返回 `code: "session-live"`（HTTP 409）并给中文原因。以前会先 rename 日志、再 `create` 重建，而宿主持久化层仍被活句柄占着这个 id（`create` 的重复检查在 `dsh-session-persistence-jsonl/lib/index.js`），于是抛 `SessionAlreadyExistsError`，路由一律按 500 返回，用户看到的是 `HTTP 500 · session "…" already exists`，没有任何可执行的提示。
+- 机制说明：宿主 `create()` 只在 `hasPending(id)` 或 `findLog(id)` 命中时抛错；`pending` 只用于“已创建未落盘”的会话，所以打开着的旧会话命中的是 `findLog`——活句柄按需重开时把刚挪走的路径又建了回来。插件侧无法安全卸掉活会话（detach 由创建者持有），所以只能拒绝。
+- 客户端把该 code 映射成一句中文，不再拼 HTTP 状态与英文错误；测试里把“打开着的会话随移动同步 header”那条改成“开着的会话被拒绝、且日志没动”。

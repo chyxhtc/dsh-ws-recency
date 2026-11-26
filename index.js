@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.34.0";
+export const HOST_VERSION = "0.34.1";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -1277,6 +1277,26 @@ export async function moveSessionToWorkspace(ctx, sessionId, workspaceId) {
   const stat = await ctx.sessionPersistence.stat(sessionId);
   if (stat === undefined || stat === null) return { ok: false, error: "session not found" };
   const header = stat.header;
+
+  /*
+   * An open session cannot be moved: persistence keeps its id claimed by the live
+   * write handle, which re-creates the log path we just parked, so `create` answers
+   * "already exists" and the user gets a 500 naming no remedy. Refuse before anything
+   * is renamed, and say what to do about it.
+   */
+  let liveSession;
+  try {
+    liveSession = typeof ctx.sessions?.get === "function" ? ctx.sessions.get(sessionId) : undefined;
+  } catch {
+    liveSession = undefined;
+  }
+  if (liveSession !== undefined && liveSession !== null) {
+    return {
+      ok: false,
+      code: "session-live",
+      error: "会话正开着：先切到别的会话或重启应用（且不要打开它），再移动",
+    };
+  }
   if (header === undefined || header === null) return { ok: false, error: "session header unavailable" };
 
   const workspaces = ctx.workspaceRegistry.list();
@@ -2451,7 +2471,7 @@ export async function handleMoveRequest(ctx, req, res) {
       return;
     }
     const result = await moveSessionToWorkspace(ctx, sessionId, workspaceId);
-    sendJson(res, result.ok ? 200 : 500, result);
+    sendJson(res, result.ok ? 200 : (result.code === "session-live" ? 409 : 500), result);
   } catch (error) {
     sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
   }
