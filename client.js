@@ -76,6 +76,49 @@
         var MAX_DAYS = 90;
         var DEFAULT_DAYS = 3;
 
+        /**
+         * Which parts of this plugin are on.
+         *
+         * The plugin grew several unrelated abilities; someone who already has
+         * another plugin for search, or for statistics, should be able to turn that
+         * part off here instead of living with two answers for one question.
+         */
+        var FEATURE_IDS = ["sidebar", "followUp", "search", "trash", "stats", "handoff", "move"];
+        var FEATURE_DEFAULTS = {
+          sidebar: true,
+          followUp: true,
+          search: true,
+          trash: true,
+          stats: true,
+          handoff: true,
+          move: true,
+        };
+
+        /**
+         * Wrap a component in one feature switch.
+         *
+         * The wrapper calls exactly one hook on every render, then decides: a guard
+         * inside the component itself would change its hook count the moment the
+         * switch flips, and React rejects that. Switching off unmounts the component,
+         * so its background work stops with it.
+         */
+        function withFeature(Component, feature) {
+          var FeatureGated = function (props) {
+            var settingsNow = typeof props.useStore === "function" ? props.useStore(function (state) { return state; }) : data.settings;
+            if (!featureOn(settingsNow, feature)) return null;
+            return h(Component, props);
+          };
+          FeatureGated.__featureGate = feature;
+          return FeatureGated;
+        }
+
+        /** One feature's switch, with `on` as the default for a missing value. */
+        function featureOn(state, name) {
+          var bag = state !== null && state !== undefined ? state.features : undefined;
+          if (bag !== null && bag !== undefined && typeof bag === "object" && typeof bag[name] === "boolean") return bag[name];
+          return FEATURE_DEFAULTS[name] !== false;
+        }
+
         /** Turns behind the newest that make a jump ask first; 0 disables asking. */
         var DEFAULT_COLD_JUMP = 40;
         var MAX_COLD_JUMP = 500;
@@ -522,6 +565,26 @@
           "adopt.done": "已补登记 {n} 个会话。",
           "adopt.cleaned": "清理了 {n} 处重复/失效的工作区归属。",
           "adopt.failed": "扫描失败：",
+                    "features.title": "插件功能",
+          "features.on": "已启用",
+          "features.off": "已关闭",
+          "features.reset": "全部启用",
+          "features.note": "只关掉你不需要的部分：关掉的入口会从界面上消失，相关的后台逻辑也会停下。",
+          "features.takesEffect": "当前启用 {on} / {all} 项。",
+          "features.sidebar.title": "侧栏会话管理",
+          "features.sidebar.desc": "旧会话折叠、会话颜色、置顶分区。关掉后侧栏交回宿主原样。",
+          "features.followUp.title": "标记需要跟进",
+          "features.followUp.desc": "会话菜单里的标记与侧栏旁边的圆点。",
+          "features.search.title": "搜索会话内容",
+          "features.search.desc": "侧栏搜索面板：全文搜索、筛选、跳转。装了别的搜索插件可以关掉这个。",
+          "features.trash.title": "回收站",
+          "features.trash.desc": "侧栏回收站面板：管理已归档会话和彻底删除。",
+          "features.stats.title": "Token 消耗统计",
+          "features.stats.desc": "输入框上方的「用量分析」胶囊与统计面板。",
+          "features.handoff.title": "交接到新会话",
+          "features.handoff.desc": "每轮回复下方的交接按钮，把要点写成文档带到新会话。",
+          "features.move.title": "移动到工作区",
+          "features.move.desc": "把会话改登记到另一个工作区（会重写日志 header，需重启后操作）。",
           "search.title": "搜索会话内容",
           "search.placeholder": "输入关键词后回车；多个词用空格分隔，要求同时出现",
           "search.run": "搜索",
@@ -739,6 +802,26 @@
           "adopt.done": "Re-attached {n} session(s).",
           "adopt.cleaned": " Cleared {n} stale membership(s).",
           "adopt.failed": "Scan failed: ",
+                    "features.title": "Plugin features",
+          "features.on": "On",
+          "features.off": "Off",
+          "features.reset": "Enable all",
+          "features.note": "Turn off only what you do not need: the entry disappears from the interface and its background work stops.",
+          "features.takesEffect": "{on} of {all} features are on.",
+          "features.sidebar.title": "Sidebar session management",
+          "features.sidebar.desc": "Folding old sessions, session colours, the pinned section. Off returns the sidebar to the host.",
+          "features.followUp.title": "Follow-up marks",
+          "features.followUp.desc": "The mark in the session menu and the dot beside the row.",
+          "features.search.title": "Search sessions",
+          "features.search.desc": "The search panel: full text, filters, jumping. Turn it off if another search plugin owns this.",
+          "features.trash.title": "Trash",
+          "features.trash.desc": "The trash panel: manage archived sessions and delete for good.",
+          "features.stats.title": "Token statistics",
+          "features.stats.desc": "The usage pill above the composer and the statistics panel.",
+          "features.handoff.title": "Hand off to a new session",
+          "features.handoff.desc": "The action under each reply that carries the gist into a fresh session.",
+          "features.move.title": "Move to workspace",
+          "features.move.desc": "Re-register a session under another workspace (rewrites the log header; restart first).",
           "search.title": "Search session content",
           "search.placeholder": "Type a word and press Enter; separate words with spaces to require all of them",
           "search.run": "Search",
@@ -1828,6 +1911,12 @@
          */
         function decorateComposerStats() {
           if (typeof document === "undefined") return;
+          /* Switch off: take the pill away rather than leave a dead one. */
+          if (!featureOn(data.settings, "stats")) {
+            var stale = document.querySelector("[data-wsr-composer-analysis]");
+            if (stale !== null && typeof stale.remove === "function") stale.remove();
+            return;
+          }
           var existing = document.querySelector("[data-wsr-composer-analysis]");
           var seat = document.querySelector("[data-composer-seat]");
           var anchors = seat === null || typeof seat.querySelectorAll !== "function" ? [] : seat.querySelectorAll("[data-composer-stat]");
@@ -1953,6 +2042,23 @@
           }, delay);
         }
         /** `shell.overlay` occupant; it renders no chrome of its own. */
+        /** Remove every mark this plugin paints on the sidebar rows. */
+        function unpaintSidebar() {
+          if (typeof document === "undefined") return;
+          try {
+            var painted = document.querySelectorAll("[data-wsr-rank],[data-wsr-dot]");
+            for (var i = 0; i < painted.length; i += 1) {
+              painted[i].removeAttribute("data-wsr-rank");
+              painted[i].removeAttribute("data-wsr-dot");
+              painted[i].style.removeProperty("order");
+            }
+            var hidden = document.querySelectorAll(".wsr-hidden");
+            for (var j = 0; j < hidden.length; j += 1) hidden[j].classList.remove("wsr-hidden");
+          } catch (error) {
+            /* a half-painted list is not worth a crash */
+          }
+        }
+
         function Sorter(props) {
           if (typeof props.useSessions === "function") {
             data.sessions = props.useSessions(function (state) { return state; });
@@ -1968,7 +2074,15 @@
           }
           if (props.actions !== undefined && props.actions !== null) data.actions = props.actions;
           if (typeof props.t === "function") data.t = props.t;
-          react.useEffect(function () { schedule(); });
+          /* With the sidebar half off, drop our paint and stop the timer. */
+          var sidebarOn = featureOn(data.settings, "sidebar");
+          react.useEffect(function () {
+            if (sidebarOn) {
+              schedule();
+              return;
+            }
+            unpaintSidebar();
+          });
           return null;
         }
 
@@ -5203,11 +5317,74 @@
         }
 
         /** The sidebar's trash entry glyph. */
+        /** Sidebar glyph for the feature switches. */
+        function FeaturesPanelIcon(props) {
+          var Icon = ui.IconSlidersTwoOutlineRegular;
+          if (typeof Icon !== "function") return null;
+          var size = props !== undefined && props !== null && typeof props.size === "number" ? props.size : 16;
+          return h(Icon, { size: size });
+        }
+
         function TrashPanelIcon(props) {
           var Icon = ui.IconTrashOutlineRegular;
           if (typeof Icon !== "function") return null;
           var size = props !== undefined && props !== null && typeof props.size === "number" ? props.size : 16;
           return h(Icon, { size: size });
+        }
+
+        /** One switch: a title, what it costs to turn off, and a toggle. */
+        function FeatureRow(props) {
+          var settings = props.useStore(function (state) { return state; });
+          var on = featureOn(settings, props.id);
+          return h("div", { className: "wsr-setRow", "data-wsr-feature": props.id },
+            h("div", { className: "wsr-setText" },
+              h("div", { className: "wsr-setTitle" }, props.title),
+              h("div", { className: "wsr-setDesc" }, props.description),
+            ),
+            h("div", { className: "wsr-controls" },
+              h("button", {
+                type: "button",
+                className: on ? "wsr-toggle wsr-toggle-on" : "wsr-toggle",
+                "aria-pressed": on ? "true" : "false",
+                "data-wsr-feature-toggle": props.id,
+                onClick: function () { props.actions.setFeature(props.id); },
+              }, t(on ? "features.on" : "features.off")),
+            ),
+          );
+        }
+
+        /** The settings page: every ability of the plugin, on or off. */
+        function FeaturesPanelPage(props) {
+          var settings = props.useStore(function (state) { return state; });
+          var rows = FEATURE_IDS.map(function (id) {
+            return h(FeatureRow, {
+              key: id,
+              id: id,
+              title: t("features." + id + ".title"),
+              description: t("features." + id + ".desc"),
+              useStore: props.useStore,
+              actions: props.actions,
+            });
+          });
+          return h("div", { className: "wsr-page wsr-features-page" },
+            h("div", { className: "wsr-page-head" },
+              h("div", { className: "wsr-page-heading" }, t("features.title")),
+              h("button", {
+                type: "button",
+                className: "wsr-btn",
+                "data-wsr-features-reset": "true",
+                onClick: function () { props.actions.resetFeatures(); },
+              }, t("features.reset")),
+            ),
+            h("div", { className: "wsr-page-list" },
+              h("div", { className: "wsr-setNote" }, t("features.note")),
+              rows,
+              h("div", { className: "wsr-setNote" }, t("features.takesEffect", {
+                on: String(FEATURE_IDS.filter(function (id) { return featureOn(settings, id); }).length),
+                all: String(FEATURE_IDS.length),
+              })),
+            ),
+          );
         }
 
         /**
@@ -5632,7 +5809,7 @@
           }
           var prefs = clientStore.defineStore({
             init: function () {
-              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, argMode: "tool", followUps: {}, searchHistory: [], coldJumpTurns: DEFAULT_COLD_JUMP };
+              return { enabled: true, foldDays: DEFAULT_DAYS, keepActive: true, colors: true, pinnedSection: true, argMode: "tool", followUps: {}, searchHistory: [], coldJumpTurns: DEFAULT_COLD_JUMP, features: {} };
             },
             persist: "dsh.ws-recency.prefs.v1",
             actions: {
@@ -5641,6 +5818,14 @@
               setColors: function (draft, value) { draft.colors = value === true; },
               setPinnedSection: function (draft, value) { draft.pinnedSection = value === true; },
               setArgMode: function (draft, value) { draft.argMode = value === "agent" ? "agent" : "tool"; },
+              setFeature: function (draft, name) {
+                if (FEATURE_IDS.indexOf(String(name)) === -1) return;
+                if (draft.features === null || draft.features === undefined || typeof draft.features !== "object") draft.features = {};
+                draft.features[String(name)] = !featureOn(draft, String(name));
+              },
+              resetFeatures: function (draft) {
+                draft.features = {};
+              },
               setColdJumpTurns: function (draft, value) {
                 var next = Number(value);
                 if (!Number.isFinite(next)) return;
@@ -5736,7 +5921,7 @@
               order: 45,
               store: prefs,
               locale: NS,
-            }, SettingsRow);
+            }, withFeature(SettingsRow, "sidebar"));
           });
 
           ctx.slots.inject("settings.general.item", function () {
@@ -5746,7 +5931,7 @@
               order: 45,
               store: prefs,
               locale: NS,
-            }, ColdJumpRow);
+            }, withFeature(ColdJumpRow, "search"));
           });
 
           ctx.slots.inject("settings.general.item", function () {
@@ -5756,7 +5941,7 @@
               order: 46,
               store: prefs,
               locale: NS,
-            }, ColorsRow);
+            }, withFeature(ColorsRow, "sidebar"));
           });
 
           if (SEARCH_ENABLED) {
@@ -5765,9 +5950,10 @@
                 name: "sidebar.panellist",
                 id: "ws-recency-search",
                 order: 19,
+              store: prefs,
                 locale: NS,
                 label: function () { return t("search.title"); },
-              }, SearchPanelIcon);
+              }, withFeature(SearchPanelIcon, "search"));
             });
 
             ctx.slots.inject("main", function () {
@@ -5776,7 +5962,7 @@
                 key: "ws-recency-search",
                 locale: NS,
                 store: prefs,
-              }, SearchPanelPage);
+              }, withFeature(SearchPanelPage, "search"));
             });
           }
 
@@ -5784,19 +5970,41 @@
           ctx.slots.inject("sidebar.panellist", function () {
             return ctx.slots.register({
               name: "sidebar.panellist",
+              id: "ws-recency-features",
+              order: 21,
+              store: prefs,
+              locale: NS,
+              label: function () { return t("features.title"); },
+            }, FeaturesPanelIcon);
+          });
+
+          ctx.slots.inject("sidebar.panellist", function () {
+            return ctx.slots.register({
+              name: "sidebar.panellist",
               id: "ws-recency-trash",
               order: 20,
+              store: prefs,
               locale: NS,
               label: function () { return t("trash.title"); },
-            }, TrashPanelIcon);
+            }, withFeature(TrashPanelIcon, "trash"));
+          });
+
+          ctx.slots.inject("main", function () {
+            return ctx.slots.register({
+              name: "main",
+              key: "ws-recency-features",
+              store: prefs,
+              locale: NS,
+            }, FeaturesPanelPage);
           });
 
           ctx.slots.inject("main", function () {
             return ctx.slots.register({
               name: "main",
               key: "ws-recency-trash",
+              store: prefs,
               locale: NS,
-            }, TrashPanelPage);
+            }, withFeature(TrashPanelPage, "trash"));
           });
 
           ctx.slots.inject("settings.general.item", function () {
@@ -5806,7 +6014,7 @@
               order: 47,
               store: prefs,
               locale: NS,
-            }, PinSectionRow);
+            }, withFeature(PinSectionRow, "sidebar"));
           });
 
           ctx.slots.inject("settings.general.item", function () {
@@ -5816,7 +6024,7 @@
               order: 48,
               store: prefs,
               locale: NS,
-            }, ArgModeRow);
+            }, withFeature(ArgModeRow, "stats"));
           });
 
           ctx.slots.inject("conversation.chat.assistant-actions", function () {
@@ -5824,9 +6032,10 @@
               name: "conversation.chat.assistant-actions",
               id: "ws-recency-handoff",
               order: 20,
+              store: prefs,
               locale: NS,
               inject: function (sessionId) { return { sessionId: sessionId }; },
-            }, HandoffTurnAction);
+            }, withFeature(HandoffTurnAction, "handoff"));
           });
 
           ctx.slots.inject("conversation.chat.turnTail", function () {
@@ -5834,9 +6043,10 @@
               name: "conversation.chat.turnTail",
               id: "ws-recency-handoff-card",
               order: 30,
+              store: prefs,
               locale: NS,
               inject: function (sessionId) { return { sessionId: sessionId }; },
-            }, HandoffTailCard);
+            }, withFeature(HandoffTailCard, "handoff"));
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
@@ -5846,7 +6056,7 @@
               order: MENU_ORDER,
               store: prefs,
               locale: NS,
-            }, FollowUpMenuItem);
+            }, withFeature(FollowUpMenuItem, "followUp"));
           });
 
           ctx.slots.inject("sidebar.session.row.leading", function () {
@@ -5856,7 +6066,7 @@
               order: 400,
               store: prefs,
               locale: NS,
-            }, FollowUpDot);
+            }, withFeature(FollowUpDot, "followUp"));
           });
 
           ctx.slots.inject("sidebar.workspaces.session.menu.item", function () {
@@ -5866,7 +6076,7 @@
               order: 690,
               store: prefs,
               locale: NS,
-            }, MoveMenuItem);
+            }, withFeature(MoveMenuItem, "move"));
           });
 
 

@@ -288,3 +288,11 @@ var SEARCH_ENABLED = true;   // 搜索面板、跳转、上下文展开、关键
 
 - 打开着的会话不做“安排到下次启动”的队列：释放活句柄没有公开入口，重启是唯一可靠路径，与其加一层时序不确定的延迟操作，不如把话说清楚。
 - 文案改成唯一可行路径：`这个会话正开着，无法移动。请重启应用，重启后不要打开它，再从列表里移动。`；移动面板在会话正是当前打开的那个时，直接把这句放在顶部（`data-wsr-move-live`），不用等失败才看到。
+
+## 0.35.0
+
+- 新增「插件功能」面板（侧栏 `sidebar.panellist` 第 21 个 + `main` 页）：7 个开关，默认全开，可一键恢复。存 `prefs.features`，缺失的键按 `FEATURE_DEFAULTS` 视为开。
+- 开关不是摆设：关掉后入口消失**并且后台停下**——侧栏开关会让 `Sorter` 停止 pass 并把已画的 `data-wsr-rank` / `data-wsr-dot` / `.wsr-hidden` 撤掉；统计开关会移除输入框上方的胶囊；其余组件由挂载与否决定，停用即卸载。
+- **实现要点（踩过）**：最初把 `if (!featureOn(...)) return null` 写在组件内部，开关一翻组件自身的 hook 数量就变，React 会报错。改成 `withFeature(Component, feature)` 包一层：包装器每次只调用一个 `useStore`，再决定渲染或返回 null，开关翻转等于卸载/挂载，hook 数量恒定。包装器带 `__featureGate` 标记，测试据此解包。
+- 测试：新增「7 行 + 开关回调 + 关掉后图标与页面都不渲染」；`selfcheck` 里那些直接调用注册组件的断言改用 `mount()` 解包（包装器 → 真组件一次，宿主 primitive 不再重复调用，否则会丢 children）；`archive-page.cjs` 的本地 `mount` 同样加了一步解包。
+- 顺带清掉两处过时断言：`TrashMenuItem` 的捕获与断言（0.34.0 已删菜单行）。

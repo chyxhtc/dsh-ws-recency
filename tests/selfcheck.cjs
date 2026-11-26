@@ -290,9 +290,9 @@ let HandoffItem = null;
 let HandoffAction = null;
 let HandoffCard = null;
 let TrashPage = null;
-let TrashMenuItem = null;
 let SearchIcon = null;
 let SearchPage = null;
+let FeaturesPage = null;
 const service = {
   opened: [],
   unpinned: [],
@@ -341,9 +341,9 @@ const ctx = {
       if (spec2.id === "ws-recency-handoff" && spec2.name === "sidebar.workspaces.session.menu.item") HandoffItem = component;
       if (spec2.id === "ws-recency-handoff" && spec2.name === "conversation.chat.assistant-actions") HandoffAction = component;
       if (spec2.id === "ws-recency-handoff-card") HandoffCard = component;
+      if (spec2.name === "main" && spec2.key === "ws-recency-features") FeaturesPage = component;
       if (spec2.name === "main" && spec2.key === "ws-recency-trash") TrashPage = component;
       if (spec2.name === "main" && spec2.key === "ws-recency-search") SearchPage = component;
-      if (spec2.id === "ws-recency-trash") TrashMenuItem = component;
       return () => {};
     },
   },
@@ -477,11 +477,31 @@ prefs.followUps = { "D-done": NOW };
 render();
 assert.strictEqual(D.rows[1].getAttribute("data-wsr-state"), "followup", "a flagged session turns amber");
 
-const flaggedDot = FollowUpDot({ sessionId: "D-done", useStore: (select) => select(prefs), actions });
+/** Render one registered component as the host would: unwrap feature gates. */
+function mount(component, props) {
+  let node = component(props === undefined ? {} : props);
+  /* After a gate wrapper comes its real component, once; a host primitive is a
+     leaf and must not be called again (it would lose its children). */
+  let unwrapInner = component.__featureGate !== undefined;
+  for (let depth = 0; depth < 6; depth += 1) {
+    if (node === null || node === undefined || typeof node !== "object") return node;
+    if (typeof node.type !== "function") return node;
+    if (node.type.__featureGate === undefined) {
+      if (!unwrapInner) return node;
+      unwrapInner = false;
+      node = node.type(node.props);
+      continue;
+    }
+    unwrapInner = true;
+    node = node.type(node.props);
+  }
+  return node;
+}
+const flaggedDot = mount(FollowUpDot, { sessionId: "D-done", useStore: (select) => select(prefs), actions });
 assert.ok(flaggedDot !== null, "a flagged session renders the leading dot");
 assert.strictEqual(flaggedDot.props.className, "wsr-dot");
 assert.strictEqual(D.rows[1].querySelector(".wsr-dot"), null, "nothing is injected into the row");
-assert.strictEqual(FollowUpDot({ sessionId: "D-run", useStore: (sel) => sel(prefs), actions }), null);
+assert.strictEqual(mount(FollowUpDot, { sessionId: "D-run", useStore: (sel) => sel(prefs), actions }), null);
 
 flaggedDot.props.onClick({ stopPropagation() {} });
 render();
@@ -616,7 +636,6 @@ function textOf(node) {
 
 (async () => {
   assert.ok(typeof mod.__stats.open === "function", "the statistics panel is reachable");
-  assert.ok(TrashMenuItem !== null, "the trash menu row was not registered");
 
   global.fetch.answer = {
     ok: true,
@@ -877,7 +896,7 @@ function textOf(node) {
 
   /* ---------- handoff ------------------------------------------------- */
   assert.ok(HandoffAction !== null, "the turn handoff action was registered");
-  const handoffAction = HandoffAction({ sessionId: "session-x", messageId: "m1" });
+  const handoffAction = mount(HandoffAction, { sessionId: "session-x", messageId: "m1" });
   const handoffButton = typeof handoffAction.type === "function" ? handoffAction : handoffAction;
   assert.ok(handoffButton !== null, "the turn action renders");
 
@@ -979,12 +998,12 @@ function textOf(node) {
   const handoffState = mod.__handoff;
   assert.ok(handoffState !== undefined, "the handoff state hook exists");
   handoffState.set({ sessionId: "", phase: "idle", block: "", needsEnter: false });
-  assert.strictEqual(HandoffCard({ sessionId: "session-x" }), null, "idle renders nothing");
+  assert.strictEqual(mount(HandoffCard, { sessionId: "session-x" }), null, "idle renders nothing");
   handoffState.set({ sessionId: "session-x", phase: "running", block: "", needsEnter: false });
-  const live = HandoffCard({ sessionId: "session-x" });
+  const live = mount(HandoffCard, { sessionId: "session-x" });
   assert.strictEqual(live.props.className, "wsr-handoff-live", "a running handoff shows progress");
   handoffState.set({ sessionId: "session-x", phase: "ready", block: "# 交接" });
-  const card = HandoffCard({ sessionId: "session-x" });
+  const card = mount(HandoffCard, { sessionId: "session-x" });
   assert.strictEqual(card.props.className, "wsr-qcard", "a ready handoff renders the question card");
   assert.strictEqual(card.children.length, 5, "header, options, free text, preview and footer");
   const options = card.children[1];
@@ -993,13 +1012,13 @@ function textOf(node) {
   assert.ok(options.children[0].props.className.indexOf("wsr-qoption-selected") !== -1, "confirm is selected by default");
   assert.strictEqual(options.children[1].props.className, "wsr-qoption", "the second option is not selected");
   assert.strictEqual(card.children[2].children[0].props.className, "wsr-handoff-extra", "the third control is free text");
-  assert.strictEqual(HandoffCard({ sessionId: "other" }), null, "another session shows nothing");
+  assert.strictEqual(mount(HandoffCard, { sessionId: "other" }), null, "another session shows nothing");
 
   /* The card lives in a slot that renders once per turn: it may only show on
      the turn the note came from, or it pops under every earlier reply. */
   handoffState.set({ sessionId: "session-x", phase: "ready", block: "# 交接", turn: 5 });
-  assert.strictEqual(HandoffCard({ sessionId: "session-x", turn: 4 }), null, "an older turn tail shows no card");
-  assert.ok(HandoffCard({ sessionId: "session-x", turn: 5 }) !== null, "the card renders on its own turn");
+  assert.strictEqual(mount(HandoffCard, { sessionId: "session-x", turn: 4 }), null, "an older turn tail shows no card");
+  assert.ok(mount(HandoffCard, { sessionId: "session-x", turn: 5 }) !== null, "the card renders on its own turn");
 
   /* Waiting for the turn to finish: a tool step that lands first must not make
      the previous reply's block look like the new answer. */
@@ -1047,9 +1066,9 @@ function textOf(node) {
   assert.ok(TrashIcon !== null, "the sidebar panel glyph was registered");
   assert.ok(TrashPage !== null, "the main-region trash page was registered");
   global.fetch.answer = { ok: true, entries: [] };
-  const iconElement = TrashIcon({ size: 16 });
+  const iconElement = mount(TrashIcon, { size: 16 });
   assert.ok(iconElement !== null, "the glyph renders");
-  const page = TrashPage({});
+  const page = mount(TrashPage, {});
   assert.strictEqual(page.props.className, "wsr-page");
   assert.ok(page.children.length > 0);
 
@@ -1058,7 +1077,7 @@ function textOf(node) {
   /* ---------- move to workspace ------------------------------------- */
   global.fetch.answer = { ok: true, workspace: "B" };
   assert.ok(MoveMenuItem !== null, "the move menu row was registered");
-  const moveItem = MoveMenuItem({ sessionId: "A-fresh-1" });
+  const moveItem = mount(MoveMenuItem, { sessionId: "A-fresh-1" });
   assert.ok(moveItem !== null);
   assert.strictEqual(moveItem.children[0], "Move to workspace\u2026");
   moveItem.props.onSelect();
@@ -1089,10 +1108,10 @@ function textOf(node) {
   const SEARCH = mod.__search;
   assert.ok(SEARCH !== undefined, "the search hooks are exposed");
   assert.ok(SearchIcon !== null, "the search panel glyph was registered");
-  assert.ok(SearchIcon({ size: 16 }) !== null, "the search glyph renders");
+  assert.ok(mount(SearchIcon, { size: 16 }) !== null, "the search glyph renders");
   assert.ok(SearchPage !== null, "the search page was registered");
   SEARCH.resetHistoryMirror();
-  const searchPage = SearchPage({});
+  const searchPage = mount(SearchPage, {});
   assert.strictEqual(searchPage.props.className, "wsr-page wsr-search-page");
 
   const findNode = (node, predicate) => {
@@ -1115,7 +1134,7 @@ function textOf(node) {
   const historyStore = { searchHistory: [{ query: "build failed", workspace: "Work", session: "", role: "assistant" }, "CDP"] };
   const dropped = [];
   SEARCH.resetHistoryMirror();
-  const searchPageWithHistory = SearchPage({
+  const searchPageWithHistory = mount(SearchPage, {
     useStore: () => historyStore,
     actions: {
       pushSearch: function (query) { dropped.push(["push", query]); },
@@ -1144,7 +1163,7 @@ function textOf(node) {
   /* Clicking a chip restores the whole search, not just its words. */
   const applied = [];
   SEARCH.resetHistoryMirror();
-  const scopePage = SearchPage({
+  const scopePage = mount(SearchPage, {
     useStore: () => ({ searchHistory: [{ query: "CDP", workspace: "Bluegleam", session: "", role: "user" }] }),
     actions: {
       pushSearch: function (entry) { applied.push(entry); },
@@ -1178,7 +1197,7 @@ function textOf(node) {
   SEARCH.filters().session = "";
   SEARCH.filters().role = "";
   SEARCH.resetHistoryMirror();
-  const writePage = SearchPage({
+  const writePage = mount(SearchPage, {
     useStore: () => ({ searchHistory: [] }),
     actions: { pushSearch: function (entry) { pushed.push(entry); }, dropSearch() {}, clearSearches() {} },
   });
@@ -1408,7 +1427,55 @@ function textOf(node) {
   flush();
   assert.strictEqual(composerSeat.querySelector("[data-wsr-composer-analysis]"), null, "the pill goes away with the conversation");
 })().then(() => {
-  console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel, search jump");
+    /* ---------- feature switches ---------------------------------------- */
+  {
+    const toggled = [];
+    const featureActions = {
+      setFeature: (name) => {
+        toggled.push(name);
+        prefs.features = Object.assign({}, prefs.features, { [name]: !(((prefs.features || {})[name]) !== false) });
+      },
+      resetFeatures: () => { prefs.features = {}; },
+    };
+    const page = mount(FeaturesPage, {
+      useStore: (select) => select(prefs),
+      actions: featureActions,
+    });
+    assert.ok(page !== null, "the features page renders");
+    /* The page lists one row per feature: the elements carry the id. */
+    const rowElements = [];
+    (function walk(node) {
+      if (node === null || node === undefined || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        for (const item of node) walk(item);
+        return;
+      }
+      const props = node.props || {};
+      const known = ["sidebar", "followUp", "search", "trash", "stats", "handoff", "move"];
+      if (typeof props.id === "string" && known.indexOf(props.id) !== -1) rowElements.push(node);
+      for (const child of node.children || []) walk(child);
+    })(page);
+    assert.strictEqual(rowElements.length, 7, "every feature has a row");
+
+    /* Opening one row renders a control that toggles exactly that feature. */
+    const searchElement = rowElements.find((node) => node.props.id === "search");
+    assert.ok(searchElement !== undefined, "the search row exists");
+    const searchRow = searchElement.type(searchElement.props);
+    assert.strictEqual(searchRow.props["data-wsr-feature"], "search", "the row names its feature");
+    const controls = searchRow.children[1];
+    const toggle = controls.children[0];
+    assert.ok(String(toggle.props.className).indexOf("wsr-toggle") !== -1, "the control is a switch");
+    toggle.props.onClick();
+    assert.deepStrictEqual(toggled, ["search"], "the switch names its feature");
+
+    /* With the switch off, the gated component renders nothing. */
+    prefs.features = { search: false };
+    assert.strictEqual(mount(SearchIcon, { size: 16 }), null, "a disabled feature draws no glyph");
+    assert.strictEqual(mount(SearchPage, {}), null, "and no page");
+    prefs.features = {};
+    assert.ok(mount(SearchIcon, { size: 16 }) !== null, "turning it back on restores the glyph");
+  }
+console.log("selfcheck ok: order A>C>B, fold >3d, controls, colors, pinned section, stats panel, search jump");
 }).catch((error) => {
   console.error(error);
   process.exit(1);

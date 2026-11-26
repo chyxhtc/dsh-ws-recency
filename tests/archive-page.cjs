@@ -110,6 +110,11 @@ function mount(component, props) {
   const pass = () => {
     index = 0;
     element = component(props);
+    /* The registered component is the feature gate; render what it decided. */
+    if (component.__featureGate !== undefined && element !== null && element !== undefined
+      && typeof element === "object" && typeof element.type === "function") {
+      element = element.type(element.props);
+    }
   };
   pass();
   for (const effect of effects.splice(0)) effect();
