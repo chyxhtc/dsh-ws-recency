@@ -656,6 +656,7 @@
           "archive.delete": "移到回收站",
           "archive.forget": "彻底删除",
           "archive.confirmUnarchive": "把这个会话放回原工作区的原位置？",
+          "archive.tasksWarning": "这个会话有 {n} 个定时任务指向它{names}。删除后它们仍会到点触发，请先到「自动化任务」里停掉或改到别的会话。",
           "archive.confirmDelete": "把这个会话移入回收站？之后仍可在上面一栏恢复。",
           "archive.confirmForget": "彻底删除这个会话的日志？不可恢复。",
           "archive.badgeMissing": "记录失效",
@@ -894,6 +895,7 @@
           "archive.delete": "Move to trash",
           "archive.forget": "Delete for good",
           "archive.confirmUnarchive": "Put this session back where it was in its workspace?",
+          "archive.tasksWarning": "{n} scheduled task(s) point at this session{names}. They still fire after it is deleted; stop or retarget them under Automation first.",
           "archive.confirmDelete": "Move this session into the trash? You can still restore it from the section above.",
           "archive.confirmForget": "Delete this session's log for good? This cannot be undone.",
           "archive.badgeMissing": "record only",
@@ -5611,6 +5613,15 @@
               : action === "detach" ? t("archive.confirmDetach")
                 : action === "forget" ? t("archive.confirmForget")
                   : t("archive.confirmDelete");
+            /* Scheduled tasks outlive the log: say so before the user acts. */
+            var taskCount = Number(entry.tasks) || 0;
+            if (action !== "unarchive" && taskCount > 0) {
+              var names = Array.isArray(entry.taskTitles) && entry.taskTitles.length > 0
+                ? "：" + entry.taskTitles.join("、")
+                : "";
+              question += "\n\n" + t("archive.tasksWarning", { n: String(taskCount), names: names });
+            }
+
             askConfirm(question, function () {
               load(t("trash.working"));
               trashPost({ action: action, sessionId: entry.sessionId }).then(function (result) {

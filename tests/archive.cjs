@@ -163,6 +163,33 @@ function fakeResponse() {
   const untitled = listing.entries.find((entry) => entry.sessionId === "session-untitled");
   assert.strictEqual(untitled.title, "", "a session with neither a cache row nor a title event stays untitled");
 
+/* ---------- scheduled tasks naming a session --------------------------- */
+fs.mkdirSync(path.join(home, "storages"), { recursive: true });
+fs.writeFileSync(
+  path.join(home, "storages", "schedule.json"),
+  JSON.stringify({
+    unit: { name: "schedule", version: 1 },
+    global: null,
+    tables: {
+      tasks: {
+        "task-v1": { sessionId: "session-new", status: "active", record: { title: "check the catalog", kind: "every" } },
+        "task-v2": { status: "active", record: { target: { kind: "session", sessionId: "session-new" }, title: "retargeted" } },
+        "task-other": { sessionId: "session-old", record: { prompt: "unrelated" } },
+      },
+    },
+  }),
+  "utf8",
+);
+const withTasks = await mod.listArchivedSessions(ctx);
+const tasked = withTasks.entries.find((entry) => entry.sessionId === "session-new");
+assert.strictEqual(tasked.tasks, 2, "both the v1 and the v2 shape are counted");
+assert.deepStrictEqual(tasked.taskTitles, ["check the catalog", "retargeted"], "the titles are carried for the warning");
+const untasked = withTasks.entries.find((entry) => entry.sessionId === "session-gone");
+assert.strictEqual(untasked.tasks, 0, "a session nothing points at counts zero");
+fs.rmSync(path.join(home, "storages", "schedule.json"), { force: true });
+const noStore = await mod.listArchivedSessions(ctx);
+assert.strictEqual(noStore.entries[0].tasks, 0, "a missing schedule store is not an error");
+
   const empty = await mod.listArchivedSessions({ ...ctx, workspaceRegistry: { get archivedSessionIds() { return []; }, list: () => [] } });
   assert.deepStrictEqual(empty.entries, [], "an empty archive set is not an error");
 

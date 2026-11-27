@@ -328,3 +328,9 @@ var SEARCH_ENABLED = true;   // 搜索面板、跳转、上下文展开、关键
 - 发布流程改成「先提交、后验证、再发布」：新增 `tools/publish.mjs`，**没有 `--approved` 直接拒绝**，跑完 8 套测试、要求工作区干净、版本号与 `package.json` 一致才 publish，随后轮询 registry 确认版本可获取，再用同一份 tarball 建 GitHub Release。`PUBLISHING.md` 与本节都写了这条规则。
 - 起因：0.35.3 报 409 `previously staged version` 却在一小时后出现，0.35.4 因此重发过一次；同时 0.35.3/0.35.4 是回收站打不开的坏版本，却已经能被客户安装。
 - 待维护者决定：是否对 `dsh-ws-recency@0.35.3` 与 `@0.35.4` 执行 `npm deprecate`（提示「回收站面板打不开，请升级到 0.35.5」）。这属于 registry 写操作，按新规则需要明确同意后执行。
+
+## 0.35.7
+
+- 删除已归档会话时，确认框会报出指向它的定时任务数量与前几个标题：`scheduledTasksFor()` 只读 `storages/schedule.json`（同时认 v1 的顶层 `sessionId` 与 v2 的 `target.sessionId` / `involvedSessionIds`），列表里每条带 `tasks` 与 `taskTitles`。**不删任务**——`schedule` 是宿主的存储域（v2 读 v1），定时器在宿主进程内存里，改文件既不取消已排的定时器也绕过它的 schema。
+- 顺带确认了删除现状：只处理被点的那个会话，子代理会话（header 的 `parentSession`）留在磁盘上；本机已存在一个例证——父会话在回收站，它的 3 个子会话还在 `sessions/`。级联删除仍待定。
+- 测试：`archive.cjs` 增加 schedule 存储的 v1/v2 两种形状计数，以及存储缺失时计 0。

@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.35.6";
+export const HOST_VERSION = "0.35.7";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -1694,6 +1694,50 @@ export function projectKey(cwd) {
   return `--${(readable.replace(/^-+/, "") || "root").slice(0, 251)}--`;
 }
 
+/**
+ * Scheduled tasks that name a session.
+ *
+ * Read-only on purpose: `schedule` is the Host's own storage domain (v2, reading
+ * v1) and its timers live in the Host process, so deleting a task from the file
+ * would not cancel an armed timer and would bypass that domain's schema. This only
+ * counts them, and the UI lets the user deal with them where they belong.
+ *
+ * Both shapes are accepted: v1 keeps `sessionId` at the top level, v2 nests it
+ * under `target` and may list several sessions.
+ */
+async function scheduledTasksFor(sessionId, cache) {
+  const wanted = typeof sessionId === "string" ? sessionId : "";
+  if (wanted === "") return [];
+  let parsed = cache;
+  if (parsed === null || parsed === undefined) {
+    try {
+      parsed = JSON.parse(await readFile(join(await dshHome(), "storages", "schedule.json"), "utf8"));
+    } catch {
+      return [];
+    }
+  }
+  const tasks = parsed !== null && parsed !== undefined ? parsed.tables?.tasks : undefined;
+  if (tasks === null || tasks === undefined || typeof tasks !== "object") return [];
+  const found = [];
+  for (const [taskId, row] of Object.entries(tasks)) {
+    if (row === null || row === undefined || typeof row !== "object") continue;
+    const record = row.record !== null && typeof row.record === "object" ? row.record : row;
+    const ids = new Set();
+    if (typeof row.sessionId === "string") ids.add(row.sessionId);
+    if (typeof record.sessionId === "string") ids.add(record.sessionId);
+    if (typeof record.target?.sessionId === "string") ids.add(record.target.sessionId);
+    for (const id of Array.isArray(record.involvedSessionIds) ? record.involvedSessionIds : []) {
+      if (typeof id === "string") ids.add(id);
+    }
+    if (!ids.has(wanted)) continue;
+    const title = typeof record.title === "string" && record.title.trim() !== ""
+      ? record.title.trim().slice(0, 60)
+      : typeof record.prompt === "string" ? record.prompt.trim().split("\n")[0].slice(0, 60) : taskId;
+    found.push({ id: taskId, title, status: typeof row.status === "string" ? row.status : "" });
+  }
+  return found;
+}
+
 async function trashRoot() {
   return join(await dshHome(), ".trash", "ws-recency");
 }
@@ -2073,6 +2117,13 @@ export async function listArchivedSessions(ctx) {
   const raw = await rawWorkspaceMembership();
   const workspaces = ctx.workspaceRegistry.list();
   const entries = [];
+  /* One read of the schedule store for the whole listing. */
+  let scheduleStore;
+  try {
+    scheduleStore = JSON.parse(await readFile(join(await dshHome(), "storages", "schedule.json"), "utf8"));
+  } catch {
+    scheduleStore = null;
+  }
   for (const sessionId of ids) {
     let header = headers.get(sessionId);
     let sizeBytes = sizes.get(sessionId) ?? 0;
@@ -2135,8 +2186,12 @@ export async function listArchivedSessions(ctx) {
       }
     }
 
+    const tasks = await scheduledTasksFor(sessionId, scheduleStore);
     entries.push({
       sessionId,
+      /* Only when there are some: the UI shows nothing for zero. */
+      tasks: tasks.length,
+      taskTitles: tasks.slice(0, 3).map((task) => task.title),
       title,
       turns,
       steps: archiveMeta.steps,
