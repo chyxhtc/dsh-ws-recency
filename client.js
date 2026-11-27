@@ -610,6 +610,7 @@
           "search.you": "你",
           "search.assistant": "助手",
           "search.turn": "第 {n} 轮",
+          "search.turnWithStep": "第 {turn} 轮 · 第 {step} 步",
           "search.pluginCost": "插件 {ms}ms",
           "search.contextShow": "看上下文",
           "search.contextHide": "收起",
@@ -855,6 +856,7 @@
           "search.you": "You",
           "search.assistant": "Assistant",
           "search.turn": "turn {n}",
+          "search.turnWithStep": "turn {turn} · step {step}",
           "search.pluginCost": "plugin {ms}ms",
           "search.contextShow": "Show context",
           "search.contextHide": "Hide",
@@ -4943,30 +4945,22 @@
           var when = formatWhen(Number(hit.at) || 0);
           return h("div", {
             className: "wsr-hit",
-            title: hit.cwd || "",
+            title: [title, hit.cwd || ""].filter(function (part) { return part !== ""; }).join("\n"),
             onClick: onClick,
           },
+            /*
+             * The row sits under its workspace band and its session band, so it repeats
+             * neither the title nor the path: what differs between hits is the role, the
+             * turn, when it was said, and the words themselves.
+             */
             h("div", { className: "wsr-hit-head" },
               h("span", { className: "wsr-hit-role " + (hit.role === "user" ? "wsr-hit-user" : "wsr-hit-agent") }, hit.role === "user" ? t("search.you") : t("search.assistant")),
-              h("span", { className: "wsr-hit-title", title: title }, title),
-              /* Band above says the workspace, band above that the session. */
-              null,
-              /* How long the session is decides how slow a jump will be, so it is
-                 part of reading a row, not something to find out by clicking. */
-              Number(hit.turns) >= LONG_SESSION_TURNS
-                ? h("span", { className: "wsr-hit-long", title: t("search.longHint") }, t("search.longBadge", { n: String(hit.turns) }))
-                : null,
-              h("span", { className: "wsr-hit-turn" }, t("search.turn", { n: String(hit.turn) })),
-              /* The step inside the turn: it is what the reader checks against the
-                 chat after jumping, so a hit that looks wrong can be told apart
-                 from a jump that landed wrong. */
+              /* Where in the conversation this hit sits is the row's identity now:
+                 the session and the workspace are the bands above it. */
               typeof hit.step === "number" && isFinite(hit.step)
-                ? h("span", { className: "wsr-hit-step" }, t("search.step", { n: String(hit.step) }))
-                : null,
-            ),
-            h("div", { className: "wsr-hit-meta" },
+                ? h("span", { className: "wsr-hit-title" }, t("search.turnWithStep", { turn: String(hit.turn), step: String(hit.step) }))
+                : h("span", { className: "wsr-hit-title" }, t("search.turn", { n: String(hit.turn) })),
               when !== "" ? h("span", { className: "wsr-hit-time" }, when) : null,
-              typeof hit.cwd === "string" && hit.cwd !== "" ? h("span", { className: "wsr-hit-cwd" }, hit.cwd) : null,
             ),
             h("div", { className: "wsr-hit-snippet" },
               hit.lead === true ? "\u2026" : null,

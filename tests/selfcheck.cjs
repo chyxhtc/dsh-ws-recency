@@ -1291,25 +1291,26 @@ function textOf(node) {
     tail: false,
   }, ["build"], function () {});
   const hitHead = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-head");
-  assert.ok(textOf(hitHead).indexOf("Alpha work") !== -1, "the hit names its session");
+  assert.ok(textOf(hitHead).indexOf("Alpha work") === -1, "the row does not repeat the session title");
   /* The step is what the reader checks against the chat after jumping. */
-  const hitStep = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-step");
-  assert.ok(hitStep !== null, "an assistant hit names its step");
-  assert.strictEqual(hitStep.children[0], "step 7", "the step number is shown");
+  const hitStep = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-title");
+  assert.ok(hitStep !== null, "an assistant hit names its turn and step");
+  assert.strictEqual(hitStep.children[0], "turn 3 · step 7", "turn and step share one chip");
   const noStepHit = SEARCH.hitRow({ sessionId: "s", turn: 2, role: "user", snippet: "x" }, [], function () {});
-  assert.strictEqual(findNode(noStepHit, (node) => node.props !== undefined && node.props.className === "wsr-hit-step"), null, "a prompt carries no step");
-  const hitMeta = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-meta");
-  assert.ok(hitMeta !== null, "the hit carries a meta line");
-  assert.ok(textOf(hitMeta).indexOf("C:\\work") !== -1, "and shows the working directory");
-  assert.ok(textOf(hitMeta).indexOf("build failed") === -1, "the meta line does not repeat the snippet");
+  assert.strictEqual(findNode(noStepHit, (node) => node.props !== undefined && node.props.className === "wsr-hit-title").children[0], "turn 2", "a prompt carries no step");
+  const hitTitle = String(hitNode.props.title);
+  assert.ok(hitTitle.indexOf("Alpha work") !== -1, "the session title stays available on hover");
+  assert.ok(textOf(hitNode).indexOf("C:\\work") === -1, "the row does not repeat the working directory");
+  const hitSnippet = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-snippet");
+  assert.ok(hitSnippet !== null, "the snippet is still the body of the row");
+  assert.ok(JSON.stringify(hitSnippet).indexOf("failed") !== -1, "and it carries the matched words");
   const hitTime = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-time");
   assert.ok(hitTime !== null, "and the time it was said");
   assert.ok(String(hitTime.children[0]).length > 0, "the time is not blank");
   /* With no title the id stands in, shortened so it stays readable. */
   const untitled = SEARCH.hitRow({ sessionId: "sess-1234567890abcdef", turn: 1, role: "user", snippet: "x" }, [], function () {});
-  const untitledHead = findNode(untitled, (node) => node.props !== undefined && node.props.className === "wsr-hit-head");
-  assert.ok(textOf(untitledHead).indexOf("sess-123") !== -1, "an untitled session falls back to its id");
-  assert.ok(textOf(untitledHead).indexOf("sess-1234567890abcdef") === -1, "the id is shortened");
+  assert.ok(String(untitled.props.title).indexOf("sess-123") !== -1, "an untitled session falls back to its id on hover");
+  assert.ok(String(untitled.props.title).indexOf("sess-1234567890abcdef") === -1, "the id is shortened");
 
   /* Highlighting the query's terms inside the transcript is drawn through the
      Custom Highlight API: no DOM is mutated, so React never fights it. */
