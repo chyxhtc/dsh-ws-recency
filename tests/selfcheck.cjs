@@ -1293,11 +1293,11 @@ function textOf(node) {
   const hitHead = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-head");
   assert.ok(textOf(hitHead).indexOf("Alpha work") === -1, "the row does not repeat the session title");
   /* The step is what the reader checks against the chat after jumping. */
-  const hitStep = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-title");
+  const hitStep = findNode(hitNode, (node) => node.props !== undefined && node.props.className === "wsr-hit-pos");
   assert.ok(hitStep !== null, "an assistant hit names its turn and step");
   assert.strictEqual(hitStep.children[0], "turn 3 · step 7", "turn and step share one chip");
   const noStepHit = SEARCH.hitRow({ sessionId: "s", turn: 2, role: "user", snippet: "x" }, [], function () {});
-  assert.strictEqual(findNode(noStepHit, (node) => node.props !== undefined && node.props.className === "wsr-hit-title").children[0], "turn 2", "a prompt carries no step");
+  assert.strictEqual(findNode(noStepHit, (node) => node.props !== undefined && node.props.className === "wsr-hit-pos").children[0], "turn 2", "a prompt carries no step");
   const hitTitle = String(hitNode.props.title);
   assert.ok(hitTitle.indexOf("Alpha work") !== -1, "the session title stays available on hover");
   assert.ok(textOf(hitNode).indexOf("C:\\work") === -1, "the row does not repeat the working directory");

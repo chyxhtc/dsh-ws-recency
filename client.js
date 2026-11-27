@@ -458,6 +458,7 @@
           ".wsr-hit{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:8px;cursor:pointer}",
           ".wsr-hit:hover{background:var(--dsw-alias-bg-layer-2)}",
           ".wsr-hit-head{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-hit-pos{flex:none;color:var(--dsw-alias-label-primary);font-size:13px;white-space:nowrap}",
           ".wsr-hit-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:13px}",
           ".wsr-hit-role{flex:none;padding:0 6px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);font-size:10px}",
           ".wsr-hit-user{color:#4f8ef7}",
@@ -4955,11 +4956,12 @@
              */
             h("div", { className: "wsr-hit-head" },
               h("span", { className: "wsr-hit-role " + (hit.role === "user" ? "wsr-hit-user" : "wsr-hit-agent") }, hit.role === "user" ? t("search.you") : t("search.assistant")),
-              /* Where in the conversation this hit sits is the row's identity now:
-                 the session and the workspace are the bands above it. */
+              /* Who, where in the conversation, then when: the position is the row's
+                 identity now (the session and workspace are the bands above), and the
+                 time sits beside it instead of being pushed to the far edge. */
               typeof hit.step === "number" && isFinite(hit.step)
-                ? h("span", { className: "wsr-hit-title" }, t("search.turnWithStep", { turn: String(hit.turn), step: String(hit.step) }))
-                : h("span", { className: "wsr-hit-title" }, t("search.turn", { n: String(hit.turn) })),
+                ? h("span", { className: "wsr-hit-pos" }, t("search.turnWithStep", { turn: String(hit.turn), step: String(hit.step) }))
+                : h("span", { className: "wsr-hit-pos" }, t("search.turn", { n: String(hit.turn) })),
               when !== "" ? h("span", { className: "wsr-hit-time" }, when) : null,
             ),
             h("div", { className: "wsr-hit-snippet" },
