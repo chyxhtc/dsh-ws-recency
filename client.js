@@ -120,6 +120,9 @@
           return FEATURE_DEFAULTS[name] !== false;
         }
 
+        /** A session this long makes every jump into old turns expensive. */
+        var LONG_SESSION_TURNS = 60;
+
         /** Turns behind the newest that make a jump ask first; 0 disables asking. */
         var DEFAULT_COLD_JUMP = 40;
         var MAX_COLD_JUMP = 500;
@@ -434,7 +437,10 @@
           ".wsr-help:hover,.wsr-help-on{color:var(--dsw-alias-label-primary);border-color:rgba(255,255,255,.3)}",
           ".wsr-search-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-search-status{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;padding-top:3px;border-top:.5px solid rgba(255,255,255,.06)}",
-          ".wsr-search-group{font-size:11px;color:var(--dsw-alias-label-tertiary);padding:2px 0}",
+          ".wsr-search-group{display:flex;align-items:baseline;gap:8px;padding:10px 2px 4px;position:sticky;top:0;background:var(--dsw-alias-bg-base,transparent);z-index:1}",
+          ".wsr-search-group-name{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+          ".wsr-search-group-count{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
+          ".wsr-hit-long{flex:none;font-size:10px;line-height:16px;padding:0 6px;border-radius:8px;background:rgba(217,154,43,.16);color:#d99a2b;white-space:nowrap}",
           ".wsr-btn-primary{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4f9df7) 55%,transparent);color:var(--dsw-alias-label-primary)}",
           ".wsr-search-history{display:flex;align-items:center;flex-wrap:nowrap;overflow-x:auto;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary);scrollbar-width:none}",
           ".wsr-search-history-label{flex:none}",
@@ -607,6 +613,10 @@
           "search.coldExpanded": "第 {turn} 轮在最新一轮之前 {behind} 轮，已展开上下文；要跳转请点这一行的「打开会话」。",
           "search.settings.coldTitle": "跳转前确认",
           "search.settings.coldDesc": "命中离最新一轮超过这么多轮时先问一句；0 表示每次都直接跳。",
+          "search.groupCount": "{n} 处",
+          "search.noWorkspace": "无归属工作区",
+          "search.longBadge": "长会话 · {n} 轮",
+          "search.longHint": "这一轮之前还有很多内容，跳过去要加载历史，可能很慢",
           "search.openSession": "打开会话",
           "search.hint": "空格=都要有 · \"词组\" · a|b 或 · -排除",
           "search.filterWorkspace": "工作区",
@@ -848,6 +858,10 @@
           "search.coldExpanded": "Turn {turn} is {behind} turns behind the newest one, so its context is shown here; press Open session on this row to jump.",
           "search.settings.coldTitle": "Ask before a long jump",
           "search.settings.coldDesc": "Ask when a hit is this many turns behind the newest one; 0 jumps every time.",
+          "search.groupCount": "{n} hits",
+          "search.noWorkspace": "No workspace",
+          "search.longBadge": "Long session · {n} turns",
+          "search.longHint": "There is a lot of history before this turn; jumping there loads it and can be slow",
           "search.openSession": "Open session",
           "search.hint": "space = all of them · \"phrase\" · a|b either · -exclude",
           "search.filterWorkspace": "Workspace",
@@ -4933,6 +4947,11 @@
               h("span", { className: "wsr-hit-role " + (hit.role === "user" ? "wsr-hit-user" : "wsr-hit-agent") }, hit.role === "user" ? t("search.you") : t("search.assistant")),
               h("span", { className: "wsr-hit-title", title: title }, title),
               typeof hit.workspace === "string" && hit.workspace !== "" ? h("span", { className: "wsr-hit-ws" }, hit.workspace) : null,
+              /* How long the session is decides how slow a jump will be, so it is
+                 part of reading a row, not something to find out by clicking. */
+              Number(hit.turns) >= LONG_SESSION_TURNS
+                ? h("span", { className: "wsr-hit-long", title: t("search.longHint") }, t("search.longBadge", { n: String(hit.turns) }))
+                : null,
               h("span", { className: "wsr-hit-turn" }, t("search.turn", { n: String(hit.turn) })),
               /* The step inside the turn: it is what the reader checks against the
                  chat after jumping, so a hit that looks wrong can be told apart
@@ -5197,16 +5216,50 @@
             return row;
           });
 
-          var rows = view.hits.map(function (hit, index) {
-            var row = h(SearchHitRow, {
-              hit: hit,
-              terms: view.terms,
-              coldAfter: coldJumpTurns,
-              onJump: function () { jumpToSearchHit(hit, view.terms); },
-            });
-            row.key = String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index);
-            return row;
-          });
+          /*
+           * Group by workspace, newest group first, newest hit inside each group.
+           *
+           * A flat list ordered only by time mixes a 130-turn session from one
+           * project with a two-line one from another; which project a hit belongs to
+           * is the first thing a reader needs, and the workspace name on every row was
+           * not enough to see that boundary.
+           */
+          var grouped = [];
+          var groupBy = {};
+          for (var hitIndex = 0; hitIndex < view.hits.length; hitIndex += 1) {
+            var one = view.hits[hitIndex];
+            var key = typeof one.workspace === "string" && one.workspace !== ""
+              ? one.workspace
+              : (typeof one.cwd === "string" && one.cwd !== "" ? baseName(one.cwd) : "");
+            if (groupBy[key] === undefined) {
+              groupBy[key] = { key: key, path: one.cwd || "", hits: [] };
+              grouped.push(groupBy[key]);
+            }
+            groupBy[key].hits.push(one);
+          }
+
+          var rows = [];
+          for (var groupIndex = 0; groupIndex < grouped.length; groupIndex += 1) {
+            var group = grouped[groupIndex];
+            var groupRow = h("div", { className: "wsr-search-group" },
+              h("span", { className: "wsr-search-group-name", title: group.path }, group.key === "" ? t("search.noWorkspace") : group.key),
+              h("span", { className: "wsr-search-group-count" }, t("search.groupCount", { n: String(group.hits.length) })),
+            );
+            groupRow.key = "group:" + group.key + ":" + String(groupIndex);
+            rows.push(groupRow);
+            for (var innerIndex = 0; innerIndex < group.hits.length; innerIndex += 1) {
+              (function (hit, index) {
+                var row = h(SearchHitRow, {
+                  hit: hit,
+                  terms: view.terms,
+                  coldAfter: coldJumpTurns,
+                  onJump: function () { jumpToSearchHit(hit, view.terms); },
+                });
+                row.key = String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index);
+                rows.push(row);
+              })(group.hits[innerIndex], innerIndex);
+            }
+          }
 
           return h("div", { className: "wsr-page wsr-search-page" },
             h("div", { className: "wsr-page-head" },
