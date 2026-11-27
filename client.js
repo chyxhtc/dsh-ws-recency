@@ -438,6 +438,9 @@
           ".wsr-search-hint{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-search-status{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;padding-top:3px;border-top:.5px solid rgba(255,255,255,.06)}",
           ".wsr-search-group{display:flex;align-items:baseline;gap:8px;padding:10px 2px 4px;position:sticky;top:0;background:var(--dsw-alias-bg-base,transparent);z-index:1}",
+          ".wsr-search-session{display:flex;align-items:baseline;gap:8px;padding:6px 2px 2px 6px;border-left:2px solid var(--dsw-alias-border-1,rgba(255,255,255,.10))}",
+          ".wsr-search-session-name{font-size:12px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}",
+          ".wsr-search-session-count{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-search-group-name{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}",
           ".wsr-search-group-count{font-size:11px;color:var(--dsw-alias-label-tertiary)}",
           ".wsr-hit-long{flex:none;font-size:10px;line-height:16px;padding:0 6px;border-radius:8px;background:rgba(217,154,43,.16);color:#d99a2b;white-space:nowrap}",
@@ -4946,7 +4949,8 @@
             h("div", { className: "wsr-hit-head" },
               h("span", { className: "wsr-hit-role " + (hit.role === "user" ? "wsr-hit-user" : "wsr-hit-agent") }, hit.role === "user" ? t("search.you") : t("search.assistant")),
               h("span", { className: "wsr-hit-title", title: title }, title),
-              typeof hit.workspace === "string" && hit.workspace !== "" ? h("span", { className: "wsr-hit-ws" }, hit.workspace) : null,
+              /* Band above says the workspace, band above that the session. */
+              null,
               /* How long the session is decides how slow a jump will be, so it is
                  part of reading a row, not something to find out by clicking. */
               Number(hit.turns) >= LONG_SESSION_TURNS
@@ -4972,6 +4976,76 @@
             extra === undefined || extra === null ? null : extra,
           );
         }
+
+/**
+ * Workspace -> session -> turn.
+ *
+ * A flat list ordered by hit time answers "what matched" but not "where": the
+ * same conversation can appear eight times between two other projects. Sessions
+ * are ordered by when the session last moved (not by their newest hit), and the
+ * hits inside a session by turn, so a conversation reads in the order it was
+ * spoken.
+ */
+function groupHits(hits) {
+  var list = Array.isArray(hits) ? hits : [];
+  var byWorkspace = new Map();
+  for (var i = 0; i < list.length; i += 1) {
+    var hit = list[i];
+    var key = typeof hit.workspace === "string" && hit.workspace !== ""
+      ? hit.workspace
+      : (typeof hit.cwd === "string" && hit.cwd !== "" ? baseName(hit.cwd) : "");
+    if (!byWorkspace.has(key)) {
+      byWorkspace.set(key, { key: key, path: typeof hit.cwd === "string" ? hit.cwd : "", sessions: [], hits: 0, newest: 0 });
+    }
+    var group = byWorkspace.get(key);
+    group.hits += 1;
+    var stamp = Number(hit.sessionAt) || Number(hit.at) || 0;
+    if (stamp > group.newest) group.newest = stamp;
+    var session = null;
+    for (var j = 0; j < group.sessions.length; j += 1) {
+      if (group.sessions[j].sessionId === hit.sessionId) {
+        session = group.sessions[j];
+        break;
+      }
+    }
+    if (session === null) {
+      session = {
+        sessionId: hit.sessionId,
+        title: typeof hit.title === "string" ? hit.title : "",
+        turns: Number(hit.turns) || 0,
+        at: stamp,
+        hits: [],
+      };
+      group.sessions.push(session);
+    }
+    if (stamp > session.at) session.at = stamp;
+    session.hits.push(hit);
+  }
+
+  var groups = [];
+  byWorkspace.forEach(function (group) {
+    group.sessions.sort(function (a, b) { return b.at - a.at; });
+    for (var k = 0; k < group.sessions.length; k += 1) {
+      group.sessions[k].hits.sort(function (a, b) {
+        var turnDiff = (Number(a.turn) || 0) - (Number(b.turn) || 0);
+        if (turnDiff !== 0) return turnDiff;
+        var stepDiff = (Number(a.step) || 0) - (Number(b.step) || 0);
+        if (stepDiff !== 0) return stepDiff;
+        return (Number(a.seq) || 0) - (Number(b.seq) || 0);
+      });
+    }
+    groups.push(group);
+  });
+  groups.sort(function (a, b) { return b.newest - a.newest; });
+  return groups;
+}
+
+/** A short, human session label: the title, else the id. */
+function hitSessionLabel(session) {
+  var title = typeof session.title === "string" ? session.title.trim() : "";
+  if (title !== "") return title;
+  return typeof session.sessionId === "string" ? shortSessionId(session.sessionId) : "";
+}
 
         /**
          * One search hit, with the surrounding text on demand.
@@ -5224,43 +5298,45 @@
            * is the first thing a reader needs, and the workspace name on every row was
            * not enough to see that boundary.
            */
-          var grouped = [];
-          var groupBy = {};
-          for (var hitIndex = 0; hitIndex < view.hits.length; hitIndex += 1) {
-            var one = view.hits[hitIndex];
-            var key = typeof one.workspace === "string" && one.workspace !== ""
-              ? one.workspace
-              : (typeof one.cwd === "string" && one.cwd !== "" ? baseName(one.cwd) : "");
-            if (groupBy[key] === undefined) {
-              groupBy[key] = { key: key, path: one.cwd || "", hits: [] };
-              grouped.push(groupBy[key]);
-            }
-            groupBy[key].hits.push(one);
-          }
-
+          var grouped = groupHits(view.hits);
           var rows = [];
           for (var groupIndex = 0; groupIndex < grouped.length; groupIndex += 1) {
-            var group = grouped[groupIndex];
-            var groupRow = h("div", { className: "wsr-search-group" },
-              h("span", { className: "wsr-search-group-name", title: group.path }, group.key === "" ? t("search.noWorkspace") : group.key),
-              h("span", { className: "wsr-search-group-count" }, t("search.groupCount", { n: String(group.hits.length) })),
-            );
-            groupRow.key = "group:" + group.key + ":" + String(groupIndex);
-            rows.push(groupRow);
-            for (var innerIndex = 0; innerIndex < group.hits.length; innerIndex += 1) {
-              (function (hit, index) {
-                var row = h(SearchHitRow, {
-                  hit: hit,
-                  terms: view.terms,
-                  coldAfter: coldJumpTurns,
-                  onJump: function () { jumpToSearchHit(hit, view.terms); },
-                });
-                row.key = String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index);
-                rows.push(row);
-              })(group.hits[innerIndex], innerIndex);
-            }
-          }
+            (function (group) {
+              var groupRow = h("div", { className: "wsr-search-group" },
+                h("span", { className: "wsr-search-group-name", title: group.path }, group.key === "" ? t("search.noWorkspace") : group.key),
+                h("span", { className: "wsr-search-group-count" }, t("search.groupCount", { n: String(group.hits) })),
+              );
+              groupRow.key = "group:" + group.key;
+              rows.push(groupRow);
 
+              for (var sessionIndex = 0; sessionIndex < group.sessions.length; sessionIndex += 1) {
+                (function (session) {
+                  var sessionRow = h("div", { className: "wsr-search-session" },
+                    h("span", { className: "wsr-search-session-name" }, hitSessionLabel(session)),
+                    Number(session.turns) >= LONG_SESSION_TURNS
+                      ? h("span", { className: "wsr-hit-long", title: t("search.longHint") }, t("search.longBadge", { n: String(session.turns) }))
+                      : null,
+                    h("span", { className: "wsr-search-session-count" }, t("search.groupCount", { n: String(session.hits.length) })),
+                  );
+                  sessionRow.key = "session:" + String(session.sessionId) + ":" + String(sessionIndex);
+                  rows.push(sessionRow);
+
+                  for (var innerIndex = 0; innerIndex < session.hits.length; innerIndex += 1) {
+                    (function (hit, index) {
+                      var row = h(SearchHitRow, {
+                        hit: hit,
+                        terms: view.terms,
+                        coldAfter: coldJumpTurns,
+                        onJump: function () { jumpToSearchHit(hit, view.terms); },
+                      });
+                      row.key = String(hit.sessionId || "") + ":" + String(hit.seq || 0) + ":" + String(index);
+                      rows.push(row);
+                    })(session.hits[innerIndex], innerIndex);
+                  }
+                })(group.sessions[sessionIndex]);
+              }
+            })(grouped[groupIndex]);
+          }
           return h("div", { className: "wsr-page wsr-search-page" },
             h("div", { className: "wsr-page-head" },
               h("div", { className: "wsr-page-heading" }, t("search.title")),
@@ -6332,6 +6408,7 @@
         exports.__stats = { open: openStatsPanel, close: closeStatsPanel };
 
         exports.__search = {
+          groupHits: groupHits,
           draft: function () { return searchDraft; },
           highlight: highlightSnippet,
           reveal: revealTurn,

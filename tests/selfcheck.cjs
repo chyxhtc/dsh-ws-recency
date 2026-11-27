@@ -1461,7 +1461,24 @@ assert.ok(toasts.some((node) => String(node.textContent).indexOf("collapsed") !=
   flush();
   assert.strictEqual(composerSeat.querySelector("[data-wsr-composer-analysis]"), null, "the pill goes away with the conversation");
 })().then(() => {
-    /* ---------- feature switches ---------------------------------------- */
+    /* ---------- search result grouping ---------------------------------- */
+  {
+    const hits = [
+      { sessionId: "s1", title: "alpha", workspace: "ws-a", cwd: "D:\\a", turn: 5, step: 1, seq: 50, at: 900, sessionAt: 1000, turns: 130 },
+      { sessionId: "s2", title: "beta", workspace: "ws-a", cwd: "D:\\a", turn: 2, step: 1, seq: 20, at: 500, sessionAt: 400, turns: 3 },
+      { sessionId: "s1", title: "alpha", workspace: "ws-a", cwd: "D:\\a", turn: 3, step: 2, seq: 31, at: 800, sessionAt: 1000, turns: 130 },
+      { sessionId: "s1", title: "alpha", workspace: "ws-a", cwd: "D:\\a", turn: 3, step: 1, seq: 30, at: 700, sessionAt: 1000, turns: 130 },
+      { sessionId: "s3", title: "gamma", workspace: "ws-b", cwd: "D:\\b", turn: 1, step: 1, seq: 10, at: 950, sessionAt: 950, turns: 4 },
+    ];
+    const grouped = mod.__search.groupHits(hits);
+    assert.strictEqual(grouped.length, 2, "two workspaces");
+    assert.deepStrictEqual(grouped.map((group) => group.key), ["ws-a", "ws-b"], "the workspace with the newest session first");
+    assert.deepStrictEqual(grouped[0].sessions.map((session) => session.sessionId), ["s1", "s2"], "sessions by last update, not by hit time");
+    assert.deepStrictEqual(grouped[0].sessions[0].hits.map((hit) => hit.turn + ":" + hit.step), ["3:1", "3:2", "5:1"], "hits read in turn order");
+    assert.strictEqual(grouped[0].hits, 4, "the workspace counts its hits");
+  }
+
+  /* ---------- feature switches ---------------------------------------- */
   {
     const toggled = [];
     const featureActions = {

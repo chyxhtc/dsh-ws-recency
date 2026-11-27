@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.37.0";
+export const HOST_VERSION = "0.37.1";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -1214,6 +1214,9 @@ export async function searchSessions(ctx, query, options = {}) {
         /* How many turns the session has, so the client can scroll to a rough
            position before looking for the text. */
         turns: maxTurn,
+        /* When the session itself last moved: the client orders sessions by it, so a
+           session with one old hit still sits where the session sits. */
+        sessionAt: session.updatedAt,
         lead: lead === true,
         tail: tail === true,
       });
