@@ -39,7 +39,13 @@ if (pkg.version !== version) {
 }
 
 const run = (command, commandArgs, options = {}) =>
-  execFileSync(command, commandArgs, { stdio: "inherit", cwd: new URL("..", import.meta.url), ...options });
+  execFileSync(command, commandArgs, {
+    stdio: "inherit",
+    cwd: new URL("..", import.meta.url),
+    /* npm is a .cmd shim on Windows and is only found through the shell. */
+    shell: process.platform === "win32",
+    ...options,
+  });
 
 const status = execFileSync("git", ["status", "--porcelain"], {
   cwd: new URL("..", import.meta.url),
