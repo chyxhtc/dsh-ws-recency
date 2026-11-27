@@ -4469,8 +4469,8 @@
             if (text.indexOf(needle) !== -1) return true;
             if (needle.length > 20 && text.indexOf(needle.slice(0, 20)) !== -1) return true;
           }
-          /* No needle matched: a body of text still proves the row is rendered. */
-          return text.length > 200;
+          /* No needle matched: any text still proves the row is rendered. */
+          return text.length > 12;
         }
         
         
@@ -4740,16 +4740,25 @@
             var row = turnRowOf(turn);
             if (row !== null) {
               flashTurnRow(row);
+              /* The row exists and holds words: that IS the landing. The seek text
+                 is only how we would rather highlight it, and a snippet can differ
+                 from the rendered text (trimmed, re-wrapped, markdown stripped). */
               if (rowCarriesSeek(row, seeksNow)) {
                 announceJump(hit, false, spentMs);
                 markHitTerms(terms);
                 return;
               }
+              if (normalizedText(row).length > 12) {
+                announceJump(hit, false, spentMs);
+                markHitTerms(terms);
+                return;
+              }
+              /* An empty row is the host's collapsed placeholder: say so once and
+                 stop, instead of polling on and then claiming the turn is missing. */
               if (!reportedStub) {
                 reportedStub = true;
                 announceJumpFailure(hit, "search.jumpCollapsed");
               }
-              window.setTimeout(tick, 500);
               return;
             }
             /* Query the rail every other tick: it is a document-wide lookup. */

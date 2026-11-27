@@ -1424,7 +1424,31 @@ function textOf(node) {
   };
   SEARCH.jump({ sessionId: "A-fresh-1", turn: 6, turns: 10, seek: "text not inside the stub" });
   flush();
-  assert.ok(toasts.some((node) => String(node.textContent).indexOf("collapsed") !== -1), "a stub row is reported instead of claiming success");
+    /* A row with words is the landing even when the snippet does not match: the
+     seek text is trimmed and re-wrapped, and reporting 'collapsed' here used to be
+     followed by a contradictory 'turn not found' after the poll gave up. */
+  const shortRow = el("div", "chat-row");
+  shortRow.attrs["data-chat-turn"] = "7";
+  shortRow.textContent = "短消息，和命中片段不完全一致";
+  shortRow.childElementCount = 0;
+  shortRow.scrolled = false;
+  shortRow.scrollIntoView = function () { shortRow.scrolled = true; };
+  searchTurns["7"] = shortRow;
+  const landedToasts = [];
+  const realBody = global.document.body.appendChild;
+  global.document.body.appendChild = function (node) {
+    if (node !== null && typeof node === "object" && String(node.className).indexOf("wsr-jump-toast") !== -1) landedToasts.push(node);
+    return node;
+  };
+  SEARCH.jump({ sessionId: "A-fresh-1", turn: 7, turns: 10, seek: "完全不匹配的片段" });
+  flush();
+  assert.ok(landedToasts.length >= 1, "a rendered row reports a landing");
+  assert.ok(String(landedToasts[0].textContent).indexOf("7") !== -1, "the landing names the turn");
+  assert.strictEqual(String(landedToasts[0].className).indexOf("wsr-jump-loading") === -1, true, "it is not the loading note");
+  global.document.body.appendChild = realBody;
+  delete searchTurns["7"];
+
+assert.ok(toasts.some((node) => String(node.textContent).indexOf("collapsed") !== -1), "a stub row is reported instead of claiming success");
   global.document.body.appendChild = realBodyAppend;
   overlayRoot.appendChild = realAppend;
   delete searchTurns["6"];
