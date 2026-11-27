@@ -193,5 +193,68 @@ const modulePath = pathToFileURL(path.join(__dirname, "..", "index.js")).href;
   }
 
   fs.rmSync(home, { recursive: true, force: true });
-  console.log("trash ok: projectKey, list, restore, purge, guards");
+  /* ---------- a parent takes its subagent sessions with it --------------- */
+fs.mkdirSync(path.join(home, "storages"), { recursive: true });
+const parentCwd = "D:\\proj";
+const parentKey = mod.projectKey(parentCwd);
+const childA = "child-a";
+const childB = "child-b";
+for (const id of ["parent-x", childA, childB]) {
+  const dir = path.join(home, "sessions", parentKey, id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "session.v4.jsonl.zstd"), "log-" + id);
+}
+const treeCtx = {
+  ...ctx,
+  sessionPersistence: {
+    ...ctx.sessionPersistence,
+    stat: async (id) => ({ header: { id, cwd: parentCwd, createdAt: 2000 }, sizeBytes: 8 }),
+    list: async () => [
+      { header: { id: "parent-x", cwd: parentCwd, createdAt: 2000, delegationDepth: 0 } },
+      { header: { id: childA, cwd: parentCwd, createdAt: 2100, parentSession: "parent-x", origin: "subagent", delegationDepth: 1 } },
+      { header: { id: childB, cwd: parentCwd, createdAt: 2200, parentSession: "parent-x", origin: "subagent", delegationDepth: 1 } },
+    ],
+  },
+  workspaceRegistry: {
+    ...ctx.workspaceRegistry,
+    archiveSession: async () => {},
+    unarchiveSession: async () => {},
+    indexHeader: async () => {},
+  },
+  parallel: async () => {},
+};
+const cascaded = await mod.trashSession(treeCtx, "parent-x");
+assert.strictEqual(cascaded.ok, true, cascaded.error);
+assert.strictEqual(cascaded.descendants, 2, "both children are reported");
+for (const id of ["parent-x", childA, childB]) {
+  assert.strictEqual(fs.existsSync(path.join(home, "sessions", parentKey, id)), false, id + " left the store");
+}
+const treeList = await mod.listTrash();
+const parentEntry = treeList.entries.find((entry) => entry.sessionId === "parent-x");
+const childEntry = treeList.entries.find((entry) => entry.sessionId === childA);
+assert.strictEqual(parentEntry.groupSize, 3, "the parent knows the batch size");
+assert.strictEqual(parentEntry.parentSession, null, "the parent is the head");
+assert.strictEqual(childEntry.group, "parent-x", "a child names its head");
+assert.strictEqual(childEntry.parentSession, "parent-x");
+
+/* Restoring the head brings the batch back. */
+const restoredTree = await mod.restoreTrashEntry(treeCtx, parentEntry.name);
+assert.strictEqual(restoredTree.ok, true, restoredTree.error);
+assert.strictEqual(restoredTree.descendantsRestored, 2, "both children come back");
+for (const id of ["parent-x", childA, childB]) {
+  assert.strictEqual(fs.existsSync(path.join(home, "sessions", parentKey, id, "session.v4.jsonl.zstd")), true, id + " is back");
+}
+
+/* Purging the head erases the batch. */
+const again = await mod.trashSession(treeCtx, "parent-x");
+assert.strictEqual(again.ok, true, again.error);
+const beforePurge = (await mod.listTrash()).entries.filter((entry) => entry.group === "parent-x");
+assert.strictEqual(beforePurge.length, 3, "three rows in the batch");
+const purged = await mod.purgeTrashEntry(beforePurge[0].name, treeCtx);
+assert.strictEqual(purged.ok, true, purged.error);
+const left = (await mod.listTrash()).entries.filter((entry) => entry.group === "parent-x");
+assert.strictEqual(left.length, 0, "no scratch is left behind");
+
+
+console.log("trash ok: projectKey, list, restore, purge, guards");
 })();

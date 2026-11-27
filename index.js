@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 export const name = "ws-recency";
 
 /** Version marker reported by the health route. */
-export const HOST_VERSION = "0.35.7";
+export const HOST_VERSION = "0.36.0";
 
 /**
  * Exact routes the client half calls. Registered on the bare web server, so they
@@ -178,8 +178,8 @@ async function moveWithRetry(source, target) {
 }
 
 /** Move the session log directory into the trash; returns the new path. */
-async function trashSessionLog(ctx, meta, trashRoot) {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+async function trashSessionLog(ctx, meta, trashRoot, sharedStamp) {
+  const stamp = typeof sharedStamp === "string" && sharedStamp !== "" ? sharedStamp : new Date().toISOString().replace(/[:.]/g, "-");
   const target = join(trashRoot, `${meta.id}-${stamp}`);
   await mkdir(trashRoot, { recursive: true });
 
@@ -261,9 +261,13 @@ export async function trashSession(ctx, sessionId) {
 
   const home = await dshHome();
   const trashRoot = join(home, ".trash", "ws-recency");
+  /* One stamp for the whole batch, so the group is visible in the folder name too. */
+  const batchStamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const descendants = await descendantSessions(ctx, sessionId);
+  const skipped = [];
   let moved;
   try {
-    moved = await trashSessionLog(ctx, meta, trashRoot);
+    moved = await trashSessionLog(ctx, meta, trashRoot, batchStamp);
     if (moved === undefined) {
       /* Nothing was parked and nothing was lost: the session could not even be
          listed, so it may have been erased out of band. Roll the flag back. */
@@ -282,8 +286,40 @@ export async function trashSession(ctx, sessionId) {
       at: Date.now(),
       /* Restore has to know it owes the Host an unarchive. */
       archived: true,
+      group: meta.id,
+      groupSize: descendants.length + 1,
+      parentSession: null,
       ...(card === null ? {} : { meta: card }),
     });
+
+    /* The children go with it; a child that cannot be parked is reported, not
+       silently dropped, because its log would then be the leftover this is meant
+       to avoid. */
+    for (const child of descendants) {
+      try {
+        try { await ctx.parallel("workspace/session-stop", { sessionId: child.id }); } catch { /* best effort */ }
+        try { await ctx.workspaceRegistry.archiveSession(child.id); } catch { /* an older Host may not offer it */ }
+        const childTrash = await trashSessionLog(ctx, child, trashRoot, batchStamp);
+        if (childTrash === undefined) {
+          skipped.push(child.id);
+          continue;
+        }
+        const childCard = await trashEntryMetadata(childTrash);
+        await writeTrashSidecar(childTrash, {
+          sessionId: child.id,
+          cwd: typeof child.cwd === "string" ? child.cwd : null,
+          reason: "delete",
+          at: Date.now(),
+          archived: true,
+          group: meta.id,
+          groupSize: descendants.length + 1,
+          parentSession: meta.id,
+          ...(childCard === null ? {} : { meta: childCard }),
+        });
+      } catch (error) {
+        skipped.push(child.id);
+      }
+    }
   } catch (error) {
     /* The flag would otherwise hide a session whose log never left the disk. */
     if (!wasArchived) {
@@ -293,7 +329,8 @@ export async function trashSession(ctx, sessionId) {
   }
 
   ctx.emit("api-session/removed", sessionId);
-  return { ok: true, trash: moved, archivedKept: true };
+  for (const child of descendants) ctx.emit("api-session/removed", child.id);
+  return { ok: true, trash: moved, archivedKept: true, descendants: descendants.length, skipped };
 }
 
 /** POST { sessionId } -> move that session into the trash folder. */
@@ -1738,6 +1775,46 @@ async function scheduledTasksFor(sessionId, cache) {
   return found;
 }
 
+/**
+ * Subagent sessions under one session, depth first.
+ *
+ * A subagent session is an ordinary log whose header names `parentSession`, so
+ * the tree is read from the Host's own listing rather than invented here. A
+ * parent that is deleted while its children stay behind leaves logs that nothing
+ * lists and nothing collects; taking them together keeps the two in step.
+ */
+async function descendantSessions(ctx, rootId) {
+  let snapshots;
+  try {
+    snapshots = await ctx.sessionPersistence.list();
+  } catch {
+    return [];
+  }
+  const byParent = new Map();
+  for (const snapshot of Array.isArray(snapshots) ? snapshots : []) {
+    const header = snapshot !== null && snapshot !== undefined ? snapshot.header : undefined;
+    if (header === null || header === undefined || typeof header.id !== "string") continue;
+    const parent = typeof header.parentSession === "string" ? header.parentSession : "";
+    if (parent === "") continue;
+    const list = byParent.get(parent) ?? [];
+    list.push(header);
+    byParent.set(parent, list);
+  }
+  const out = [];
+  const queue = [rootId];
+  const seen = new Set([rootId]);
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const header of byParent.get(current) ?? []) {
+      if (seen.has(header.id)) continue;
+      seen.add(header.id);
+      out.push(header);
+      queue.push(header.id);
+    }
+  }
+  return out;
+}
+
 async function trashRoot() {
   return join(await dshHome(), ".trash", "ws-recency");
 }
@@ -1894,6 +1971,10 @@ export async function listTrash() {
       cwd: sidecar !== null && typeof sidecar.cwd === "string" ? sidecar.cwd : null,
       reason: sidecar !== null && typeof sidecar.reason === "string" ? sidecar.reason : "unknown",
       at: sidecar !== null && typeof sidecar.at === "number" ? sidecar.at : 0,
+      /* A delete batch: the parent carries the count, the children its id. */
+      group: sidecar !== null && typeof sidecar.group === "string" ? sidecar.group : null,
+      groupSize: sidecar !== null && typeof sidecar.groupSize === "number" ? sidecar.groupSize : 1,
+      parentSession: sidecar !== null && typeof sidecar.parentSession === "string" ? sidecar.parentSession : null,
       restorable: sidecar !== null && sidecar.reason === "delete" && typeof sidecar.cwd === "string" && typeof sidecar.sessionId === "string",
     });
   }
@@ -1961,8 +2042,36 @@ export async function restoreTrashEntry(ctx, name) {
   } catch {
     /* an empty leftover directory is harmless */
   }
+  /* A batch comes back together: the children follow their parent, best effort. */
+  const siblings = await groupEntries(sidecar, name);
+  let descendantsRestored = 0;
+  for (const sibling of siblings) {
+    const record = sibling.sidecar;
+    if (record === null || record === undefined) continue;
+    if (typeof record.cwd !== "string" || typeof record.sessionId !== "string") continue;
+    const key = projectKey(record.cwd);
+    if (key === undefined) continue;
+    const childDir = join(await dshHome(), "sessions", key, record.sessionId);
+    try {
+      await mkdir(childDir, { recursive: true });
+      for (const file of await readdir(join(root, sibling.name), { withFileTypes: true })) {
+        if (file.name === TRASH_SIDECAR) continue;
+        await rename(join(root, sibling.name, file.name), join(childDir, file.name));
+      }
+      try { await ctx.workspaceRegistry.unarchiveSession(record.sessionId); } catch { /* not archived */ }
+      const childOwner = ctx.workspaceRegistry.list().find((workspace) => workspace.path === record.cwd);
+      if (childOwner !== undefined) {
+        try { await childOwner.attachSession(record.sessionId); } catch { /* the list still finds it */ }
+      }
+      try { await rm(join(root, sibling.name), { recursive: true, force: true }); } catch { /* empty dir is harmless */ }
+      await announceSession(ctx, record.sessionId);
+      descendantsRestored += 1;
+    } catch {
+      /* one child left in the trash beats aborting the parent */
+    }
+  }
   await announceSession(ctx, sidecar.sessionId);
-  return { ok: true, sessionId: sidecar.sessionId, cwd: sidecar.cwd, attached };
+  return { ok: true, sessionId: sidecar.sessionId, cwd: sidecar.cwd, attached, descendantsRestored };
 }
 
 /**
@@ -1978,9 +2087,9 @@ export async function purgeTrashEntry(name, ctx = null) {
     return { ok: false, error: "invalid entry name" };
   }
   const directory = join(root, name);
-  if (ctx !== null && ctx !== undefined) {
-    const sidecar = await readTrashSidecar(directory);
-    const sessionId = sidecar !== null && typeof sidecar.sessionId === "string" ? sidecar.sessionId : "";
+  const sidecarForGroup = await readTrashSidecar(directory);
+  if (ctx !== null && ctx !== undefined && sidecarForGroup !== null) {
+    const sessionId = typeof sidecarForGroup.sessionId === "string" ? sidecarForGroup.sessionId : "";
     if (sessionId !== "") {
       try {
         await ctx.workspaceRegistry.unarchiveSession(sessionId);
@@ -1990,7 +2099,17 @@ export async function purgeTrashEntry(name, ctx = null) {
     }
   }
   await rm(directory, { recursive: true, force: true });
-  return { ok: true };
+  /* Scratch does not outlive its batch: erasing the parent erases the children. */
+  let groupPurged = 0;
+  if (sidecarForGroup !== null && ctx !== null && ctx !== undefined) {
+    for (const sibling of await groupEntries(sidecarForGroup, name)) {
+      try {
+        await rm(join(root, sibling.name), { recursive: true, force: true });
+        groupPurged += 1;
+      } catch { /* leave it for the next pass */ }
+    }
+  }
+  return { ok: true, groupPurged };
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2211,6 +2330,26 @@ export async function listArchivedSessions(ctx) {
   }
   entries.sort((a, b) => b.lastAt - a.lastAt || (a.sessionId < b.sessionId ? -1 : 1));
   return { ok: true, entries };
+}
+
+/** Trash entries that belong to the same delete batch. */
+async function groupEntries(sidecar, selfName) {
+  const group = sidecar !== null && sidecar !== undefined && typeof sidecar.group === "string" ? sidecar.group : "";
+  if (group === "") return [];
+  const root = await trashRoot();
+  let names;
+  try {
+    names = await readdir(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const name of names) {
+    if (!name.isDirectory() || name.name === selfName) continue;
+    const other = await readTrashSidecar(join(root, name.name));
+    if (other !== null && other.group === group) out.push({ name: name.name, sidecar: other });
+  }
+  return out;
 }
 
 /**

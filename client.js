@@ -1,5 +1,6 @@
 /**
- * dsh-ws-recency - client half.
+           "trash.confirmRestoreGroup": "恢复到原来的工作区？这一组里的 {n} 个子会话会一起回来。",
+* dsh-ws-recency - client half.
  *
  * Three sidebar behaviors, nothing else:
  *
@@ -637,6 +638,8 @@
           "trash.empty": "回收站是空的。",
           "trash.reason.delete": "已删除",
           "trash.reason.move": "移动时的旧副本",
+          "trash.groupParent": "含 {n} 个子会话",
+          "trash.groupChild": "子会话",
           "trash.restore": "恢复",
           "trash.purge": "彻底删除",
           "trash.confirmRestore": "恢复到原来的工作区？",
@@ -876,9 +879,12 @@
           "trash.empty": "The trash is empty.",
           "trash.reason.delete": "deleted",
           "trash.reason.move": "old copy from a move",
+          "trash.groupParent": "with {n} subagent session(s)",
+          "trash.groupChild": "subagent",
           "trash.restore": "Restore",
           "trash.purge": "Delete for good",
           "trash.confirmRestore": "Restore it to its original workspace?",
+          "trash.confirmRestoreGroup": "Restore it to its old workspace? The {n} subagent session(s) in this batch come back too.",
           "trash.confirmPurge": "Delete this log for good? This cannot be undone.",
           "trash.restored": "Restored and re-attached to its workspace. If the sidebar has not picked it up, press \"Reload UI\" below, or use \"Scan and reload\" at the top right of this panel.",
           "trash.purged": "Deleted for good.",
@@ -5596,7 +5602,11 @@
           react.useEffect(function () { load(""); }, []);
 
           var act = function (entry, action) {
-            var question = action === "restore" ? t("trash.confirmRestore") : t("trash.confirmPurge");
+            var question = action === "restore"
+            ? (Number(entry.groupSize) > 1 && (entry.parentSession === null || entry.parentSession === undefined)
+              ? t("trash.confirmRestoreGroup", { n: String((Number(entry.groupSize) || 1) - 1) })
+              : t("trash.confirmRestore"))
+            : t("trash.confirmPurge");
             askConfirm(question, function () {
               load(t("trash.working"));
               trashPost({ action: action, name: entry.name }).then(function (result) {
@@ -5652,6 +5662,16 @@
               if (entry.steps > 0) chips.push(t("trash.steps") + " " + entry.steps);
               if (entry.tokens > 0) chips.push(formatTokens(entry.tokens) + " tokens");
               chips.push(formatBytes(entry.sizeBytes));
+              /* A move leaves its old log here too; it is not a deleted session. */
+              if (entry.reason === "move") chips.push(t("trash.reason.move"));
+              var groupSize = Number(entry.groupSize) || 1;
+              if (groupSize > 1) {
+                if (entry.parentSession === null || entry.parentSession === undefined) {
+                  chips.push(t("trash.groupParent", { n: String(groupSize - 1) }));
+                } else {
+                  chips.push(t("trash.groupChild"));
+                }
+              }
               var when = formatWhen(entry.at);
               if (when !== "") chips.push(when);
               var actions = [];

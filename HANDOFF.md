@@ -334,3 +334,10 @@ var SEARCH_ENABLED = true;   // 搜索面板、跳转、上下文展开、关键
 - 删除已归档会话时，确认框会报出指向它的定时任务数量与前几个标题：`scheduledTasksFor()` 只读 `storages/schedule.json`（同时认 v1 的顶层 `sessionId` 与 v2 的 `target.sessionId` / `involvedSessionIds`），列表里每条带 `tasks` 与 `taskTitles`。**不删任务**——`schedule` 是宿主的存储域（v2 读 v1），定时器在宿主进程内存里，改文件既不取消已排的定时器也绕过它的 schema。
 - 顺带确认了删除现状：只处理被点的那个会话，子代理会话（header 的 `parentSession`）留在磁盘上；本机已存在一个例证——父会话在回收站，它的 3 个子会话还在 `sessions/`。级联删除仍待定。
 - 测试：`archive.cjs` 增加 schedule 存储的 v1/v2 两种形状计数，以及存储缺失时计 0。
+
+## 0.36.0
+
+- 删除会话时带上子代理整棵树：`descendantSessions()` 用宿主 `sessionPersistence.list()` 的 header 建 `parentSession` 链（不是自己猜），递归收集后代；父会话与每个后代各自成为一条回收站记录，共用同一批时间戳与 `group` / `groupSize` / `parentSession` 字段。
+- 恢复父会话时整组回来（`descendantsRestored`），恢复子会话只回它自己；彻底删除父会话会连组一起清（`groupPurged`）。实测场景：父会话有 3 个子会话时，删除后那 174 KB 的日志不再沉积在 `sessions/` 里。
+- 回收站卡片新增两个标签：`移动时的旧副本`（`reason: move`，是移动会话时留下的备份，不是删除记录）与 `含 N 个子会话` / `子会话`；恢复确认文案会说明这一组的 N 个子会话会一起回来。
+- 背景：11-02 那次移动留下的旧备份和新删除记录曾同时挂在一个 id 上，恢复时极易选错（把 11 月的旧日志复活成 duplicate）。标签是为了让人一眼分辨。
